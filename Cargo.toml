@@ -1,0 +1,16 @@
+[package]
+name = "twitter-streams"
+version = "0.1.0"
+authors = ["daiki"]
+
+[dependencies]
+futures = "*"
+hyper = { version = "*", default-features = false }
+log = "*"
+oauthcli = { version = "*", features = ["hyper"] }
+url = "*"
+
+[features]
+default = ["ssl"]
+ssl = ["hyper/ssl"]
+security-framework = ["hyper/security-framework"]
