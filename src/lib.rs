@@ -92,14 +92,13 @@ impl<'a> TwitterUserStreamBuilder<'a> {
             client
                 .get(url)
                 .headers(headers)
-                .send()
+                .send()?
         } else {
             Client::new()
                 .get(url)
                 .headers(headers)
-                .send()
+                .send()?
         };
-        let res = res?;
 
         match &res.status {
             &StatusCode::Ok => (),
