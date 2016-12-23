@@ -3,6 +3,7 @@ extern crate hyper;
 #[macro_use]
 extern crate log;
 extern crate oauthcli;
+extern crate serde_json;
 extern crate url;
 
 mod lines;
@@ -68,7 +69,7 @@ impl<'a> TwitterUserStreamBuilder<'a> {
         self
     }
 
-    pub fn login(self) -> Result<TwitterUserStream> {
+    pub fn login(&self) -> Result<TwitterUserStream> {
         use hyper::header::{Headers, Authorization, UserAgent};
         use hyper::status::StatusCode;
         use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
