@@ -23,6 +23,7 @@ pub fn lines<A: BufRead + Send + 'static>(a: A) -> Lines {
     thread::Builder::new().name("twitter_user_stream_sender".into()).spawn(move || {
         let txg = SenderPanicGuard(Some(tx.clone()));
         let stream = stream::iter(a.lines().map(|r| Ok(r.map_err(Error::from))));
+        info!("starting to listen on a stream");
         tx.send_all(stream).wait().unwrap();
     }).unwrap();
 
@@ -40,6 +41,10 @@ impl Stream for Lines {
         loop {
             match self.rx.poll().expect("Receiver failed") {
                 Async::Ready(Some(line)) => {
+                    info!("duration since last message: {}", {
+                        let elapsed = self.timer.elapsed();
+                        elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000f64
+                    });
                     self.timer = Instant::now();
                     let line = line?;
                     if !line.is_empty() {
