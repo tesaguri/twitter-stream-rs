@@ -4,11 +4,12 @@ extern crate hyper;
 extern crate log;
 extern crate oauthcli;
 extern crate serde_json;
+extern crate tokio_core;
 extern crate url;
 
 mod lines;
 
-use futures::{Poll, Stream};
+use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::status::StatusCode;
 use lines::Lines;
@@ -16,6 +17,8 @@ use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{self, BufReader};
+use std::time::Duration;
+use tokio_core::reactor::{Handle, Timeout};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Token<'a>(pub &'a str, pub &'a str);
@@ -23,13 +26,17 @@ pub struct Token<'a>(pub &'a str, pub &'a str);
 pub struct TwitterUserStreamBuilder<'a> {
     consumer: Token<'a>,
     token: Token<'a>,
-    end_point: Option<&'a str>,
     client: Option<&'a Client>,
+    end_point: Option<&'a str>,
+    timeout: Duration,
     user_agent: Option<&'a str>,
 }
 
-pub struct TwitterUserStream {
+pub struct TwitterUserStream<'a> {
     lines: Lines,
+    timeout: Duration,
+    handle: &'a Handle,
+    timer: Timeout,
 }
 
 pub enum Error {
@@ -50,6 +57,7 @@ impl<'a> TwitterUserStreamBuilder<'a> {
             token: token,
             client: None,
             end_point: None,
+            timeout: Duration::from_secs(95),
             user_agent: None,
         }
     }
@@ -64,12 +72,17 @@ impl<'a> TwitterUserStreamBuilder<'a> {
         self
     }
 
+    pub fn timeout(&mut self, timeout: Duration) -> &mut Self {
+        self.timeout = timeout;
+        self
+    }
+
     pub fn user_agent(&mut self, user_agent: Option<&'a str>) -> &mut Self {
         self.user_agent = user_agent;
         self
     }
 
-    pub fn login(&self) -> Result<TwitterUserStream> {
+    pub fn login<'b>(&self, handle: &'b Handle) -> Result<TwitterUserStream<'b>> {
         use hyper::header::{Headers, Authorization, UserAgent};
         use hyper::status::StatusCode;
         use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
@@ -107,27 +120,50 @@ impl<'a> TwitterUserStreamBuilder<'a> {
         }
 
         Ok(TwitterUserStream {
-            lines: lines::lines(BufReader::new(res))
+            lines: lines::lines(BufReader::new(res)),
+            timeout: self.timeout,
+            handle: handle,
+            timer: Timeout::new(self.timeout, handle)?,
         })
     }
 }
 
-impl TwitterUserStream {
-    pub fn login<'a>(consumer: Token<'a>, token: Token<'a>) -> Result<Self> {
-        TwitterUserStreamBuilder::new(consumer, token).login()
+impl<'a> TwitterUserStream<'a> {
+    pub fn login<'b>(consumer: Token<'b>, token: Token<'b>, handle: &'a Handle) -> Result<Self> {
+        TwitterUserStreamBuilder::new(consumer, token).login(handle)
     }
 }
 
-impl Stream for TwitterUserStream {
+impl<'a> Stream for TwitterUserStream<'a> {
     type Item = String;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<String>, Error> {
-        self.lines.poll()
+        trace!("TwitterUserStream::poll");
+        loop {
+            match self.lines.poll()? {
+                Async::Ready(line_opt) => {
+                    self.timer = Timeout::new(self.timeout, self.handle)?;
+                    match line_opt {
+                        Some(line) => {
+                            if !line.is_empty() {
+                                return Ok(Some(line).into());
+                            }
+                        },
+                        None => return Ok(None.into()),
+                    }
+                },
+                Async::NotReady => {
+                    if let Async::Ready(_) = self.timer.poll()? {
+                        return Err(Error::TimedOut);
+                    }
+                },
+            }
+        }
     }
 }
 
-impl std::error::Error for Error {
+impl StdError for Error {
     fn description(&self) -> &str {
         match self {
             &Error::Url(ref e) => e.description(),
@@ -139,7 +175,7 @@ impl std::error::Error for Error {
         }
     }
 
-    fn cause(&self) -> Option<&std::error::Error> {
+    fn cause(&self) -> Option<&StdError> {
         match self {
             &Error::Url(ref e) => e.cause(),
             &Error::Hyper(ref e) => e.cause(),
