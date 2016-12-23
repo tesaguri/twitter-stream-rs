@@ -25,7 +25,7 @@ pub struct TwitterUserStreamBuilder<'a> {
     token: Token<'a>,
     end_point: Option<&'a str>,
     client: Option<&'a Client>,
-    user_agent: Option<String>,
+    user_agent: Option<&'a str>,
 }
 
 pub struct TwitterUserStream {
@@ -64,7 +64,7 @@ impl<'a> TwitterUserStreamBuilder<'a> {
         self
     }
 
-    pub fn user_agent(&mut self, user_agent: Option<String>) -> &mut Self {
+    pub fn user_agent(&mut self, user_agent: Option<&'a str>) -> &mut Self {
         self.user_agent = user_agent;
         self
     }
@@ -86,7 +86,7 @@ impl<'a> TwitterUserStreamBuilder<'a> {
         let mut headers = Headers::new();
         headers.set(Authorization(auth));
         if let Some(ua) = self.user_agent {
-            headers.set(UserAgent(ua));
+            headers.set(UserAgent(ua.to_owned()));
         }
 
         let res = if let Some(client) = self.client {
