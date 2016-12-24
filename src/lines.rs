@@ -1,9 +1,8 @@
-use futures::{Async, Future, Poll, Sink, Stream};
+use futures::{Future, Sink, Stream};
 use futures::stream::{self, AndThen, MapErr};
 use futures::sync::mpsc::{self, Receiver, Sender};
 use std::io::BufRead;
 use std::thread;
-use std::time::{Duration, Instant};
 use Error;
 
 type Result = ::Result<String>;

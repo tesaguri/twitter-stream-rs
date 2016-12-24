@@ -8,6 +8,7 @@ futures = "*"
 hyper = { version = "*", default-features = false }
 log = "*"
 oauthcli = { version = "*", features = ["hyper"] }
+serde_json = "*"
 url = "*"
 
 [features]
