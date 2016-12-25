@@ -78,6 +78,10 @@ impl Timeout {
             self.parked = true;
         }
     }
+
+    pub fn when(&self) -> Instant {
+        self.when
+    }
 }
 
 impl Future for Timeout {

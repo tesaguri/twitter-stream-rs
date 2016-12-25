@@ -139,32 +139,37 @@ impl Stream for TwitterUserStream {
 
         trace!("TwitterUserStream::poll");
 
-        match self.lines.poll()? {
-            Ready(line_opt) => {
-                match line_opt {
-                    Some(line) => {
-                        let now = Instant::now();
-                        let mut timer = Timeout::after(self.timeout);
-                        timer.park(now);
-                        self.timer = timer;
-                        if line.is_empty() {
-                            info!("blank line");
-                            Ok(NotReady)
-                        } else {
-                            Ok(Ready(Some(line)))
-                        }
-                    },
-                    None => Ok(None.into()),
-                }
-            },
-            NotReady => {
-                if let Ok(Ready(())) = self.timer.poll() {
-                    Err(Error::TimedOut)
-                } else {
-                    debug!("polled before being ready");
-                    Ok(NotReady)
-                }
-            },
+        loop {
+            match self.lines.poll()? {
+                Ready(line_opt) => {
+                    match line_opt {
+                        Some(line) => {
+                            let now = Instant::now();
+                            let mut timer = Timeout::after(self.timeout);
+                            timer.park(now);
+                            info!("duration since last message: {}", {
+                                let elapsed = timer.when() - self.timer.when(); // = (now + timeout) - (last + timeout)
+                                elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000f64
+                            });
+                            self.timer = timer;
+                            if line.is_empty() {
+                                info!("blank line");
+                            } else {
+                                return Ok(Ready(Some(line)));
+                            }
+                        },
+                        None => return Ok(None.into()),
+                    }
+                },
+                NotReady => {
+                    if let Ok(Ready(())) = self.timer.poll() {
+                        return Err(Error::TimedOut);
+                    } else {
+                        debug!("polled before being ready");
+                        return Ok(NotReady);
+                    }
+                },
+            }
         }
     }
 }
