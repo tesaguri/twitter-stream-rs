@@ -6,20 +6,16 @@ extern crate oauthcli;
 extern crate serde_json;
 extern crate url;
 
-mod lines;
+mod util;
 
-use futures::{Async, Poll, Stream};
-use futures::task::{self, Task};
+use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::status::StatusCode;
-use lines::Lines;
+use util::{Lines, Timeout};
 use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{self, BufReader};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -37,12 +33,8 @@ pub struct TwitterUserStreamBuilder<'a> {
 pub struct TwitterUserStream {
     lines: Lines,
     timeout: Duration,
-    timer: Instant,
-    timeout_token: Option<TimeoutToken>,
+    timer: Timeout,
 }
-
-#[derive(Clone)]
-struct TimeoutToken(Task, Arc<AtomicBool>);
 
 pub enum Error {
     Url(url::ParseError),
@@ -125,10 +117,9 @@ impl<'a> TwitterUserStreamBuilder<'a> {
         }
 
         Ok(TwitterUserStream {
-            lines: lines::lines(BufReader::new(res)),
+            lines: util::lines(BufReader::new(res)),
             timeout: self.timeout,
-            timer: Instant::now(),
-            timeout_token: None,
+            timer: Timeout::after(self.timeout),
         })
     }
 }
@@ -137,38 +128,6 @@ impl TwitterUserStream {
     pub fn login<'a>(consumer: Token<'a>, token: Token<'a>) -> Result<Self> {
         TwitterUserStreamBuilder::new(consumer, token).login()
     }
-
-    fn update_timeout(&mut self) {
-        trace!("TwitterUserStream::update_timeout");
-
-        let task = if let Some(ref t) = self.timeout_token {
-            t.1.store(false, Ordering::Relaxed); // Invalidate old token.
-            t.0.clone()
-        } else {
-            task::park()
-        };
-
-        self.timeout_token = Some(TimeoutToken(task, Arc::new(AtomicBool::new(true))));
-
-        info!("duration since last update: {}", {
-            let elapsed = self.timer.elapsed();
-            elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000f64
-        });
-        self.timer = Instant::now();
-
-        let timeout = self.timeout;
-        let token = self.timeout_token.as_ref().unwrap().clone();
-
-        thread::spawn(move || {
-            thread::sleep(timeout);
-            if token.1.load(Ordering::Relaxed) {
-                debug!("unparking");
-                token.0.unpark();
-            } else {
-                debug!("timeout token has expired");
-            }
-        });
-    }
 }
 
 impl Stream for TwitterUserStream {
@@ -176,41 +135,37 @@ impl Stream for TwitterUserStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<String>, Error> {
+        use Async::*;
+
         trace!("TwitterUserStream::poll");
 
-        if self.timeout_token.is_none() {
-            self.update_timeout();
-        }
-
         match self.lines.poll()? {
-            Async::Ready(line_opt) => {
+            Ready(line_opt) => {
                 match line_opt {
                     Some(line) => {
-                        self.update_timeout();
-                        if !line.is_empty() {
-                            return Ok(Some(line).into());
+                        let now = Instant::now();
+                        let mut timer = Timeout::after(self.timeout);
+                        timer.park(now);
+                        self.timer = timer;
+                        if line.is_empty() {
+                            info!("blank line");
+                            Ok(NotReady)
                         } else {
-                            return Ok(Async::NotReady);
+                            Ok(Ready(Some(line)))
                         }
                     },
-                    None => return Ok(None.into()),
+                    None => Ok(None.into()),
                 }
             },
-            Async::NotReady => {
-                if self.timer.elapsed() >= self.timeout {
-                    return Err(Error::TimedOut);
+            NotReady => {
+                if let Ok(Ready(())) = self.timer.poll() {
+                    Err(Error::TimedOut)
                 } else {
                     debug!("polled before being ready");
-                    return Ok(Async::NotReady);
+                    Ok(NotReady)
                 }
             },
         }
-    }
-}
-
-impl Drop for TimeoutToken {
-    fn drop(&mut self) {
-        self.1.store(false, Ordering::Relaxed)
     }
 }
 
