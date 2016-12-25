@@ -1,6 +1,6 @@
 use futures::{Future, Poll, Sink, Stream};
-use futures::stream::{self, AndThen, MapErr};
-use futures::sync::mpsc::{self, Receiver, Sender};
+use futures::stream::{self, Then};
+use futures::sync::mpsc::{self, Receiver};
 use std::io::BufRead;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,16 +8,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 use Error;
 
-type Result = ::Result<String>;
-
-/// A stream over each non-empty line on a `BufRead`.
-pub type Lines = AndThen<
-    MapErr<
-        Receiver<Result>,
-        fn(()) -> Error
-    >,
-    fn(Result) -> Result,
-    Result
+/// A stream over each line on a `BufRead`.
+pub type Lines = Then<
+    Receiver<Result<String, Error>>,
+    fn(Result<Result<String, Error>, ()>) -> Result<String, Error>,
+    Result<String, Error>,
 >;
 
 /// A future which resolves at a specific period of time.
@@ -27,24 +22,21 @@ pub struct Timeout {
     is_active: Arc<AtomicBool>,
 }
 
-/// Adds to `Sender` an ability to send an `Error` to its corresponding `Receiver` while panicking.
-struct SenderPanicGuard(Option<Sender<Result>>);
-
 /// Returns a stream over each non-empty line on `a`.
 #[allow(unused_variables)]
 pub fn lines<A: BufRead + Send + 'static>(a: A) -> Lines {
-    let (tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8); // TODO: is this a proper value?
 
-    thread::Builder::new().name("twitter_user_stream_sender".into()).spawn(move || {
-        let txg = SenderPanicGuard(Some(tx.clone()));
-        let iter = a.lines().map(|r| Ok(r.map_err(Error::from)));
+    thread::spawn(move || {
+        let iter = a.lines().map(|r| Ok(r.map_err(Error::Io)));
         let stream = stream::iter(iter);
-        tx.send_all(stream).wait().unwrap();
-    }).unwrap();
+        tx.send_all(stream).wait().is_ok(); // Fails silently when `tx` is dropped.
+    });
 
-    let rx = rx.map_err(err_map as fn(_) -> _).and_then(id as fn(_) -> _);
-    fn err_map(_: ()) -> Error { panic!("Receiver failed") }
-    fn id(r: Result) -> Result { r }
+    let rx = rx.then(thener as _);
+    fn thener(r: Result<Result<String, Error>, ()>) -> Result<String, Error> {
+        r.expect("Receiver failed")
+    }
 
     rx
 }
@@ -106,16 +98,5 @@ impl Future for Timeout {
 impl Drop for Timeout {
     fn drop(&mut self) {
         self.is_active.store(false, Ordering::Relaxed);
-    }
-}
-
-impl Drop for SenderPanicGuard {
-    #[allow(unused_must_use)]
-    fn drop(&mut self) {
-        if thread::panicking() {
-            if let Some(tx) = self.0.take() {
-                tx.send(Err(Error::InternalPanicError)).wait();
-            }
-        }
     }
 }

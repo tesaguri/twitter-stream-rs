@@ -42,7 +42,6 @@ pub enum Error {
     Http(StatusCode),
     Io(io::Error),
     TimedOut,
-    InternalPanicError,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -182,7 +181,6 @@ impl StdError for Error {
             &Error::Http(ref status) => status.canonical_reason().unwrap_or("unknown HTTP error"),
             &Error::Io(ref e) => e.description(),
             &Error::TimedOut => "the connection has timed out",
-            &Error::InternalPanicError => "internal error: sender panicked",
         }
     }
 
@@ -193,7 +191,6 @@ impl StdError for Error {
             &Error::Http(_) => None,
             &Error::Io(ref e) => e.cause(),
             &Error::TimedOut => None,
-            &Error::InternalPanicError => None,
         }
     }
 }
