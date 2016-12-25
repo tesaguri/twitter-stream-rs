@@ -6,6 +6,7 @@ extern crate oauthcli;
 extern crate serde_json;
 extern crate url;
 
+mod messages;
 mod util;
 
 use futures::{Async, Future, Poll, Stream};
@@ -53,7 +54,7 @@ impl<'a> TwitterUserStreamBuilder<'a> {
             token: token,
             client: None,
             end_point: None,
-            timeout: Duration::from_secs(95),
+            timeout: Duration::from_secs(90),
             user_agent: None,
         }
     }
