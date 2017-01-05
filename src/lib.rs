@@ -186,6 +186,15 @@ impl Stream for TwitterUserStream {
     }
 }
 
+impl IntoIterator for TwitterUserStream {
+    type Item = Result<String>;
+    type IntoIter = futures::stream::Wait<Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.wait()
+    }
+}
+
 impl StdError for Error {
     fn description(&self) -> &str {
         use Error::*;
