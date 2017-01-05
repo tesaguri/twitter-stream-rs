@@ -30,7 +30,7 @@ pub fn lines<A: BufRead + Send + 'static>(a: A) -> Lines {
     thread::spawn(move || {
         let iter = a.lines().map(|r| Ok(r.map_err(Error::Io)));
         let stream = stream::iter(iter);
-        tx.send_all(stream).wait().is_ok(); // Fails silently when `tx` is dropped.
+        tx.send_all(stream).wait().is_ok() // Fails silently when `tx` is dropped.
     });
 
     let rx = rx.then(thener as _);

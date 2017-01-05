@@ -9,19 +9,22 @@ extern crate url;
 mod messages;
 mod util;
 
+pub use json::Error as JsonError;
+
 use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::status::StatusCode;
 use util::{Lines, Timeout};
 use std::convert::From;
 use std::error::Error as StdError;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufReader};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Token<'a>(pub &'a str, pub &'a str);
 
+#[derive(Debug, Clone)]
 pub struct TwitterUserStreamBuilder<'a> {
     consumer: Token<'a>,
     token: Token<'a>,
@@ -37,12 +40,13 @@ pub struct TwitterUserStream {
     timer: Timeout,
 }
 
+#[derive(Debug)]
 pub enum Error {
     Url(url::ParseError),
     Hyper(hyper::Error),
     Http(StatusCode),
     Io(io::Error),
-    TimedOut,
+    TimedOut(u64),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -152,8 +156,9 @@ impl Stream for TwitterUserStream {
                                 elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000f64
                             });
                             self.timer = timer;
+
                             if line.is_empty() {
-                                info!("blank line");
+                                debug!("blank line");
                             } else {
                                 return Ok(Ready(Some(line)));
                             }
@@ -163,7 +168,7 @@ impl Stream for TwitterUserStream {
                 },
                 NotReady => {
                     if let Ok(Ready(())) = self.timer.poll() {
-                        return Err(Error::TimedOut);
+                        return Err(Error::TimedOut(self.timeout.as_secs()));
                     } else {
                         debug!("polled before being ready");
                         return Ok(NotReady);
@@ -176,35 +181,41 @@ impl Stream for TwitterUserStream {
 
 impl StdError for Error {
     fn description(&self) -> &str {
-        match self {
-            &Error::Url(ref e) => e.description(),
-            &Error::Hyper(ref e) => e.description(),
-            &Error::Http(ref status) => status.canonical_reason().unwrap_or("unknown HTTP error"),
-            &Error::Io(ref e) => e.description(),
-            &Error::TimedOut => "the connection has timed out",
+        use Error::*;
+
+        match *self {
+            Url(ref e) => e.description(),
+            Hyper(ref e) => e.description(),
+            Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
+            Io(ref e) => e.description(),
+            TimedOut(_) => "timed out",
         }
     }
 
     fn cause(&self) -> Option<&StdError> {
-        match self {
-            &Error::Url(ref e) => e.cause(),
-            &Error::Hyper(ref e) => e.cause(),
-            &Error::Http(_) => None,
-            &Error::Io(ref e) => e.cause(),
-            &Error::TimedOut => None,
+        use Error::*;
+
+        match *self {
+            Url(ref e) => Some(e),
+            Hyper(ref e) => Some(e),
+            Http(_) => None,
+            Io(ref e) => Some(e),
+            TimedOut(_) => None,
         }
     }
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.description())
-    }
-}
+        use Error::*;
 
-impl Debug for Error {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        Display::fmt(self, f)
+        match *self {
+            Url(ref e) => Display::fmt(e, f),
+            Hyper(ref e) => Display::fmt(e, f),
+            Http(ref code) => Display::fmt(code, f),
+            Io(ref e) => Display::fmt(e, f),
+            TimedOut(timeout) => write!(f, "connection timed out after {} sec", timeout),
+        }
     }
 }
 
@@ -229,5 +240,21 @@ impl From<StatusCode> for Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::Io(e)
+    }
+}
+
+impl StdError for ParseError {
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    fn cause(&self) -> Option<&StdError> {
+        Some(&self.0)
+    }
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{} - \"{:?}\"", self.0, self.1)
     }
 }
