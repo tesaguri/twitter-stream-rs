@@ -1,15 +1,22 @@
+#![feature(proc_macro)]
+
+extern crate chrono;
 extern crate futures;
 extern crate hyper;
 #[macro_use]
 extern crate log;
 extern crate oauthcli;
-extern crate serde_json;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json as json;
 extern crate url;
 
-mod messages;
+pub mod messages;
+
 mod util;
 
-pub use json::Error as JsonError;
+pub use messages::StreamMessage;
 
 use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
@@ -240,21 +247,5 @@ impl From<StatusCode> for Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::Io(e)
-    }
-}
-
-impl StdError for ParseError {
-    fn description(&self) -> &str {
-        self.0.description()
-    }
-
-    fn cause(&self) -> Option<&StdError> {
-        Some(&self.0)
-    }
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{} - \"{:?}\"", self.0, self.1)
     }
 }
