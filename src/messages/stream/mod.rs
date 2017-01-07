@@ -34,39 +34,39 @@ pub enum StreamMessage {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Delete {
-    id: StatusId,
-    user_id: UserId,
+    pub id: StatusId,
+    pub user_id: UserId,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct ScrubGeo {
-    user_id: UserId,
-    up_to_status_id: StatusId,
+    pub user_id: UserId,
+    pub up_to_status_id: StatusId,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Limit {
-    track: u64,
+    pub track: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct StatusWithheld {
-    id: StatusId,
-    user_id: UserId,
-    withheld_in_countries: Vec<String>,
+    pub id: StatusId,
+    pub user_id: UserId,
+    pub withheld_in_countries: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct UserWithheld {
-    id: UserId,
-    withheld_in_countries: Vec<String>,
+    pub id: UserId,
+    pub withheld_in_countries: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Disconnect {
-    code: DisconnectCode,
-    stream_name: String,
-    reason: String,
+    pub code: DisconnectCode,
+    pub stream_name: String,
+    pub reason: String,
 }
 
 macro_rules! number_enum {
@@ -234,16 +234,17 @@ impl Deserialize for Delete {
             type Value = Delete;
 
             fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Delete, V::Error> {
-                use std::mem;
-
                 #[allow(dead_code)]
                 #[derive(Deserialize)]
                 struct Status { id: StatusId, user_id: UserId };
 
                 while let Some(k) = v.visit_key::<String>()? {
                     match k.as_str() {
-                        "status" => unsafe {
-                            return Ok(mem::transmute::<_,_>(v.visit_value::<Status>()?))
+                        "status" => {
+                            let ret = unsafe { ::std::mem::transmute::<_,_>(v.visit_value::<Status>()?) };
+                            while let Some(_) = v.visit::<IgnoredAny,IgnoredAny>()? {}
+                            v.end()?;
+                            return Ok(ret);
                         },
                         _ => { v.visit_value::<IgnoredAny>()?; },
                     }

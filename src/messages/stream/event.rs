@@ -6,11 +6,11 @@ use super::{List, Tweet, User};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
-    created_at: DateTime,
-    event: EventKind,
-    target: User,
-    source: User,
-    target_object: Option<TargetObject>,
+    pub created_at: DateTime,
+    pub event: EventKind,
+    pub target: User,
+    pub source: User,
+    pub target_object: Option<TargetObject>,
 }
 
 string_enums! {
@@ -87,9 +87,9 @@ impl Deserialize for Event {
                         },
                         "event" => {
                             let ek = v.visit_value()?;
-                            if let Some(t) = target_obj.take() {
+                            event.target_object = if let Some(t) = target_obj.take() {
                                 let mut d = JsonDeserializer::new(t);
-                                event.target_object = match ek {
+                                match ek {
                                     AccessRevoked => Some(
                                         access_revoked_target(String::deserialize(&mut d).map_err(err_map!())?)
                                     ),
@@ -110,8 +110,13 @@ impl Deserialize for Event {
                                     Unknown(_) => Some(
                                         TargetObject::Unknown(Value::deserialize(&mut d).map_err(err_map!())?)
                                     ),
-                                }.into();
-                            }
+                                }.into()
+                            } else {
+                                match ek {
+                                    Block | Unblock | Follow | Unfollow | UserUpdate | Unknown(_) => Some(None),
+                                    _ => None,
+                                }
+                            };
                             event.event = Some(ek);
                         },
                         "target" => event.target = Some(v.visit_value()?),
@@ -174,5 +179,215 @@ impl Deserialize for Event {
         }
 
         d.deserialize_map(EventVisitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, UTC};
+    use json;
+    use super::*;
+
+    #[test]
+    fn deserialize() {
+        assert_eq!(
+            Event {
+                created_at: UTC.ymd(2016, 12, 26).and_hms(0, 39, 13),
+                event: EventKind::Follow,
+                source: User {
+                    id: 783214,
+                    // id_str: "783214",
+                    name: "Twitter".to_owned(),
+                    screen_name: "Twitter".to_owned(),
+                    location: Some("San Francisco, CA".to_owned()),
+                    description: Some(
+                        "Your official source for news, updates, and tips from Twitter, Inc. Need help? \
+                            Visit https://t.co/jTMg7YsLw5.".to_owned()
+                    ),
+                    url: Some("https://t.co/gN5JJwhQy7".to_owned()),
+                    protected: false,
+                    followers_count: 58213762,
+                    friends_count: 155,
+                    listed_count: 90496,
+                    created_at: UTC.ymd(2007, 2, 20).and_hms(14, 35, 54),
+                    favourites_count: 3003,
+                    utc_offset: Some(-28800),
+                    time_zone: Some("Pacific Time (US & Canada)".to_owned()),
+                    geo_enabled: true,
+                    verified: true,
+                    statuses_count: 3695,
+                    lang: "en".to_owned(),
+                    contributors_enabled: false,
+                    is_translator: false,
+                    // is_translation_enabled: false,
+                    profile_background_color: "ACDED6".to_owned(),
+                    profile_background_image_url:
+                        "http://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png".to_owned(),
+                    profile_background_image_url_https:
+                        "https://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png".to_owned(),
+                    profile_background_tile: true,
+                    profile_image_url:
+                        "http://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg".to_owned(),
+                    profile_image_url_https:
+                        "https://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg".to_owned(),
+                    profile_banner_url: Some("https://pbs.twimg.com/profile_banners/783214/1476219753".to_owned()),
+                    profile_link_color: "226699".to_owned(),
+                    profile_sidebar_border_color: "FFFFFF".to_owned(),
+                    profile_sidebar_fill_color: "F6F6F6".to_owned(),
+                    profile_text_color: "333333".to_owned(),
+                    profile_use_background_image: true,
+                    default_profile: false,
+                    default_profile_image: false,
+                    // following: false,
+                    follow_request_sent: Some(false),
+                    // notifications: false,
+                    // translator_type: "regular".to_owned(),
+                    withheld_in_countries: None,
+                    withheld_scope: None,
+                },
+                target: User {
+                    id: 12,
+                    // id_str: "12".to_owned(),
+                    name: "jack".to_owned(),
+                    screen_name: "jack".to_owned(),
+                    location: Some("California, USA".to_owned()),
+                    description: Some("".to_owned()),
+                    url: None,
+                    protected: false,
+                    followers_count: 3949461,
+                    friends_count: 2379,
+                    listed_count: 26918,
+                    created_at: UTC.ymd(2006, 3, 21).and_hms(20, 50, 14),
+                    favourites_count: 15494,
+                    utc_offset: Some(-28800),
+                    time_zone: Some("Pacific Time (US & Canada)".to_owned()),
+                    geo_enabled: true,
+                    verified: true,
+                    statuses_count: 21033,
+                    lang: "en".to_owned(),
+                    contributors_enabled: false,
+                    is_translator: false,
+                    // is_translation_enabled: false,
+                    profile_background_color: "EBEBEB".to_owned(),
+                    profile_background_image_url: "http://abs.twimg.com/images/themes/theme7/bg.gif".to_owned(),
+                    profile_background_image_url_https: "https://abs.twimg.com/images/themes/theme7/bg.gif".to_owned(),
+                    profile_background_tile: false,
+                    profile_image_url:
+                        "http://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg".to_owned(),
+                    profile_image_url_https:
+                        "https://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg".to_owned(),
+                    profile_banner_url: Some("https://pbs.twimg.com/profile_banners/12/1483046077".to_owned()),
+                    profile_link_color: "990000".to_owned(),
+                    profile_sidebar_border_color: "DFDFDF".to_owned(),
+                    profile_sidebar_fill_color: "F3F3F3".to_owned(),
+                    profile_text_color: "333333".to_owned(),
+                    profile_use_background_image: true,
+                    default_profile: false,
+                    default_profile_image: false,
+                    // following: None,
+                    follow_request_sent: Some(false),
+                    // notifications: false,
+                    // translator_type: "regular".to_owned(),
+                    withheld_in_countries: None,
+                    withheld_scope: None,
+                },
+                target_object: None,
+            },
+            json::from_str::<Event>("{
+                \"created_at\":\"Mon Dec 26 00:39:13 +0000 2016\",
+                \"event\":\"follow\",
+                \"source\": {
+                    \"id\": 783214,
+                    \"id_str\": \"783214\",
+                    \"name\": \"Twitter\",
+                    \"screen_name\": \"Twitter\",
+                    \"location\": \"San Francisco, CA\",
+                    \"description\": \"Your official source for news, updates, and tips from Twitter, Inc. \
+                        Need help? Visit https://t.co/jTMg7YsLw5.\",
+                    \"url\": \"https://t.co/gN5JJwhQy7\",
+                    \"protected\": false,
+                    \"followers_count\": 58213762,
+                    \"friends_count\": 155,
+                    \"listed_count\": 90496,
+                    \"created_at\": \"Tue Feb 20 14:35:54 +0000 2007\",
+                    \"favourites_count\": 3003,
+                    \"utc_offset\": -28800,
+                    \"time_zone\": \"Pacific Time (US & Canada)\",
+                    \"geo_enabled\": true,
+                    \"verified\": true,
+                    \"statuses_count\": 3695,
+                    \"lang\": \"en\",
+                    \"contributors_enabled\": false,
+                    \"is_translator\": false,
+                    \"is_translation_enabled\": false,
+                    \"profile_background_color\": \"ACDED6\",
+                    \"profile_background_image_url\":
+                        \"http://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png\",
+                    \"profile_background_image_url_https\":
+                        \"https://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png\",
+                    \"profile_background_tile\": true,
+                    \"profile_image_url\":
+                        \"http://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg\",
+                    \"profile_image_url_https\":
+                        \"https://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg\",
+                    \"profile_banner_url\": \"https://pbs.twimg.com/profile_banners/783214/1476219753\",
+                    \"profile_link_color\": \"226699\",
+                    \"profile_sidebar_border_color\": \"FFFFFF\",
+                    \"profile_sidebar_fill_color\": \"F6F6F6\",
+                    \"profile_text_color\": \"333333\",
+                    \"profile_use_background_image\": true,
+                    \"default_profile\": false,
+                    \"default_profile_image\": false,
+                    \"following\": null,
+                    \"follow_request_sent\": false,
+                    \"notifications\": false,
+                    \"translator_type\": \"regular\"
+                },
+                \"target\": {
+                    \"id\": 12,
+                    \"id_str\": \"12\",
+                    \"name\": \"jack\",
+                    \"screen_name\": \"jack\",
+                    \"location\": \"California, USA\",
+                    \"description\": \"\",
+                    \"url\": null,
+                    \"protected\": false,
+                    \"followers_count\": 3949461,
+                    \"friends_count\": 2379,
+                    \"listed_count\": 26918,
+                    \"created_at\": \"Tue Mar 21 20:50:14 +0000 2006\",
+                    \"favourites_count\": 15494,
+                    \"utc_offset\": -28800,
+                    \"time_zone\": \"Pacific Time (US & Canada)\",
+                    \"geo_enabled\": true,
+                    \"verified\": true,
+                    \"statuses_count\": 21033,
+                    \"lang\": \"en\",
+                    \"contributors_enabled\": false,
+                    \"is_translator\": false,
+                    \"is_translation_enabled\": false,
+                    \"profile_background_color\": \"EBEBEB\",
+                    \"profile_background_image_url\": \"http://abs.twimg.com/images/themes/theme7/bg.gif\",
+                    \"profile_background_image_url_https\": \"https://abs.twimg.com/images/themes/theme7/bg.gif\",
+                    \"profile_background_tile\": false,
+                    \"profile_image_url\":
+                        \"http://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg\",
+                    \"profile_image_url_https\":
+                        \"https://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg\",
+                    \"profile_banner_url\": \"https://pbs.twimg.com/profile_banners/12/1483046077\",
+                    \"profile_link_color\": \"990000\",
+                    \"profile_sidebar_border_color\": \"DFDFDF\",
+                    \"profile_sidebar_fill_color\": \"F3F3F3\",
+                    \"profile_text_color\": \"333333\",
+                    \"profile_use_background_image\": true,
+                    \"default_profile\": false,
+                    \"default_profile_image\": false,
+                    \"following\": null,
+                    \"follow_request_sent\": false,
+                    \"notifications\": false,
+                    \"translator_type\": \"regular\"
+                }
+            }").unwrap()
+        );
     }
 }

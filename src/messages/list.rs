@@ -2,19 +2,19 @@ use super::{DateTime, User};
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct List {
-    slug: String,
-    name: String,
+    pub slug: String,
+    pub name: String,
     #[serde(deserialize_with = "super::deserialize_datetime")]
-    created_at: DateTime,
-    uri: String,
-    subscriber_count: u64,
-    member_count: u64,
-    mode: Mode,
-    id: ListId,
-    full_name: String,
-    description: String,
-    user: User,
-    following: bool,
+    pub created_at: DateTime,
+    pub uri: String,
+    pub subscriber_count: u64,
+    pub member_count: u64,
+    pub mode: Mode,
+    pub id: ListId,
+    pub full_name: String,
+    pub description: String,
+    pub user: User,
+    pub following: bool,
 }
 
 string_enums! {

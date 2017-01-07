@@ -25,10 +25,19 @@ macro_rules! string_enums {
 
             impl ::serde::Deserialize for $E {
                 fn deserialize<D: ::serde::Deserializer>(d: &mut D) -> Result<Self, D::Error> {
+                    trace!(concat!("<", stringify!($E), " as serde::Deserializer>::deserialize"));
+
                     struct V;
 
                     impl ::serde::de::Visitor for V {
                         type Value = $E;
+
+                        fn visit_str<E>(&mut self, s: &str) -> Result<$E, E> {
+                            match s {
+                                $($by => Ok($E::$V),)*
+                                _ => Ok($E::$U(s.to_owned())),
+                            }
+                        }
 
                         fn visit_string<E>(&mut self, s: String) -> Result<$E, E> {
                             match s.as_str() {

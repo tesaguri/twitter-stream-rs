@@ -24,13 +24,13 @@ pub struct ExtendedEntities {
     pub sizes: Sizes,
     #[serde(rename = "type")]
     pub kind: MediaKind,
-    pub indices: Vec<usize>,
+    pub indices: (u64, u64),
     pub video_info: Option<VideoInfo>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Hashtag {
-    pub indices: Vec<usize>,
+    pub indices: (u64, u64),
     pub text: String,
 }
 
@@ -39,11 +39,11 @@ pub struct Media {
     pub display_url: String,
     pub expanded_url: String,
     pub id: MediaId,
-    pub indices: Vec<usize>,
+    pub indices: (u64, u64),
     pub media_url: String,
     pub media_url_https: String,
     pub sizes: Sizes,
-    pub source_status_id: StatusId,
+    pub source_status_id: Option<StatusId>,
     #[serde(rename="type")]
     pub kind: String,
     pub url: String,
@@ -77,14 +77,14 @@ pub struct Sizes {
 pub struct Url {
     pub display_url: String,
     pub expanded_url: String,
-    pub indices: Vec<usize>,
+    pub indices: (u64, u64),
     pub url: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct UserMention {
     pub id: UserId,
-    pub indices: Vec<usize>,
+    pub indices: (u64, u64),
     pub name: String,
     pub screen_name: String,
 }
@@ -92,7 +92,7 @@ pub struct UserMention {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Symbol {
     pub text: String,
-    pub indices: Vec<usize>,
+    pub indices: (u64, u64),
 }
 
 string_enums! {

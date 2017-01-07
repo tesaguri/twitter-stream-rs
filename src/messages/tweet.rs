@@ -13,8 +13,8 @@ macro_rules! def_tweet {
             ),*;
             $(
                 $(#[$op_attr:meta])*
-                pub $op_field:ident: $op_ty:ty
-            ),*
+                pub $op_field:ident: Option<$op_ty:ty>,
+            )*
         }
     ) => {
         $(#[$attr])*
@@ -125,6 +125,7 @@ def_tweet! {
         // pub created_at: DateTime, // Implemented inside `def_tweet!` macro.
         pub entities: Entities,
         pub id: StatusId,
+        pub is_quote_status: bool,
         pub retweet_count: u64,
         pub retweeted: bool,
         pub source: String,
@@ -132,25 +133,27 @@ def_tweet! {
         pub truncated: bool,
         pub user: User;
 
-        pub coordinates: Geometry,
+        // Optional fields:
+        pub coordinates: Option<Geometry>,
         // // Implemented inside `def_tweet!` macro. An optional value cannot be simply deserialized with
-        // // `#[serde(deserialize_with = "...")]` attribute because it cannot handle absence of the value.
+        // // `#[serde(deserialize_with = "...")]` attribute because it cannot handle absence of the field.
         // pub current_user_retweet: StatusId,
-        pub favorite_count: u64,
-        pub favorited: bool,
-        pub filter_level: FilterLevel,
-        pub in_reply_to_screen_name: String,
-        pub in_reply_to_status_id: String,
-        pub in_reply_to_user_id: UserId,
-        pub lang: String,
-        pub place: Place,
-        pub possibly_sensitive: bool,
-        pub quoted_status_id: StatusId,
-        pub quoted_status: Box<Tweet>,
+        pub favorite_count: Option<u64>,
+        pub favorited: Option<bool>,
+        pub filter_level: Option<FilterLevel>,
+        pub in_reply_to_screen_name: Option<String>,
+        pub in_reply_to_status_id: Option<String>,
+        pub in_reply_to_user_id: Option<UserId>,
+        pub lang: Option<String>,
+        pub place: Option<Place>,
+        pub possibly_sensitive: Option<bool>,
+        pub quoted_status_id: Option<StatusId>,
+        pub quoted_status: Option<Box<Tweet>>,
+        pub retweeted_status: Option<Box<Tweet>>,
         pub scopes: Option<HashMap<String, Value>>,
-        pub withheld_copyright: bool,
-        pub withheld_in_countries: Vec<String>,
-        pub withheld_scope: String
+        pub withheld_copyright: Option<bool>,
+        pub withheld_in_countries: Option<Vec<String>>,
+        pub withheld_scope: Option<String>,
     }
 }
 
