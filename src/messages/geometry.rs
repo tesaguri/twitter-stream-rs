@@ -53,6 +53,14 @@ impl Deserialize for Geometry {
                                 Ok(Coordinates::F64(v))
                             }
 
+                            fn visit_i64<E>(&mut self, v: i64) -> Result<Coordinates, E> {
+                                Ok(Coordinates::F64(v as _))
+                            }
+
+                            fn visit_u64<E>(&mut self, v: u64) -> Result<Coordinates, E> {
+                                Ok(Coordinates::F64(v as _))
+                            }
+
                             fn visit_seq<V: SeqVisitor>(&mut self, mut v: V) -> Result<Coordinates, V::Error> {
                                 macro_rules! match_val {
                                     (
