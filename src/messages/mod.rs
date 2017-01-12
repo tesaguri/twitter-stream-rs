@@ -24,7 +24,7 @@ macro_rules! string_enums {
             }
 
             impl ::serde::Deserialize for $E {
-                fn deserialize<D: ::serde::Deserializer>(d: &mut D) -> Result<Self, D::Error> {
+                fn deserialize<D: ::serde::Deserializer>(d: &mut D) -> ::std::result::Result<Self, D::Error> {
                     trace!(concat!("<", stringify!($E), " as serde::Deserializer>::deserialize"));
 
                     struct V;
@@ -32,14 +32,14 @@ macro_rules! string_enums {
                     impl ::serde::de::Visitor for V {
                         type Value = $E;
 
-                        fn visit_str<E>(&mut self, s: &str) -> Result<$E, E> {
+                        fn visit_str<E>(&mut self, s: &str) -> ::std::result::Result<$E, E> {
                             match s {
                                 $($by => Ok($E::$V),)*
                                 _ => Ok($E::$U(s.to_owned())),
                             }
                         }
 
-                        fn visit_string<E>(&mut self, s: String) -> Result<$E, E> {
+                        fn visit_string<E>(&mut self, s: String) -> ::std::result::Result<$E, E> {
                             match s.as_str() {
                                 $($by => Ok($E::$V),)*
                                 _ => Ok($E::$U(s)),
@@ -48,6 +48,15 @@ macro_rules! string_enums {
                     }
 
                     d.deserialize_string(V)
+                }
+            }
+
+            impl ::std::convert::AsRef<str> for $E {
+                fn as_ref(&self) -> &str {
+                    match *self {
+                        $($E::$V => $by,)*
+                        $E::$U(ref s) => s,
+                    }
                 }
             }
 
@@ -102,7 +111,23 @@ pub use self::user::{User, UserId};
 use chrono::{self, DateTime as ChronoDateTime, TimeZone, UTC};
 use serde::de::{Deserialize, Deserializer, Error};
 
+string_enums! {
+    #[derive(Clone, Debug)]
+    pub enum FilterLevel {
+        None("none"),
+        Low("low"),
+        Medium("medium");
+        Custom(_),
+    }
+}
+
 pub type DateTime = ChronoDateTime<UTC>;
+
+impl ::std::default::Default for FilterLevel {
+    fn default() -> Self {
+        FilterLevel::None
+    }
+}
 
 fn parse_datetime(s: &str) -> chrono::format::ParseResult<DateTime> {
     UTC.datetime_from_str(s, "%a %b %e %H:%M:%S %z %Y")

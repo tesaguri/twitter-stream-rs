@@ -8,11 +8,11 @@ pub struct Warning {
     pub code: WarningCode,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum WarningCode {
     FallingBehind(u64),
     FollowsOverLimit(UserId),
-    Unknown,
+    Custom(String),
 }
 
 impl Deserialize for Warning {
@@ -23,11 +23,12 @@ impl Deserialize for Warning {
             type Value = Warning;
 
             fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Warning, V::Error> {
-                #[derive(Clone, Copy, Deserialize, PartialEq)]
-                enum Code {
-                    FallingBehind,
-                    FollowsOverLimit,
-                    Unknown,
+                string_enums! {
+                    pub enum Code {
+                        FallingBehind("FALLING_BEHIND"),
+                        FollowsOverLimit("FOLLOWS_OVER_LIMIT");
+                        Custom(_),
+                    }
                 }
 
                 let mut code = None;
@@ -37,14 +38,7 @@ impl Deserialize for Warning {
 
                 while let Some(k) = v.visit_key::<String>()? {
                     match k.as_str() {
-                        "code" => {
-                            let c = v.visit_value::<String>()?;
-                            code = match c.as_str() {
-                                "FALLING_BEHIND" => Code::FallingBehind,
-                                "FOLLOWS_OVER_LIMIT" => Code::FollowsOverLimit,
-                                _ => Code::Unknown,
-                            }.into();
-                        },
+                        "code" => code = Some(v.visit_value::<Code>()?),
                         "message" => message = Some(v.visit_value()?),
                         "percent_full" => percent_full = Some(v.visit_value()?),
                         "user_id" => user_id = Some(v.visit_value()?),
@@ -58,26 +52,26 @@ impl Deserialize for Warning {
                         }};
                     }
 
-                    match (code, message.as_ref(), percent_full, user_id) {
-                        (Some(Code::FallingBehind), Some(_), Some(percent_full), _) => {
+                    match (code.as_ref(), message.as_ref(), percent_full, user_id) {
+                        (Some(&Code::FallingBehind), Some(_), Some(percent_full), _) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
                                 code: WarningCode::FallingBehind(percent_full),
                             });
                         },
-                        (Some(Code::FollowsOverLimit), Some(_), _, Some(user_id)) => {
+                        (Some(&Code::FollowsOverLimit), Some(_), _, Some(user_id)) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
                                 code: WarningCode::FollowsOverLimit(user_id),
                             });
                         },
-                        (Some(Code::Unknown), Some(_), _, _) => {
+                        (Some(&Code::Custom(ref c)), Some(_), _, _) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
-                                code: WarningCode::Unknown,
+                                code: WarningCode::Custom(c.to_owned()),
                             });
                         },
                         _ => (),

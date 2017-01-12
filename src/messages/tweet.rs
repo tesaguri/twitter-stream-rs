@@ -1,6 +1,6 @@
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use std::collections::HashMap;
-use super::{DateTime, Entities, Geometry, Place, User, UserId};
+use super::{DateTime, Entities, FilterLevel, Geometry, Place, User, UserId};
 use json::Value;
 
 macro_rules! def_tweet {
@@ -154,16 +154,6 @@ def_tweet! {
         pub withheld_copyright: Option<bool>,
         pub withheld_in_countries: Option<Vec<String>>,
         pub withheld_scope: Option<String>,
-    }
-}
-
-string_enums! {
-    #[derive(Clone, Debug)]
-    pub enum FilterLevel {
-        None("none"),
-        Low("low"),
-        Medium("medium");
-        Unknown(_),
     }
 }
 

@@ -29,7 +29,7 @@ pub enum StreamMessage {
     Control(Control),
     ForUser(UserId, Box<StreamMessage>),
     ForUserStr(String, Box<StreamMessage>),
-    Unknown(Map<String, Value>),
+    Custom(Map<String, Value>),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -144,7 +144,7 @@ impl Deserialize for StreamMessage {
                     Some(k) => k,
                     None => {
                         v.end()?;
-                        return Ok(StreamMessage::Unknown(Map::new()));
+                        return Ok(StreamMessage::Custom(Map::new()));
                     },
                 };
 
@@ -217,7 +217,7 @@ impl Deserialize for StreamMessage {
                         Err(V::Error::custom("expected String"))
                     }
                 } else {
-                    Ok(StreamMessage::Unknown(map))
+                    Ok(StreamMessage::Custom(map))
                 }
             }
         }

@@ -22,7 +22,7 @@ string_enums! {
     pub enum Mode {
         Public("public"),
         Private("private");
-        Unknown(_),
+        Custom(_),
     }
 }
 

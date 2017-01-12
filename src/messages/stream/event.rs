@@ -32,7 +32,7 @@ string_enums! {
         ListUserUnsubscribed("list_user_unsubscribed"),
         QuotedTweet("quoted_tweet"),
         UserUpdate("user_update");
-        Unknown(_),
+        Custom(_),
     }
 }
 
@@ -41,7 +41,7 @@ pub enum TargetObject {
     ClientApplication,
     Tweet(Tweet),
     List(List),
-    Unknown(Value),
+    Custom(Value),
 }
 
 impl Deserialize for Event {
@@ -69,7 +69,7 @@ impl Deserialize for Event {
                 fn access_revoked_target(s: String) -> TargetObject {
                     match s.as_str() {
                         "client_application" => TargetObject::ClientApplication,
-                        _ => TargetObject::Unknown(Value::String(s)),
+                        _ => TargetObject::Custom(Value::String(s)),
                     }
                 }
 
@@ -104,16 +104,16 @@ impl Deserialize for Event {
                                     Block | Unblock | Follow | Unfollow | UserUpdate => {
                                         match Value::deserialize(&mut d).map_err(err_map!())? {
                                             Value::Null => None,
-                                            val => Some(TargetObject::Unknown(val)),
+                                            val => Some(TargetObject::Custom(val)),
                                         }
                                     },
-                                    Unknown(_) => Some(
-                                        TargetObject::Unknown(Value::deserialize(&mut d).map_err(err_map!())?)
+                                    Custom(_) => Some(
+                                        TargetObject::Custom(Value::deserialize(&mut d).map_err(err_map!())?)
                                     ),
                                 }.into()
                             } else {
                                 match ek {
-                                    Block | Unblock | Follow | Unfollow | UserUpdate | Unknown(_) => Some(None),
+                                    Block | Unblock | Follow | Unfollow | UserUpdate | Custom(_) => Some(None),
                                     _ => None,
                                 }
                             };
@@ -134,10 +134,10 @@ impl Deserialize for Event {
                                     Block | Unblock | Follow | Unfollow | UserUpdate => {
                                         match v.visit_value()? {
                                             Value::Null => None,
-                                            val => Some(TargetObject::Unknown(val)),
+                                            val => Some(TargetObject::Custom(val)),
                                         }
                                     },
-                                    Unknown(_) => Some(TargetObject::Unknown(v.visit_value()?)),
+                                    Custom(_) => Some(TargetObject::Custom(v.visit_value()?)),
                                 }.into();
                             } else {
                                 target_obj = Some(v.visit_value()?);

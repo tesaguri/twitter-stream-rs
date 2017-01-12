@@ -61,7 +61,7 @@ string_enums! {
     pub enum Resize {
         Fit("fit"),
         Crop("crop");
-        Unknown(_),
+        Custom(_),
     }
 }
 
