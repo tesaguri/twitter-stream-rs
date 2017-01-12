@@ -89,19 +89,6 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-macro_rules! def_builder_constructors {
-    ($(pub fn $name:ident($Method:ident, $end_point:expr);)*) => {
-        $(
-            pub fn $name(consumer_key: &'a str, consumer_secret: &'a str, token: &'a str, token_secret: &'a str) -> Self
-            {
-                TwitterStreamBuilder::custom(
-                    Method::$Method, $end_point, consumer_key, consumer_secret, token, token_secret
-                )
-            }
-        )*
-    };
-}
-
 macro_rules! def_builder_setters {
     (
         $(pub fn $name:ident($typ:ty);)*
@@ -123,24 +110,42 @@ macro_rules! def_builder_setters {
 }
 
 impl<'a> TwitterStreamBuilder<'a> {
-    def_builder_constructors! {
-        pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
-        pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
-        pub fn firehose(Get, "https://stream.twitter.com/1.1/statuses/firehose.json");
-        pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
-        pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
+    pub fn filter(consumer: Token<'a>, token: Token<'a>) -> Self {
+        TwitterStreamBuilder::custom(
+            Method::Post, "https://stream.twitter.com/1.1/statuses/filter.json", consumer, token
+        )
     }
 
-    pub fn custom(method: Method, end_point: &'a str, consumer_key: &'a str, consumer_secret: &'a str,
-        token: &'a str, token_secret: &'a str) -> Self
-    {
+    pub fn sample(consumer: Token<'a>, token: Token<'a>) -> Self {
+        TwitterStreamBuilder::custom(
+            Method::Get, "https://stream.twitter.com/1.1/statuses/sample.json", consumer, token
+        )
+    }
+
+    pub fn firehose(consumer: Token<'a>, token: Token<'a>) -> Self {
+        TwitterStreamBuilder::custom(
+            Method::Get, "https://stream.twitter.com/1.1/statuses/firehose.json", consumer, token
+        )
+    }
+
+    pub fn user(consumer: Token<'a>, token: Token<'a>) -> Self {
+        TwitterStreamBuilder::custom(
+            Method::Get, "https://userstream.twitter.com/1.1/user.json", consumer, token
+        )
+    }
+
+    pub fn site(consumer: Token<'a>, token: Token<'a>) -> Self {
+        TwitterStreamBuilder::custom(
+            Method::Get, "https://sitestream.twitter.com/1.1/site.json", consumer, token
+		)
+    }
+
+    pub fn custom(method: Method, end_point: &'a str, consumer: Token<'a>, token: Token<'a>) -> Self {
         TwitterStreamBuilder {
             method: method,
             end_point: end_point,
-            consumer_key: consumer_key,
-            consumer_secret: consumer_secret,
+            consumer: consumer,
             token: token,
-            token_secret: token_secret,
 
             client: None,
             timeout: Duration::from_secs(90),
@@ -291,9 +296,9 @@ impl<'a> TwitterStreamBuilder<'a> {
 
     fn create_authorization_header(&self, url: &Url) -> Authorization<OAuthAuthorizationHeader> {
         let oauth = OAuthAuthorizationHeaderBuilder::new(
-            self.method.as_ref(), &url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
+            self.method.as_ref(), &url, self.consumer.0, self.consumer.1, SignatureMethod::HmacSha1
         )
-            .token(self.token, self.token_secret)
+            .token(self.token.0, self.token.1)
             .finish_for_twitter();
 
         Authorization(oauth)
@@ -302,11 +307,11 @@ impl<'a> TwitterStreamBuilder<'a> {
 
 macro_rules! def_stream_constructors {
     ($(pub fn $name:ident;)*) => {
-        $(
+        $:
             pub fn $name<'a>(consumer_key: &'a str, consumer_secret: &'a str, token: &'a str, token_secret: &'a str)
                 -> Result<Self>
             {
-                TwitterStreamBuilder::$name(consumer_key, consumer_secret, token, token_secret).login()
+                TwitterStreamBuilder::$name(consumer, token).login()
             }
         )*
     };
