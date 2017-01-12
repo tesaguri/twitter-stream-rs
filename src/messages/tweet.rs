@@ -1,4 +1,4 @@
-use serde::de::{Deserializer, MapVisitor, Visitor};
+use serde::de::{Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
 use std::collections::HashMap;
 use super::{DateTime, Entities, FilterLevel, Geometry, Place, User, UserId};
