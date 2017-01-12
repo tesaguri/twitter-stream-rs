@@ -134,6 +134,5 @@ fn parse_datetime(s: &str) -> chrono::format::ParseResult<DateTime> {
 }
 
 fn deserialize_datetime<D: Deserializer>(d: &mut D) -> Result<DateTime, D::Error> {
-    let s = String::deserialize(d)?;
-    parse_datetime(&s).map_err(|e| D::Error::custom(e.to_string()))
+    parse_datetime(&String::deserialize(d)?).map_err(|e| D::Error::custom(e.to_string()))
 }

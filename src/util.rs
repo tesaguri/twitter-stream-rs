@@ -22,7 +22,7 @@ pub struct Timeout {
     is_active: Arc<AtomicBool>,
 }
 
-/// Returns a stream over each non-empty line on `a`.
+/// Returns a stream over each line on `a`.
 #[allow(unused_variables)]
 pub fn lines<A: BufRead + Send + 'static>(a: A) -> Lines {
     let (tx, rx) = mpsc::channel(8); // TODO: is this a proper value?
