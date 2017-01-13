@@ -1,5 +1,6 @@
 // https://dev.twitter.com/overview/api/entities
 
+use serde::de::{Deserializer, Visitor};
 use super::{StatusId, UserId};
 
 pub type MediaId = u64;
@@ -76,6 +77,7 @@ pub struct Sizes {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Url {
     pub display_url: String,
+    #[serde(deserialize_with = "nullable_string")]
     pub expanded_url: String,
     pub indices: (u64, u64),
     pub url: String,
@@ -117,4 +119,26 @@ pub struct Variant {
     pub bitrate: u64,
     pub content_type: String,
     pub url: String,
+}
+
+fn nullable_string<D: Deserializer>(d: &mut D) -> Result<String, D::Error> {
+    struct NSVisitor;
+
+    impl Visitor for NSVisitor {
+        type Value = String;
+
+        fn visit_str<E>(&mut self, v: &str) -> Result<String, E> {
+            Ok(v.to_owned())
+        }
+
+        fn visit_string<E>(&mut self, v: String) -> Result<String, E> {
+            Ok(v)
+        }
+
+        fn visit_unit<E>(&mut self) -> Result<String, E> {
+            Ok(String::new())
+        }
+    }
+
+    d.deserialize_string(NSVisitor)
 }
