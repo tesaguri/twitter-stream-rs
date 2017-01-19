@@ -1,4 +1,57 @@
-#![feature(proc_macro)]
+/*!
+# Twitter Stream
+
+A library for listening on Twitter Stream API.
+
+## Usage
+
+Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
+
+```toml
+[dependencies]
+twitter-stream = "0.1"
+```
+
+and this to your crate root:
+
+```rust,no_run
+extern crate twitter_stream;
+```
+
+## Overview
+
+Here is a basic example that prints each Tweet's text from User Stream:
+
+```rust,no_run
+extern crate futures;
+extern crate twitter_stream;
+use futures::{Future, Stream};
+use twitter_stream::{StreamMessage, TwitterStream};
+
+# fn main() {
+let consumer_key = "...";
+let consumer_secret = "...";
+let token = "...";
+let token_secret = "...";
+
+let stream = TwitterStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
+
+stream
+    .filter_map(|msg| {
+        if let StreamMessage::Tweet(tweet) = msg {
+            Some(tweet.text)
+        } else {
+            None
+        }
+    })
+    .for_each(|tweet| {
+        println!("{}", tweet);
+        Ok(())
+    })
+    .wait().unwrap();
+# }
+```
+*/
 
 extern crate chrono;
 extern crate futures;
@@ -19,10 +72,11 @@ mod util;
 
 pub use hyper::method::Method;
 pub use hyper::status::StatusCode;
+pub use json::Error as JsonError;
 pub use messages::StreamMessage;
 
 use futures::{Async, Future, Poll, Stream};
-use hyper::client::Client;
+use hyper::client::{Client, Response};
 use hyper::header::{Headers, Authorization, UserAgent};
 use messages::{FilterLevel, UserId};
 use oauthcli::{OAuthAuthorizationHeader, OAuthAuthorizationHeaderBuilder, SignatureMethod};
@@ -35,146 +89,293 @@ use std::time::{Duration, Instant};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
 
+macro_rules! def_stream {
+    (
+        $(#[$builder_attr:meta])*
+        pub struct $B:ident<$lifetime:tt> {
+            $($b_field:ident: $bf_ty:ty),*;
+            $(
+                $(#[$setter_attr:meta])*
+                :$setter:ident: $s_ty:ty = $default:expr
+            ),*;
+            $(
+                $(#[$o_attr:meta])*
+                :$option:ident: Option<$o_ty:ty>
+            ),*;
+        }
 
-#[derive(Clone, Debug)]
-pub struct TwitterStreamBuilder<'a> {
-	method: Method,
-	end_point: &'a str,
-    consumer_key: &'a str,
-    consumer_secret: &'a str,
-    token: &'a str,
-    token_secret: &'a str,
+        $(#[$stream_attr:meta])*
+        pub struct $S:ident {
+            $($s_field:ident: $sf_ty:ty,)*
+        }
 
-    client: Option<&'a Client>,
-    timeout: Duration,
-    user_agent: Option<&'a str>,
+        $(#[$json_stream_attr:meta])*
+        pub struct $JS:ident {
+            $($js_field:ident: $jsf_ty:ty,)*
+        }
 
-    // API parameters:
-    // delimited: bool, // Can/need not be handled by `TwitterStream`.
-    stall_warnings: bool,
-    filter_level: FilterLevel,
-    language: Option<&'a str>,
-    follow: Option<&'a [UserId]>,
-    track: Option<&'a str>,
-    locations: Option<&'a [((f64, f64), (f64, f64))]>,
-    count: Option<i32>,
-    with: Option<With>,
-    replies: bool,
-    // stringify_friend_ids: bool,
+        $(
+            $(#[$constructor_attr:meta])*
+            pub fn $constructor:ident($Method:ident, $end_point:expr);
+        )*
+    ) => {
+        $(#[$builder_attr])*
+        pub struct $B<$lifetime> {
+            $($b_field: $bf_ty,)*
+            $($setter: $s_ty,)*
+            $($option: Option<$o_ty>,)*
+        }
+
+        $(#[$stream_attr])*
+        pub struct $S {
+            $($s_field: $sf_ty,)*
+        }
+
+        $(#[$json_stream_attr])*
+        pub struct $JS {
+            $($js_field: $jsf_ty,)*
+        }
+
+        impl<$lifetime> $B<$lifetime> {
+            /// Constructs a builder for a stream from custom end point.
+            pub fn custom($($b_field: $bf_ty),*) -> Self {
+                $B {
+                    $($b_field: $b_field,)*
+                    $($setter: $default,)*
+                    $($option: None,)*
+                }
+            }
+
+            $(
+                $(#[$constructor_attr])*
+                pub fn $constructor(consumer_key: &$lifetime str, consumer_secret: &$lifetime str,
+                    token: &$lifetime str, token_secret: &$lifetime str) -> Self
+                {
+                    $B::custom(Method::$Method, $end_point, consumer_key, consumer_secret, token, token_secret)
+                }
+            )*
+
+            $(
+                pub fn $setter(&mut self, $setter: $s_ty) -> &mut Self {
+                    self.$setter = $setter;
+                    self
+                }
+            )*
+
+            $(
+                pub fn $option<T: Into<Option<$o_ty>>>(&mut self, $option: T) -> &mut Self {
+                    self.$option = $option.into();
+                    self
+                }
+            )*
+        }
+
+        impl $S {
+            $(
+                $(#[$constructor_attr])*
+                pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
+                    token: &'a str, token_secret: &'a str) -> Result<Self>
+                {
+                    $B::$constructor(consumer_key, consumer_secret, token, token_secret).listen()
+                }
+            )*
+        }
+
+        impl $JS {
+            $(
+                $(#[$constructor_attr])*
+                pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
+                    token: &'a str, token_secret: &'a str) -> Result<Self>
+                {
+                    $B::$constructor(consumer_key, consumer_secret, token, token_secret).listen_json()
+                }
+            )*
+        }
+    };
+}
+
+def_stream! {
+    /// A builder for `TwitterStream`.
+    #[derive(Clone, Debug)]
+    pub struct TwitterStreamBuilder<'a> {
+        method: Method,
+        end_point: &'a str,
+        consumer_key: &'a str,
+        consumer_secret: &'a str,
+        token: &'a str,
+        token_secret: &'a str;
+
+        // Setters:
+
+        /// Set a timeout for the stream. The default is 90 secs.
+        :timeout: Duration = Duration::from_secs(90),
+
+        // Setters of API parameters:
+
+        // delimited: bool,
+
+        /// Set whether to receive messages when in danger of being disconnected.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#stallwarnings
+        :stall_warnings: bool = false,
+
+        /// Set the minimum `filter_level` Tweet attribute to receive. The default is `FilterLevel::None`.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#filter_level
+        :filter_level: FilterLevel = FilterLevel::None,
+
+        /// Set whether to receive all @replies.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#replies
+        :replies: bool = false;
+
+        // stringify_friend_ids: bool,
+
+        // Optional setters:
+
+        /// Set a custom `hyper::client::Client` object to use when connecting to the Stream.
+        :client: Option<&'a Client>,
+
+        /// Set a user agent string to be sent when connectiong to the Stream.
+        :user_agent: Option<&'a str>,
+
+        // Optional setters for API parameters:
+
+        /// Set a comma-separated language identifiers to only receive Tweets written in the specified languages.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#language
+        :language: Option<&'a str>,
+
+        /// Set a list of user IDs to receive Tweets only from the specified users.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1] https://dev.twitter.com/streaming/overview/request-parameters#follow
+        :follow: Option<&'a [UserId]>,
+
+        /// A comma separated list of phrases to filter Tweets by.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#track
+        :track: Option<&'a str>,
+
+        /// Set a list of bounding boxes to filter Tweets by, specified by a pair of coordinates in
+        /// the form of ((longitude, latitude), (longitude, latitude)) tuple.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#locations
+        :locations: Option<&'a [((f64, f64), (f64, f64))]>,
+
+        /// The `count` parameter. This parameter requires elevated access to use.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#count
+        :count: Option<i32>,
+
+        /// Set types of messages delivered to User and Site Streams clients.
+        :with: Option<With>;
+    }
+
+    /// A listener for Twitter Stream API.
+    pub struct TwitterStream {
+        inner: TwitterJsonStream,
+    }
+
+    pub struct TwitterJsonStream {
+        lines: Lines,
+        timeout: Duration,
+        timer: Timeout,
+    }
+
+    // Constructors for `TwitterStreamBuilder`:
+
+    /// Create a builder for `POST statuses/filter`.
+    ///
+    /// See the [Twitter Developer Documentation][1] for more information.
+    /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
+    pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
+
+    /// Create a builder for `GET statuses/sample`.
+    ///
+    /// See the [Twitter Developer Documentation][1] for more information.
+    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
+    pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
+
+    /// Create a builder for `GET statuses/firehose`. This endpoint requires special permission to access.
+    ///
+    /// See the [Twitter Developer Documentation][1] for more information.
+    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/firehose
+    pub fn firehose(Get, "https://stream.twitter.com/1.1/statuses/firehose.json");
+
+    /// Create a builder for `GET user` (a.k.a. User Stream).
+    ///
+    /// See the [Twitter Developer Documentation][1] for more information.
+    /// [1]: https://dev.twitter.com/streaming/reference/get/user
+    pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
+
+    /// Create a builder for `GET site` (a.k.a. Site Stream).
+    ///
+    /// See the [Twitter Developer Documentation][1] for more information.
+    /// [1]: https://dev.twitter.com/streaming/reference/get/site
+    pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
 }
 
 string_enums! {
+    /// A value for `with` parameter for User and Site Streams.
     #[derive(Clone, Debug)]
     pub enum With {
+        //// Instruct the stream to send messages only from the user associated with that stream.
+        //// The default for Site Streams.
         User("user"),
+        //// Instruct the stream to send messages from accounts the user follows as well, equivalent
+        //// to the user’s home timeline. The default for User Streams.
         Following("following");
+        //// Custom value.
         Custom(_),
     }
 }
 
-pub struct TwitterStream {
-    lines: Lines,
-    timeout: Duration,
-    timer: Timeout,
-}
-
+/// An error occurred while connecting to the Stream API.
 #[derive(Debug)]
 pub enum Error {
+    /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
     Url(url::ParseError),
+    /// An error from the `hyper` crate.
     Hyper(hyper::Error),
+    /// An HTTP error from the Stream.
     Http(StatusCode),
+    /// An I/O error.
     Io(io::Error),
+    /// The Stream has timed out.
     TimedOut(u64),
+    /// Failed to parse a JSON message from Stream API.
+    Json(JsonError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-macro_rules! def_builder_constructors {
-    ($(pub fn $name:ident($Method:ident, $end_point:expr);)*) => {
-        $(
-            pub fn $name(consumer_key: &'a str, consumer_secret: &'a str, token: &'a str, token_secret: &'a str) -> Self
-            {
-                TwitterStreamBuilder::custom(
-                    Method::$Method, $end_point, consumer_key, consumer_secret, token, token_secret
-                )
-            }
-        )*
-    };
-}
-
-macro_rules! def_builder_setters {
-    (
-        $(pub fn $name:ident($typ:ty);)*
-        $(option pub fn $op_name:ident($op_typ:ty);)*
-    ) => {
-        $(
-            pub fn $name(&mut self, $name: $typ) -> &mut Self {
-                self.$name = $name.into();
-                self
-            }
-        )*
-        $(
-            pub fn $op_name<T: Into<Option<$op_typ>>>(&mut self, $op_name: T) -> &mut Self {
-                self.$op_name = $op_name.into();
-                self
-            }
-        )*
-    };
-}
-
 impl<'a> TwitterStreamBuilder<'a> {
-    def_builder_constructors! {
-        pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
-        pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
-        pub fn firehose(Get, "https://stream.twitter.com/1.1/statuses/firehose.json");
-        pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
-        pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
+    /// Attempt to start listening on the Stream API and returns a stream which yields parsed messages from the API.
+    pub fn listen(&self) -> Result<TwitterStream> {
+        Ok(TwitterStream {
+            inner: self.listen_json()?,
+        })
     }
 
-    pub fn custom(method: Method, end_point: &'a str, consumer_key: &'a str, consumer_secret: &'a str,
-        token: &'a str, token_secret: &'a str) -> Self
-    {
-        TwitterStreamBuilder {
-            method: method,
-            end_point: end_point,
-            consumer_key: consumer_key,
-            consumer_secret: consumer_secret,
-            token: token,
-            token_secret: token_secret,
-
-            client: None,
-            timeout: Duration::from_secs(90),
-            user_agent: None,
-
-            stall_warnings: false,
-            filter_level: FilterLevel::None,
-            language: None,
-            follow: None,
-            track: None,
-            locations: None,
-            count: None,
-            with: None,
-            replies: false,
-        }
+    /// Attempt to start listening on the Stream API and returns a stream which yields JSON messages from the API.
+    pub fn listen_json(&self) -> Result<TwitterJsonStream> {
+        Ok(TwitterJsonStream {
+            lines: util::lines(BufReader::new(self.connect()?)),
+            timeout: self.timeout,
+            timer: Timeout::after(self.timeout),
+        })
     }
 
-    def_builder_setters! {
-        pub fn timeout(Duration);
-        pub fn stall_warnings(bool);
-        pub fn filter_level(FilterLevel);
-        pub fn replies(bool);
-
-        option pub fn client(&'a Client);
-        option pub fn user_agent(&'a str);
-        option pub fn language(&'a str);
-        option pub fn follow(&'a [UserId]);
-        option pub fn track(&'a str);
-        option pub fn locations(&'a [((f64, f64), (f64, f64))]);
-        option pub fn count(i32);
-        option pub fn with(With);
-    }
-
-    pub fn login(&self) -> Result<TwitterStream> {
+    /// Attempt to make an HTTP connection to the end point of the Stream API.
+    fn connect(&self) -> Result<Response> {
         let mut url = Url::parse(self.end_point)?;
 
         let mut headers = Headers::new();
@@ -221,15 +422,9 @@ impl<'a> TwitterStreamBuilder<'a> {
         };
 
         match &res.status {
-            &StatusCode::Ok => (),
+            &StatusCode::Ok => Ok(res),
             _ => return Err(res.status.into()),
         }
-
-        Ok(TwitterStream {
-            lines: util::lines(BufReader::new(res)),
-            timeout: self.timeout,
-            timer: Timeout::after(self.timeout),
-        })
     }
 
     fn append_query_pairs<T: Target>(&self, pairs: &mut Serializer<T>) {
@@ -300,60 +495,49 @@ impl<'a> TwitterStreamBuilder<'a> {
     }
 }
 
-macro_rules! def_stream_constructors {
-    ($(pub fn $name:ident;)*) => {
-        $(
-            pub fn $name<'a>(consumer_key: &'a str, consumer_secret: &'a str, token: &'a str, token_secret: &'a str)
-                -> Result<Self>
-            {
-                TwitterStreamBuilder::$name(consumer_key, consumer_secret, token, token_secret).login()
-            }
-        )*
-    };
-}
+impl Stream for TwitterStream {
+    type Item = StreamMessage;
+    type Error = Error;
 
-impl TwitterStream {
-    def_stream_constructors! {
-        pub fn filter;
-        pub fn sample;
-        pub fn firehose;
-        pub fn user;
-        pub fn site;
+    fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
+        use Async::*;
+
+        match self.inner.poll()? {
+            Ready(Some(line)) => Ok(Ready(Some(json::from_str(&line)?))),
+            Ready(None) => Ok(Ready(None)),
+            NotReady => Ok(NotReady),
+        }
     }
 }
 
-impl Stream for TwitterStream {
+impl Stream for TwitterJsonStream {
     type Item = String;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<String>, Error> {
         use Async::*;
 
-        trace!("TwitterStream::poll");
+        trace!("TwitterJsonStream::poll");
 
         loop {
             match self.lines.poll()? {
-                Ready(line_opt) => {
-                    match line_opt {
-                        Some(line) => {
-                            let now = Instant::now();
-                            let mut timer = Timeout::after(self.timeout);
-                            timer.park(now);
-                            info!("duration since last message: {}", {
-                                let elapsed = timer.when() - self.timer.when(); // = (now + timeout) - (last + timeout)
-                                elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000f64
-                            });
-                            self.timer = timer;
+                Ready(Some(line)) => {
+                    let now = Instant::now();
+                    let mut timer = Timeout::after(self.timeout);
+                    timer.park(now);
+                    info!("duration since last message: {}", {
+                        let elapsed = timer.when() - self.timer.when(); // = (now + timeout) - (last + timeout)
+                        elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000f64
+                    });
+                    self.timer = timer;
 
-                            if line.is_empty() {
-                                debug!("blank line");
-                            } else {
-                                return Ok(Ready(Some(line)));
-                            }
-                        },
-                        None => return Ok(None.into()),
+                    if line.is_empty() {
+                        debug!("blank line");
+                    } else {
+                        return Ok(Ready(Some(line)));
                     }
                 },
+                Ready(None) => return Ok(None.into()),
                 NotReady => {
                     if let Ok(Ready(())) = self.timer.poll() {
                         return Err(Error::TimedOut(self.timeout.as_secs()));
@@ -368,6 +552,15 @@ impl Stream for TwitterStream {
 }
 
 impl IntoIterator for TwitterStream {
+    type Item = Result<StreamMessage>;
+    type IntoIter = futures::stream::Wait<Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.wait()
+    }
+}
+
+impl IntoIterator for TwitterJsonStream {
     type Item = Result<String>;
     type IntoIter = futures::stream::Wait<Self>;
 
@@ -386,6 +579,7 @@ impl StdError for Error {
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Io(ref e) => e.description(),
             TimedOut(_) => "timed out",
+            Json(ref e) => e.description(),
         }
     }
 
@@ -398,6 +592,7 @@ impl StdError for Error {
             Http(_) => None,
             Io(ref e) => Some(e),
             TimedOut(_) => None,
+            Json(ref e) => Some(e),
         }
     }
 }
@@ -412,6 +607,7 @@ impl Display for Error {
             Http(ref code) => Display::fmt(code, f),
             Io(ref e) => Display::fmt(e, f),
             TimedOut(timeout) => write!(f, "connection timed out after {} sec", timeout),
+            Json(ref e) => Display::fmt(e, f),
         }
     }
 }
@@ -437,5 +633,11 @@ impl From<StatusCode> for Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::Io(e)
+    }
+}
+
+impl From<JsonError> for Error {
+    fn from(e: JsonError) -> Self {
+        Error::Json(e)
     }
 }
