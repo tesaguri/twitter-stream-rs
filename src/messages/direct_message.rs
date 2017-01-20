@@ -1,3 +1,5 @@
+/// Direct messages
+
 use super::{DateTime, Entities, User, UserId};
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]

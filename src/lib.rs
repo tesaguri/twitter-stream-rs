@@ -156,6 +156,7 @@ macro_rules! def_stream {
             )*
 
             $(
+                $(#[$setter_attr])*
                 pub fn $setter(&mut self, $setter: $s_ty) -> &mut Self {
                     self.$setter = $setter;
                     self
@@ -163,6 +164,7 @@ macro_rules! def_stream {
             )*
 
             $(
+                $(#[$o_attr])*
                 pub fn $option<T: Into<Option<$o_ty>>>(&mut self, $option: T) -> &mut Self {
                     self.$option = $option.into();
                     self
@@ -172,7 +174,6 @@ macro_rules! def_stream {
 
         impl $S {
             $(
-                $(#[$constructor_attr])*
                 pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
                     token: &'a str, token_secret: &'a str) -> Result<Self>
                 {
@@ -183,7 +184,6 @@ macro_rules! def_stream {
 
         impl $JS {
             $(
-                $(#[$constructor_attr])*
                 pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
                     token: &'a str, token_secret: &'a str) -> Result<Self>
                 {
@@ -284,6 +284,7 @@ def_stream! {
         inner: TwitterJsonStream,
     }
 
+    /// Same as `TwitterStream` except that it yields raw JSON string messages.
     pub struct TwitterJsonStream {
         lines: Lines,
         timeout: Duration,
@@ -327,14 +328,14 @@ string_enums! {
     /// A value for `with` parameter for User and Site Streams.
     #[derive(Clone, Debug)]
     pub enum With {
-        //// Instruct the stream to send messages only from the user associated with that stream.
-        //// The default for Site Streams.
-        User("user"),
-        //// Instruct the stream to send messages from accounts the user follows as well, equivalent
-        //// to the user’s home timeline. The default for User Streams.
-        Following("following");
-        //// Custom value.
-        Custom(_),
+        /// Instruct the stream to send messages only from the user associated with that stream.
+        /// The default for Site Streams.
+        :User("user"),
+        /// Instruct the stream to send messages from accounts the user follows as well, equivalent
+        /// to the user’s home timeline. The default for User Streams.
+        :Following("following");
+        /// Custom value.
+        :Custom(_),
     }
 }
 

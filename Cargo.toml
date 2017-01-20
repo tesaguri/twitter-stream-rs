@@ -1,5 +1,5 @@
 [package]
-name = "twitter-streams"
+name = "twitter-stream"
 version = "0.1.0"
 authors = ["daiki"]
 

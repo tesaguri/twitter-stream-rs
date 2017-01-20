@@ -4,6 +4,12 @@ use super::super::DateTime;
 use json::value::{Deserializer as JsonDeserializer, Value};
 use super::{List, Tweet, User};
 
+/// Represents notifications about non-Tweet events are also sent over a stream.
+///
+/// # Reference
+///
+/// 1. [Streaming message types — Twitter Developers]
+///    (https://dev.twitter.com/streaming/overview/messages-types#Events_event)
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub created_at: DateTime,
@@ -16,23 +22,55 @@ pub struct Event {
 string_enums! {
     #[derive(Clone, Debug)]
     pub enum EventKind {
-        AccessRevoked("access_revoked"),
-        Block("block"),
-        Unblock("unblock"),
-        Favorite("favorite"),
-        Unfavorite("unfavorite"),
-        Follow("follow"),
-        Unfollow("unfollow"),
-        ListCreated("list_created"),
-        ListDestroyed("list_destroyed"),
-        ListUpdated("list_updated"),
-        ListMemberAdded("list_member_added"),
-        ListMemberRemoved("list_member_removed"),
-        ListUserSubscribed("list_user_subscribed"),
-        ListUserUnsubscribed("list_user_unsubscribed"),
-        QuotedTweet("quoted_tweet"),
-        UserUpdate("user_update");
-        Custom(_),
+        /// User deauthorizes stream
+        :AccessRevoked("access_revoked"),
+
+        /// User blocks someone
+        :Block("block"),
+
+        /// User removes a block
+        :Unblock("unblock"),
+
+        /// User favorites a Tweet or user’s Tweet is favorited
+        :Favorite("favorite"),
+
+        /// User unfavorites a Tweet or user’s Tweet is unfavorited
+        :Unfavorite("unfavorite"),
+
+        /// User follows someone or user is followed
+        :Follow("follow"),
+
+        /// User unfollows someone
+        :Unfollow("unfollow"),
+
+        /// User creates a list
+        :ListCreated("list_created"),
+
+        /// User deletes a list
+        :ListDestroyed("list_destroyed"),
+
+        /// User edits a list
+        :ListUpdated("list_updated"),
+
+        /// User adds someone to a list or user is added to a list
+        :ListMemberAdded("list_member_added"),
+
+        /// User removes someone from a list or user is removed from a list
+        :ListMemberRemoved("list_member_removed"),
+
+        /// User subscribes to a list or user’s list is subscribed to
+        :ListUserSubscribed("list_user_subscribed"),
+
+        /// User unsubscribes from a list or ser’s list is unsubscribed from
+        :ListUserUnsubscribed("list_user_unsubscribed"),
+
+        /// User’s Tweet is quoted
+        :QuotedTweet("quoted_tweet"),
+
+        /// User updates their profile or user updates their protected status
+        :UserUpdate("user_update");
+
+        :Custom(_),
     }
 }
 

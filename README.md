@@ -22,44 +22,34 @@ and this to your crate root:
 extern crate twitter_stream;
 ```
 
-Here is a basic example that prints each message from the User Stream:
+Here is a basic example that prints each Tweet's text from User Stream:
 
 ```rust
 extern crate futures;
 extern crate twitter_stream;
-
-use futures::{Future, Stream}:
-use twitter_stream::TwitterStreamBuidler;
+use futures::{Future, Stream};
+use twitter_stream::{StreamMessage, TwitterStream};
 
 fn main() {
-    let consumer = "...";
+    let consumer_key = "...";
     let consumer_secret = "...";
     let token = "...";
     let token_secret = "...";
 
-    let stream = TwitterStreamBuilder::user(consumer, consumer_secret, token, token_secret)
-        .follow(&[12, 783214])
-        .track("twitter,facebook")
-        .login().unwrap();
+    let stream = TwitterStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
 
     stream
-        .for_each(|msg| println!("{}", msg))
+        .filter_map(|msg| {
+            if let StreamMessage::Tweet(tweet) = msg {
+                Some(tweet.text)
+            } else {
+                None
+            }
+        })
+        .for_each(|tweet| {
+            println!("{}", tweet);
+            Ok(())
+        })
         .wait().unwrap();
 }
-```
-
-The crate also defines a parser for messages on the Stream API.
-Rewrite the above example like the following to print each text of the Tweets from the Stream:
-
-```rust
-use twitter_stream::StreamMessage;
-
-stream
-    .then(|msg| msg.parse::<StreamMessage>())
-    .for_each(|msg| {
-        if let StreamMessage::Tweet(tweet) = msg {
-            println!("{}", tweet.text);
-        }
-    })
-    .wait().unwrap();
 ```

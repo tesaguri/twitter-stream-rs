@@ -25,9 +25,9 @@ impl Deserialize for Warning {
             fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Warning, V::Error> {
                 string_enums! {
                     pub enum Code {
-                        FallingBehind("FALLING_BEHIND"),
-                        FollowsOverLimit("FOLLOWS_OVER_LIMIT");
-                        Custom(_),
+                        :FallingBehind("FALLING_BEHIND"),
+                        :FollowsOverLimit("FOLLOWS_OVER_LIMIT");
+                        :Custom(_),
                     }
                 }
 

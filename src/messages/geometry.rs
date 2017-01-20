@@ -1,6 +1,9 @@
+/// Geometry object
+
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Type, Visitor};
 use serde::de::impls::IgnoredAny;
 
+/// The Geometry object specified in [The GeoJSON Format (RFC7946)](https://tools.ietf.org/html/rfc7946).
 // https://tools.ietf.org/html/rfc7946#section-3.1
 #[derive(Clone, Debug, PartialEq)]
 pub enum Geometry {

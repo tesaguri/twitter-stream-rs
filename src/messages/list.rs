@@ -1,5 +1,10 @@
 use super::{DateTime, User};
 
+/// Represents a List.
+///
+/// # Reference
+///
+/// 1. [GET lists/show — Twitter Developers](https://dev.twitter.com/rest/reference/get/lists/show)
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct List {
     pub slug: String,
@@ -18,11 +23,12 @@ pub struct List {
 }
 
 string_enums! {
+    /// Represents `mode` field of `List`.
     #[derive(Clone, Debug)]
     pub enum Mode {
-        Public("public"),
-        Private("private");
-        Custom(_),
+        :Public("public"),
+        :Private("private");
+        :Custom(_),
     }
 }
 

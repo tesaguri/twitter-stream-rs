@@ -1,3 +1,5 @@
+//! Type-safe abstractions over JSON messages from Twitter Stream API.
+
 macro_rules! string_enums {
     (
         $(
@@ -5,10 +7,10 @@ macro_rules! string_enums {
             pub enum $E:ident {
                 $(
                     $(#[$v_attr:meta])*
-                    $V:ident($by:expr)
+                    :$V:ident($by:expr) // The leading (ugly) colon is to suppress local ambiguity error.
                 ),*;
                 $(#[$u_attr:meta])*
-                $U:ident(_),
+                :$U:ident(_),
             }
         )*
     ) => {
@@ -112,12 +114,23 @@ use chrono::{self, DateTime as ChronoDateTime, TimeZone, UTC};
 use serde::de::{Deserialize, Deserializer, Error};
 
 string_enums! {
+    /// Represents the `filter_level` field in Tweets or `filter_level` parameter in API request.
     #[derive(Clone, Debug)]
     pub enum FilterLevel {
-        None("none"),
-        Low("low"),
-        Medium("medium");
-        Custom(_),
+        :None("none"),
+        :Low("low"),
+        :Medium("medium");
+        :Custom(_),
+    }
+}
+
+string_enums! {
+    /// Represents the `withheld_scope` field in `Tweet` and `User`.
+    #[derive(Clone, Debug)]
+    pub enum WithheldScope {
+        :Status("status"),
+        :User("user");
+        :Custom(_),
     }
 }
 

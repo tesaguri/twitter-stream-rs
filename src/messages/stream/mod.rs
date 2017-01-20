@@ -1,3 +1,5 @@
+/// Message from Streaming API.
+
 // https://dev.twitter.com/streaming/overview/messages-types
 
 pub mod event;
@@ -12,32 +14,55 @@ use serde::de::impls::IgnoredAny;
 use super::{DirectMessage, List, StatusId, Tweet, User, UserId};
 use json::value::{Deserializer as JsonDeserializer, Map, Value};
 
+/// Represents a message from Twitter Streaming API.
+///
+/// # Reference
+///
+/// 1. [Streaming message types — Twitter Developers](https://dev.twitter.com/streaming/overview/messages-types)
 #[derive(Clone, Debug, PartialEq)]
 pub enum StreamMessage {
+    /// Tweet
     Tweet(Tweet),
+    /// Notifications about non-Tweet events.
     Event(Event),
+    /// Indicate that a given Tweet has been deleted.
     Delete(Delete),
+    /// Indicate that geolocated data must be stripped from a range of Tweets.
     ScrubGeo(ScrubGeo),
+    /// Indicate that a filtered stream has matched more Tweets than its current rate limit allows to be delivered,
+    /// noticing a total count of the number of undelivered Tweets since the connection was opened.
     Limit(Limit),
+    /// Indicate that a given tweet has had its content withheld.
     StatusWithheld(StatusWithheld),
+    /// Indicate that a user has had their content withheld.
     UserWithheld(UserWithheld),
+    /// This message is sent when a stream is disconnected, indicating why the stream was closed.
     Disconnect(Disconnect),
+    /// Variout warning message
     Warning(Warning),
+    /// List of the user's friends. Only be sent upon establishing a User Stream connection.
     Friends(Friends),
-    FriendsStr(Vec<String>),
+    // FriendsStr(Vec<String>), // TODO: deserialize `friends_str` into `Friends`
+    /// Direct message
     DirectMessage(DirectMessage),
-    Control(Control),
+    /// A [control URI][1] for Site Streams.
+    /// [1]: https://dev.twitter.com/streaming/sitestreams/controlstreams
+    Control(Control), 
+    /// An [envelope][1] for Site Stream.
+    /// [1]: https://dev.twitter.com/streaming/overview/messages-types#envelopes_for_user
     ForUser(UserId, Box<StreamMessage>),
-    ForUserStr(String, Box<StreamMessage>),
+    // ForUserStr(String, Box<StreamMessage>),
     Custom(Map<String, Value>),
 }
 
+/// Represents a deleted Tweet.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Delete {
     pub id: StatusId,
     pub user_id: UserId,
 }
 
+/// Represents a range of Tweets whose geolocated data must be stripped.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct ScrubGeo {
     pub user_id: UserId,
@@ -62,6 +87,7 @@ pub struct UserWithheld {
     pub withheld_in_countries: Vec<String>,
 }
 
+/// Indicates why a stream was closed.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Disconnect {
     pub code: DisconnectCode,
@@ -71,17 +97,18 @@ pub struct Disconnect {
 
 macro_rules! number_enum {
     (
+        $(#[$attr:meta])*
         pub enum $E:ident {
             $(
-                $(#[$attr:meta])*
-                $V:ident = $n:expr,
+                $(#[$v_attr:meta])*
+                :$V:ident = $n:expr,
             )*
         }
     ) => {
-        #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+        $(#[$attr])*
         pub enum $E {
             $(
-                $(#[$attr])*
+                $(#[$v_attr])*
                 $V = $n,
             )*
         }
@@ -108,29 +135,44 @@ macro_rules! number_enum {
 }
 
 number_enum! {
+    /// Status code for a `Disconnect` message.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
     pub enum DisconnectCode {
-        Shutdown = 1,
-        DuplicateStream = 2,
-        ControlRequest = 3,
-        Stall = 4,
-        Normal = 5,
-        TokenRevoked = 6,
-        AdminLogout = 7,
-        // Reserved = 8,
-        MaxMessageLimit = 9,
-        StreamException = 10,
-        BrokerStall = 11,
-        ShedLoad = 12,
+        /// The feed was shutdown (possibly a machine restart).
+        :Shutdown = 1,
+        /// The same endpoint was connected too many times.
+        :DuplicateStream = 2,
+        /// Control streams was used to close a stream (applies to sitestreams).
+        :ControlRequest = 3,
+        /// The client was reading too slowly and was disconnected by the server.
+        :Stall = 4,
+        /// The client appeared to have initiated a disconnect.
+        :Normal = 5,
+        /// An oauth token was revoked for a user (applies to site and userstreams).
+        :TokenRevoked = 6,
+        /// The same credentials were used to connect a new stream and the oldest was disconnected.
+        :AdminLogout = 7,
+        // Reserved for internal use. Will not be delivered to external clients.
+        // _ = 8,
+        /// The stream connected with a negative count parameter and was disconnected after all backfill was delivered.
+        :MaxMessageLimit = 9,
+        /// An internal issue disconnected the stream.
+        :StreamException = 10,
+        /// An internal issue disconnected the stream.
+        :BrokerStall = 11,
+        /// The host the stream was connected to became overloaded and streams were disconnected to balance load.
+        /// Reconnect as usual.
+        :ShedLoad = 12,
     }
 }
 
-pub type Friends = Vec<UserId>;
-pub type FriendsStr = Vec<String>;
-
+/// Represents a control message.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
 pub struct Control {
     control_uri: String,
 }
+
+pub type Friends = Vec<UserId>;
 
 impl Deserialize for StreamMessage {
     fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error> where D: Deserializer {
@@ -157,7 +199,7 @@ impl Deserialize for StreamMessage {
                     "disconnect"      => Some(v.visit_value().map(StreamMessage::Disconnect)),
                     "warning"         => Some(v.visit_value().map(StreamMessage::Warning)),
                     "friends"         => Some(v.visit_value().map(StreamMessage::Friends)),
-                    "friends_str"     => Some(v.visit_value().map(StreamMessage::FriendsStr)),
+                    // "friends_str"     => Some(v.visit_value().map(StreamMessage::Friends)),
                     "direct_message"  => Some(v.visit_value().map(StreamMessage::DirectMessage)),
                     "control"         => Some(v.visit_value().map(StreamMessage::Control)),
                     _ => None,
@@ -202,19 +244,6 @@ impl Deserialize for StreamMessage {
                         }
                     } else {
                         Err(V::Error::custom("expected u64"))
-                    }
-                } else if let Some(id) = map.remove("for_user") {
-                    if let Value::String(id) = id {
-                        if let Some(m) = map.remove("message") {
-                            let mut d = JsonDeserializer::new(m);
-                            StreamMessage::deserialize(&mut d)
-                                .map(|m| StreamMessage::ForUserStr(id, Box::new(m)))
-                                .map_err(|e| V::Error::custom(e.to_string()))
-                        } else {
-                            v.missing_field("message")
-                        }
-                    } else {
-                        Err(V::Error::custom("expected String"))
                     }
                 } else {
                     Ok(StreamMessage::Custom(map))
