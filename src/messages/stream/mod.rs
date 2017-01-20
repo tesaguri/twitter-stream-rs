@@ -11,6 +11,7 @@ pub use self::warning::{Warning, WarningCode};
 
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
+use std::fmt;
 use super::{DirectMessage, List, StatusId, Tweet, User, UserId};
 use json::value::{Deserializer as JsonDeserializer, Map, Value};
 
@@ -129,6 +130,14 @@ macro_rules! number_enum {
                 }
 
                 d.deserialize_u64(Visitor)
+            }
+        }
+
+        impl AsRef<str> for $E {
+            fn as_ref(&self) -> &str {
+                match *self {
+                    $($E::$V => stringify!($V),)*
+                }
             }
         }
     };
@@ -284,5 +293,11 @@ impl Deserialize for Delete {
         }
 
         d.deserialize_map(DeleteVisitor)
+    }
+}
+
+impl fmt::Display for Disconnect {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {} {}: {}", self.stream_name, self.code as u32, self.code.as_ref(), self.reason)
     }
 }

@@ -79,6 +79,7 @@ use futures::{Async, Future, Poll, Stream};
 use hyper::client::{Client, Response};
 use hyper::header::{Headers, Authorization, UserAgent};
 use messages::{FilterLevel, UserId};
+use messages::stream::Disconnect;
 use oauthcli::{OAuthAuthorizationHeader, OAuthAuthorizationHeaderBuilder, SignatureMethod};
 use util::{Lines, Timeout};
 use std::convert::From;
@@ -354,6 +355,8 @@ pub enum Error {
     TimedOut(u64),
     /// Failed to parse a JSON message from Stream API.
     Json(JsonError),
+    /// The Stream has been disconnected by the server.
+    Disconnect(Disconnect),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -504,7 +507,10 @@ impl Stream for TwitterStream {
         use Async::*;
 
         match self.inner.poll()? {
-            Ready(Some(line)) => Ok(Ready(Some(json::from_str(&line)?))),
+            Ready(Some(line)) => match json::from_str(&line)? {
+                StreamMessage::Disconnect(d) => Err(Error::Disconnect(d)),
+                msg => Ok(Ready(Some(msg))),
+            },
             Ready(None) => Ok(Ready(None)),
             NotReady => Ok(NotReady),
         }
@@ -581,6 +587,7 @@ impl StdError for Error {
             Io(ref e) => e.description(),
             TimedOut(_) => "timed out",
             Json(ref e) => e.description(),
+            Disconnect(ref d) => &d.reason,
         }
     }
 
@@ -594,6 +601,7 @@ impl StdError for Error {
             Io(ref e) => Some(e),
             TimedOut(_) => None,
             Json(ref e) => Some(e),
+            Disconnect(_) => None,
         }
     }
 }
@@ -609,6 +617,7 @@ impl Display for Error {
             Io(ref e) => Display::fmt(e, f),
             TimedOut(timeout) => write!(f, "connection timed out after {} sec", timeout),
             Json(ref e) => Display::fmt(e, f),
+            Disconnect(ref d) => Display::fmt(d, f),
         }
     }
 }
