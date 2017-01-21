@@ -2,11 +2,18 @@
 name = "twitter-stream"
 version = "0.1.0"
 authors = ["daiki"]
+readme = "README.md"
+keywords = ["twitter"]
+categories = ["api-bindings"]
+license = "MIT"
 
 [dependencies]
 chrono = { version = "*", features = ["serde"] }
 futures = "*"
 hyper = { version = "*", default-features = false }
+hyper-native-tls = { version = "*", optional = true }
+hyper-openssl = { version = "*", optional = true }
+hyper-rustls = { version = "*", optional = true }
 log = "*"
 oauthcli = { version = "*", features = ["hyper"] }
 serde = "*"
@@ -15,6 +22,7 @@ serde_json = "*"
 url = "*"
 
 [features]
-default = ["ssl"]
-ssl = ["hyper/ssl"]
-security-framework = ["hyper/security-framework"]
+default = ["rustls"]
+native-tls = ["hyper-native-tls"]
+openssl = ["hyper-openssl"]
+rustls = ["hyper-rustls"]

@@ -1,14 +1,13 @@
 # Twitter Stream
-
-[![Build Status](https://travis-ci.org/d12i/twitter-stream.svg?branch=master)](https://travis-ci.org/d12i/twitter-stream)
+<!--
 [![Current Version](http://meritbadge.herokuapp.com/twitter-stream)](https://crates.io/crates/twitter-stream)
 
 [Documentation](https://docs.rs/twitter-stream/)
 
 A Rust library for listening on Twitter Streaming API.
-
+-->
 ## Usage
-
+<!--
 Add this to your `Cargo.toml`:
 
 ```toml
@@ -21,7 +20,7 @@ and this to your crate root:
 ```rust
 extern crate twitter_stream;
 ```
-
+-->
 Here is a basic example that prints each Tweet's text from User Stream:
 
 ```rust

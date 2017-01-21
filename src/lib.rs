@@ -78,6 +78,7 @@ pub use messages::StreamMessage;
 use futures::{Async, Future, Poll, Stream};
 use hyper::client::{Client, Response};
 use hyper::header::{Headers, Authorization, UserAgent};
+use hyper::net::HttpsConnector;
 use messages::{FilterLevel, UserId};
 use messages::stream::Disconnect;
 use oauthcli::{OAuthAuthorizationHeader, OAuthAuthorizationHeaderBuilder, SignatureMethod};
@@ -405,7 +406,7 @@ impl<'a> TwitterStreamBuilder<'a> {
 
         let client = self.client
             .map(Hold::Borrowed)
-            .unwrap_or_else(|| Hold::Owned(Client::new()));
+            .unwrap_or_else(|| Hold::Owned(default_client()));
 
         let res = if Method::Post == self.method {
             headers.set(self.create_authorization_header(&url));
@@ -650,4 +651,33 @@ impl From<JsonError> for Error {
     fn from(e: JsonError) -> Self {
         Error::Json(e)
     }
+}
+
+#[cfg(feature = "native-tls")]
+fn default_client() -> Client {
+    extern crate hyper_native_tls;
+
+    Client::with_connector(HttpsConnector::new(hyper_native_tls::NativeTlsClient::new().unwrap()))
+}
+
+#[cfg(feature = "openssl")]
+fn default_client() -> Client {
+    extern crate hyper_openssl;
+
+    Client::with_connector(HttpsConnector::new(hyper_openssl::OpensslClient::new().unwrap()))
+}
+
+#[cfg(feature = "rustls")]
+fn default_client() -> Client {
+    extern crate hyper_rustls;
+
+    Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new()))
+}
+
+#[cfg(not(any(feature = "native-tls", feature = "openssl", feature = "rustls")))]
+fn default_client() -> Client {
+    #[allow(unused_imports)]
+    use self::HttpsConnector; // suppress unused_imports
+
+    Client::new()
 }
