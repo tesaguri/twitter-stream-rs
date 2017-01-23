@@ -1,4 +1,4 @@
-/// Entities
+//! Entities
 
 use serde::de::{Deserializer, Visitor};
 use super::{StatusId, UserId};

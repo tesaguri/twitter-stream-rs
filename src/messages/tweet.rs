@@ -1,4 +1,4 @@
-/// Tweets
+//! Tweets
 
 use std::collections::HashMap;
 use super::{DateTime, Entities, FilterLevel, Geometry, Place, User, UserId, WithheldScope};

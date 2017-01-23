@@ -1,3 +1,5 @@
+//! Lists
+
 use super::{DateTime, User};
 
 /// Represents a List.

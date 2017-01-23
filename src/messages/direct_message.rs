@@ -1,4 +1,4 @@
-/// Direct messages
+//! Direct messages
 
 use super::{DateTime, Entities, User, UserId};
 

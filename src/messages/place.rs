@@ -1,4 +1,4 @@
-/// Place
+//! Place
 
 use std::collections::HashMap;
 use super::Geometry;

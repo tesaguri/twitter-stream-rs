@@ -1,12 +1,9 @@
-/// Message from Streaming API.
+//! Message from Streaming API.
 
-// https://dev.twitter.com/streaming/overview/messages-types
-
-pub mod event;
-
+mod event;
 mod warning;
 
-pub use self::event::Event;
+pub use self::event::{Event, EventKind};
 pub use self::warning::{Warning, WarningCode};
 
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};

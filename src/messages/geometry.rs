@@ -1,4 +1,4 @@
-/// Geometry object
+//! Geometry object
 
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Type, Visitor};
 use serde::de::impls::IgnoredAny;
