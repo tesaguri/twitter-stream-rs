@@ -51,6 +51,36 @@ stream
     .wait().unwrap();
 # }
 ```
+
+In the example above, `stream` disconnects and returns error when a JSON message from Stream was failed to parse.
+If you don't want this behavior, you can opt to parse the messages manually:
+
+```rust,no_run
+# extern crate futures;
+# extern crate twitter_stream;
+extern crate serde_json;
+
+# use futures::{Future, Stream};
+use twitter_stream::{StreamMessage, TwitterJsonStream};
+
+# fn main() {
+# let (consumer_key, consumer_secret, token, token_secret) = ("", "", "", "");
+let stream = TwitterJsonStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
+
+stream
+    .filter_map(|json| {
+        if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
+            Some(tweet.text)
+        } else {
+            None
+        }
+    })
+    .for_each(|tweet| {
+        println!("{}", tweet);
+        Ok(())
+    })
+    .wait().unwrap();
+# }
 */
 
 extern crate chrono;
@@ -119,6 +149,10 @@ macro_rules! def_stream {
 
         $(
             $(#[$constructor_attr:meta])*
+            -
+            $(#[$s_constructor_attr:meta])*
+            -
+            $(#[$js_constructor_attr:meta])*
             pub fn $constructor:ident($Method:ident, $end_point:expr);
         )*
     ) => {
@@ -177,6 +211,7 @@ macro_rules! def_stream {
 
         impl $S {
             $(
+                $(#[$s_constructor_attr])*
                 pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
                     token: &'a str, token_secret: &'a str) -> Result<Self>
                 {
@@ -187,6 +222,7 @@ macro_rules! def_stream {
 
         impl $JS {
             $(
+                $(#[$js_constructor_attr])*
                 pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
                     token: &'a str, token_secret: &'a str) -> Result<Self>
                 {
@@ -300,30 +336,50 @@ def_stream! {
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
+    -
+    /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
+    -
+    /// A shorthand for `TwitterStreamBuilder::filter().listen_json()`.
     pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
 
     /// Create a builder for `GET statuses/sample`.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
+    -
+    /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
+    -
+    /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
     pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
 
     /// Create a builder for `GET statuses/firehose`. This endpoint requires special permission to access.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/firehose
+    -
+    /// A shorthand for `TwitterStreamBuilder::firehose().listen()`.
+    -
+    /// A shorthand for `TwitterStreamBuilder::firehose().listen_json()`.
     pub fn firehose(Get, "https://stream.twitter.com/1.1/statuses/firehose.json");
 
     /// Create a builder for `GET user` (a.k.a. User Stream).
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
+    -
+    /// A shorthand for `TwitterStreamBuilder::user().listen()`.
+    -
+    /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
     pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
 
     /// Create a builder for `GET site` (a.k.a. Site Stream).
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/site
+    -
+    /// A shorthand for `TwitterStreamBuilder::site().listen()`.
+    -
+    /// A shorthand for `TwitterStreamBuilder::site().listen_json()`.
     pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
 }
 
