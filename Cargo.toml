@@ -10,7 +10,7 @@ homepage = "https://github.com/d12i/twitter-stream-rs"
 repository = "https://github.com/d12i/twitter-stream-rs"
 documentation = "https://docs.rs/twitter-stream"
 description = """
-A library for listening on Twitter Stream API.
+A library for listening on Twitter Streaming API.
 """
 
 [dependencies]
