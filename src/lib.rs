@@ -87,8 +87,6 @@ extern crate chrono;
 extern crate flate2;
 extern crate futures;
 extern crate hyper;
-#[macro_use]
-extern crate log;
 extern crate oauthcli;
 extern crate serde;
 #[macro_use]
@@ -601,23 +599,14 @@ impl Stream for TwitterJsonStream {
     fn poll(&mut self) -> Poll<Option<String>, Error> {
         use Async::*;
 
-        trace!("TwitterJsonStream::poll");
-
         loop {
             match self.lines.poll()? {
                 Ready(Some(line)) => {
                     let now = Instant::now();
-                    let mut timer = Timeout::after(self.timeout);
-                    timer.park(now);
-                    info!("duration since last message: {}", {
-                        let elapsed = timer.when() - self.timer.when(); // = (now + timeout) - (last + timeout)
-                        elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000f64
-                    });
-                    self.timer = timer;
+                    self.timer = Timeout::after(self.timeout);
+                    self.timer.park(now);
 
-                    if line.is_empty() {
-                        debug!("blank line");
-                    } else {
+                    if !line.is_empty() {
                         return Ok(Ready(Some(line)));
                     }
                 },
@@ -626,7 +615,6 @@ impl Stream for TwitterJsonStream {
                     if let Ok(Ready(())) = self.timer.poll() {
                         return Err(Error::TimedOut(self.timeout.as_secs()));
                     } else {
-                        debug!("polled before being ready");
                         return Ok(NotReady);
                     }
                 },

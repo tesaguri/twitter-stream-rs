@@ -70,10 +70,6 @@ impl Timeout {
             self.parked = true;
         }
     }
-
-    pub fn when(&self) -> Instant {
-        self.when
-    }
 }
 
 impl Future for Timeout {
@@ -82,8 +78,6 @@ impl Future for Timeout {
 
     fn poll(&mut self) -> Poll<(), ()> {
         use futures::Async::*;
-
-        trace!("Timeout::poll");
 
         let now = Instant::now();
         if now < self.when {

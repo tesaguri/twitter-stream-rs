@@ -27,8 +27,6 @@ macro_rules! string_enums {
 
             impl ::serde::Deserialize for $E {
                 fn deserialize<D: ::serde::Deserializer>(d: &mut D) -> ::std::result::Result<Self, D::Error> {
-                    trace!(concat!("<", stringify!($E), " as serde::Deserializer>::deserialize"));
-
                     struct V;
 
                     impl ::serde::de::Visitor for V {
