@@ -77,7 +77,7 @@ pub use messages::StreamMessage;
 
 use futures::{Async, Future, Poll, Stream};
 use hyper::client::{Client, Response};
-use hyper::header::{Headers, Authorization, UserAgent};
+use hyper::header::{Headers, Authorization, ContentType, UserAgent};
 use hyper::net::HttpsConnector;
 use messages::{FilterLevel, UserId};
 use messages::stream::Disconnect;
@@ -381,6 +381,8 @@ impl<'a> TwitterStreamBuilder<'a> {
 
     /// Attempt to make an HTTP connection to the end point of the Stream API.
     fn connect(&self) -> Result<Response> {
+        use hyper::mime::{Mime, SubLevel, TopLevel};
+
         let mut url = Url::parse(self.end_point)?;
 
         let mut headers = Headers::new();
@@ -409,17 +411,19 @@ impl<'a> TwitterStreamBuilder<'a> {
             .unwrap_or_else(|| Hold::Owned(default_client()));
 
         let res = if Method::Post == self.method {
-            headers.set(self.create_authorization_header(&url));
+            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, vec![])));
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
+            let body = body.finish();
+            headers.set(self.create_authorization_header(&url, Some(body.as_ref())));
             client
                 .post(url)
                 .headers(headers)
-                .body(&body.finish())
+                .body(&body)
                 .send()?
         } else {
             self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(self.create_authorization_header(&url));
+            headers.set(self.create_authorization_header(&url, None));
             client
                 .request(self.method.clone(), url)
                 .headers(headers)
@@ -489,12 +493,17 @@ impl<'a> TwitterStreamBuilder<'a> {
         }
     }
 
-    fn create_authorization_header(&self, url: &Url) -> Authorization<OAuthAuthorizationHeader> {
-        let oauth = OAuthAuthorizationHeaderBuilder::new(
+    fn create_authorization_header(&self, url: &Url, params: Option<&[u8]>) -> Authorization<OAuthAuthorizationHeader> {
+        use url::form_urlencoded;
+
+        let mut oauth = OAuthAuthorizationHeaderBuilder::new(
             self.method.as_ref(), &url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
-        )
-            .token(self.token, self.token_secret)
-            .finish_for_twitter();
+        );
+        oauth.token(self.token, self.token_secret);
+        if let Some(p) = params {
+            oauth.request_parameters(form_urlencoded::parse(p));
+        }
+        let oauth = oauth.finish_for_twitter();
 
         Authorization(oauth)
     }
