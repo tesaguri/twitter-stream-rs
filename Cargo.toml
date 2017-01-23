@@ -15,7 +15,7 @@ hyper-native-tls = { version = "*", optional = true }
 hyper-openssl = { version = "*", optional = true }
 hyper-rustls = { version = "*", optional = true }
 log = "*"
-oauthcli = { version = "*", features = ["hyper"] }
+oauthcli = { version = "^1.0.3", features = ["hyper"] }
 serde = "*"
 serde_derive = "*"
 serde_json = "*"

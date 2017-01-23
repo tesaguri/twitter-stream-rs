@@ -13,419 +13,160 @@ use super::{List, Tweet, User};
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub created_at: DateTime,
-    pub event: EventKind,
     pub target: User,
     pub source: User,
-    pub target_object: Option<TargetObject>,
+    pub target_object: TargetObject,
 }
 
-string_enums! {
-    #[derive(Clone, Debug)]
-    pub enum EventKind {
-        /// User deauthorizes stream
-        :AccessRevoked("access_revoked"),
-
-        /// User blocks someone
-        :Block("block"),
-
-        /// User removes a block
-        :Unblock("unblock"),
-
-        /// User favorites a Tweet or user’s Tweet is favorited
-        :Favorite("favorite"),
-
-        /// User unfavorites a Tweet or user’s Tweet is unfavorited
-        :Unfavorite("unfavorite"),
-
-        /// User follows someone or user is followed
-        :Follow("follow"),
-
-        /// User unfollows someone
-        :Unfollow("unfollow"),
-
-        /// User creates a list
-        :ListCreated("list_created"),
-
-        /// User deletes a list
-        :ListDestroyed("list_destroyed"),
-
-        /// User edits a list
-        :ListUpdated("list_updated"),
-
-        /// User adds someone to a list or user is added to a list
-        :ListMemberAdded("list_member_added"),
-
-        /// User removes someone from a list or user is removed from a list
-        :ListMemberRemoved("list_member_removed"),
-
-        /// User subscribes to a list or user’s list is subscribed to
-        :ListUserSubscribed("list_user_subscribed"),
-
-        /// User unsubscribes from a list or ser’s list is unsubscribed from
-        :ListUserUnsubscribed("list_user_unsubscribed"),
-
-        /// User’s Tweet is quoted
-        :QuotedTweet("quoted_tweet"),
-
-        /// User updates their profile or user updates their protected status
-        :UserUpdate("user_update");
-
-        :Custom(_),
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum TargetObject {
-    ClientApplication,
-    Tweet(Tweet),
-    List(List),
-    Custom(Value),
-}
-
-impl Deserialize for Event {
-    fn deserialize<D: Deserializer>(d: &mut D) -> Result<Self, D::Error> {
-        struct EventVisitor;
-
-        impl Visitor for EventVisitor {
-            type Value = Event;
-
-            fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Event, V::Error> {
-                use self::EventKind::*;
-
-                #[derive(Default)]
-                struct EventObject {
-                    created_at: Option<DateTime>,
-                    event: Option<EventKind>,
-                    target: Option<User>,
-                    source: Option<User>,
-                    target_object: Option<Option<TargetObject>>,
-                }
-
-                let mut event = EventObject::default();
-                let mut target_obj: Option<Value> = None;
-
-                fn access_revoked_target(s: String) -> TargetObject {
-                    match s.as_str() {
-                        "client_application" => TargetObject::ClientApplication,
-                        _ => TargetObject::Custom(Value::String(s)),
-                    }
-                }
-
-                macro_rules! err_map {
-                    () => (|e| V::Error::custom(e.to_string()));
-                }
-
-                while let Some(k) = v.visit_key::<String>()? {
-                    match k.as_str() {
-                        "created_at" => {
-                            let val = v.visit_value::<String>()?;
-                            event.created_at = Some(
-                                super::super::parse_datetime(&val).map_err(err_map!())?
-                            );
-                        },
-                        "event" => {
-                            let ek = v.visit_value()?;
-                            event.target_object = if let Some(t) = target_obj.take() {
-                                let mut d = JsonDeserializer::new(t);
-                                match ek {
-                                    AccessRevoked => Some(
-                                        access_revoked_target(String::deserialize(&mut d).map_err(err_map!())?)
-                                    ),
-                                    Favorite | Unfavorite | QuotedTweet => Some(
-                                        TargetObject::Tweet(Tweet::deserialize(&mut d).map_err(err_map!())?)
-                                    ),
-                                    ListCreated | ListDestroyed | ListUpdated | ListMemberAdded | ListMemberRemoved |
-                                        ListUserSubscribed | ListUserUnsubscribed =>
-                                    {
-                                        Some(TargetObject::List(List::deserialize(&mut d).map_err(err_map!())?))
-                                    },
-                                    Block | Unblock | Follow | Unfollow | UserUpdate => {
-                                        match Value::deserialize(&mut d).map_err(err_map!())? {
-                                            Value::Null => None,
-                                            val => Some(TargetObject::Custom(val)),
-                                        }
-                                    },
-                                    Custom(_) => Some(
-                                        TargetObject::Custom(Value::deserialize(&mut d).map_err(err_map!())?)
-                                    ),
-                                }.into()
-                            } else {
-                                match ek {
-                                    Block | Unblock | Follow | Unfollow | UserUpdate | Custom(_) => Some(None),
-                                    _ => None,
-                                }
-                            };
-                            event.event = Some(ek);
-                        },
-                        "target" => event.target = Some(v.visit_value()?),
-                        "source" => event.source = Some(v.visit_value()?),
-                        "target_object" => {
-                            if let Some(ref e) = event.event {
-                                event.target_object = match *e {
-                                    AccessRevoked => Some(access_revoked_target(v.visit_value()?)),
-                                    Favorite | Unfavorite | QuotedTweet => Some(TargetObject::Tweet(v.visit_value()?)),
-                                    ListCreated | ListDestroyed | ListUpdated | ListMemberAdded | ListMemberRemoved |
-                                        ListUserSubscribed | ListUserUnsubscribed =>
-                                    {
-                                        Some(TargetObject::List(v.visit_value()?))
-                                    },
-                                    Block | Unblock | Follow | Unfollow | UserUpdate => {
-                                        match v.visit_value()? {
-                                            Value::Null => None,
-                                            val => Some(TargetObject::Custom(val)),
-                                        }
-                                    },
-                                    Custom(_) => Some(TargetObject::Custom(v.visit_value()?)),
-                                }.into();
-                            } else {
-                                target_obj = Some(v.visit_value()?);
-                            }
-                        },
-                        _ => { v.visit_value::<IgnoredAny>()?; },
-                    }
-                }
-
-                v.end()?;
-
-                if let EventObject {
-                        created_at: Some(ca), event: Some(ek), target: Some(t), source: Some(s), target_object: Some(to)
-                    } = event
-                {
-                    Ok(Event {
-                        created_at: ca,
-                        event: ek,
-                        target: t,
-                        source: s,
-                        target_object: to,
-                    })
-                } else {
-                    v.missing_field(if event.created_at.is_none() {
-                        "created_at"
-                    } else if event.event.is_none() {
-                        "event"
-                    } else if event.target.is_none() {
-                        "target"
-                    } else if event.source.is_none() {
-                        "source"
-                    } else if event.target_object.is_none() {
-                        "target_object"
-                    } else {
-                        unreachable!()
-                    })
-                }
-            }
+macro_rules! impl_event {
+    (
+        $(#[$attr:meta])*
+        pub enum $T:ident {
+            $(
+                $(#[$c_attr:meta])*
+                :$Container:ident($c_tag:expr, $Content:ty)
+            ),*;
+            $(
+                $(#[$l_attr:meta])*
+                :$Label:ident($l_tag:expr)
+            ),*;
+            $(#[$cu_attr:meta])*
+            :$Custom:ident(_, _),
+        }
+    ) => {
+        $(#[$attr])*
+        pub enum $T {
+            $(
+                $(#[$c_attr])*
+                $Container($Content),
+            )*
+            $(
+                $(#[$l_attr])*
+                $Label,
+            )*
+            $(#[$cu_attr])*
+            $Custom(String, Value),
         }
 
-        d.deserialize_map(EventVisitor)
-    }
+        impl Deserialize for Event {
+            fn deserialize<D: Deserializer>(d: &mut D) -> Result<Self, D::Error> {
+                struct EventVisitor;
+
+                impl Visitor for EventVisitor {
+                    type Value = Event;
+
+                    fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Event, V::Error> {
+                        #[derive(Default)]
+                        struct EventBuffer {
+                            created_at: Option<DateTime>,
+                            target: Option<User>,
+                            source: Option<User>,
+                            target_object: Option<TargetObject>,
+                        }
+
+                        let mut event = EventBuffer::default();
+                        let mut event_kind: Option<String> = None;
+                        let mut target_obj: Option<Value> = None;
+
+                        macro_rules! err_map {
+                            () => (|e| V::Error::custom(e.to_string()));
+                        }
+
+                        while let Some(k) = v.visit_key::<String>()? {
+                            match k.as_str() {
+                                "created_at" => {
+                                    let val = v.visit_value::<String>()?;
+                                    event.created_at = Some(super::super::parse_datetime(&val).map_err(err_map!())?);
+                                },
+                                "event" => {
+                                    let e = v.visit_value::<String>()?;
+                                    event.target_object = if let Some(t) = target_obj.take() {
+                                        match e.as_str() {
+                                            $($c_tag => {
+                                                let mut d = JsonDeserializer::new(t);
+                                                $T::$Container(<$Content>::deserialize(&mut d).map_err(err_map!())?)
+                                            },)*
+                                            $($l_tag => $T::$Label,)*
+                                            _ => $T::$Custom(e, t),
+                                        }.into()
+                                    } else {
+                                        match e.as_str() {
+                                            $($l_tag => Some($T::$Label),)*
+                                            _ => { event_kind = Some(e); None },
+                                        }
+                                    };
+                                },
+                                "target" => event.target = Some(v.visit_value()?),
+                                "source" => event.source = Some(v.visit_value()?),
+                                "target_object" => if let Some(e) = event_kind.take() {
+                                    event.target_object = match e.as_str() {
+                                        $($c_tag => $T::$Container(v.visit_value()?),)*
+                                        $($l_tag => { v.visit_value::<IgnoredAny>()?; $T::$Label },)*
+                                        _ => $T::$Custom(e, v.visit_value()?),
+                                    }.into();
+                                } else if event.target_object.is_none() {
+                                    target_obj = Some(v.visit_value()?);
+                                } else {
+                                    v.visit_value::<IgnoredAny>()?;
+                                },
+                                _ => { v.visit_value()?; },
+                            }
+
+                            if let EventBuffer {
+                                    created_at: Some(ca), target: Some(t), source: Some(s), target_object: Some(to),
+                                } = event
+                            {
+                                while let Some(_) = v.visit::<IgnoredAny, IgnoredAny>()? {}
+                                v.end()?;
+                                return Ok(Event { created_at: ca, target: t, source: s, target_object: to });
+                            }
+                        }
+
+                        v.end()?;
+
+                        v.missing_field(if event.created_at.is_none() {
+                            "created_at"
+                        } else if event.target.is_none() {
+                            "target"
+                        } else if event.source.is_none() {
+                            "source"
+                        } else if event.target_object.is_none() {
+                            if target_obj.is_some() {
+                                "event"
+                            } else {
+                                "target_object"
+                            }
+                        } else {
+                            unreachable!();
+                        })
+                    }
+                }
+
+                d.deserialize_map(EventVisitor)
+            }
+        }
+    };
 }
 
-#[cfg(test)]
-mod tests {
-    use chrono::{TimeZone, UTC};
-    use json;
-    use super::*;
-
-    #[test]
-    fn deserialize() {
-        assert_eq!(
-            Event {
-                created_at: UTC.ymd(2016, 12, 26).and_hms(0, 39, 13),
-                event: EventKind::Follow,
-                source: User {
-                    id: 783214,
-                    // id_str: "783214",
-                    name: "Twitter".to_owned(),
-                    screen_name: "Twitter".to_owned(),
-                    location: Some("San Francisco, CA".to_owned()),
-                    description: Some(
-                        "Your official source for news, updates, and tips from Twitter, Inc. Need help? \
-                            Visit https://t.co/jTMg7YsLw5.".to_owned()
-                    ),
-                    url: Some("https://t.co/gN5JJwhQy7".to_owned()),
-                    protected: false,
-                    followers_count: 58213762,
-                    friends_count: 155,
-                    listed_count: 90496,
-                    created_at: UTC.ymd(2007, 2, 20).and_hms(14, 35, 54),
-                    favourites_count: 3003,
-                    utc_offset: Some(-28800),
-                    time_zone: Some("Pacific Time (US & Canada)".to_owned()),
-                    geo_enabled: true,
-                    verified: true,
-                    statuses_count: 3695,
-                    lang: "en".to_owned(),
-                    contributors_enabled: false,
-                    is_translator: false,
-                    // is_translation_enabled: false,
-                    profile_background_color: "ACDED6".to_owned(),
-                    profile_background_image_url:
-                        "http://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png".to_owned(),
-                    profile_background_image_url_https:
-                        "https://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png".to_owned(),
-                    profile_background_tile: true,
-                    profile_image_url:
-                        "http://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg".to_owned(),
-                    profile_image_url_https:
-                        "https://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg".to_owned(),
-                    profile_banner_url: Some("https://pbs.twimg.com/profile_banners/783214/1476219753".to_owned()),
-                    profile_link_color: "226699".to_owned(),
-                    profile_sidebar_border_color: "FFFFFF".to_owned(),
-                    profile_sidebar_fill_color: "F6F6F6".to_owned(),
-                    profile_text_color: "333333".to_owned(),
-                    profile_use_background_image: true,
-                    default_profile: false,
-                    default_profile_image: false,
-                    // following: false,
-                    follow_request_sent: Some(false),
-                    // notifications: false,
-                    // translator_type: "regular".to_owned(),
-                    withheld_in_countries: None,
-                    withheld_scope: None,
-                },
-                target: User {
-                    id: 12,
-                    // id_str: "12".to_owned(),
-                    name: "jack".to_owned(),
-                    screen_name: "jack".to_owned(),
-                    location: Some("California, USA".to_owned()),
-                    description: Some("".to_owned()),
-                    url: None,
-                    protected: false,
-                    followers_count: 3949461,
-                    friends_count: 2379,
-                    listed_count: 26918,
-                    created_at: UTC.ymd(2006, 3, 21).and_hms(20, 50, 14),
-                    favourites_count: 15494,
-                    utc_offset: Some(-28800),
-                    time_zone: Some("Pacific Time (US & Canada)".to_owned()),
-                    geo_enabled: true,
-                    verified: true,
-                    statuses_count: 21033,
-                    lang: "en".to_owned(),
-                    contributors_enabled: false,
-                    is_translator: false,
-                    // is_translation_enabled: false,
-                    profile_background_color: "EBEBEB".to_owned(),
-                    profile_background_image_url: "http://abs.twimg.com/images/themes/theme7/bg.gif".to_owned(),
-                    profile_background_image_url_https: "https://abs.twimg.com/images/themes/theme7/bg.gif".to_owned(),
-                    profile_background_tile: false,
-                    profile_image_url:
-                        "http://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg".to_owned(),
-                    profile_image_url_https:
-                        "https://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg".to_owned(),
-                    profile_banner_url: Some("https://pbs.twimg.com/profile_banners/12/1483046077".to_owned()),
-                    profile_link_color: "990000".to_owned(),
-                    profile_sidebar_border_color: "DFDFDF".to_owned(),
-                    profile_sidebar_fill_color: "F3F3F3".to_owned(),
-                    profile_text_color: "333333".to_owned(),
-                    profile_use_background_image: true,
-                    default_profile: false,
-                    default_profile_image: false,
-                    // following: None,
-                    follow_request_sent: Some(false),
-                    // notifications: false,
-                    // translator_type: "regular".to_owned(),
-                    withheld_in_countries: None,
-                    withheld_scope: None,
-                },
-                target_object: None,
-            },
-            json::from_str::<Event>("{
-                \"created_at\":\"Mon Dec 26 00:39:13 +0000 2016\",
-                \"event\":\"follow\",
-                \"source\": {
-                    \"id\": 783214,
-                    \"id_str\": \"783214\",
-                    \"name\": \"Twitter\",
-                    \"screen_name\": \"Twitter\",
-                    \"location\": \"San Francisco, CA\",
-                    \"description\": \"Your official source for news, updates, and tips from Twitter, Inc. \
-                        Need help? Visit https://t.co/jTMg7YsLw5.\",
-                    \"url\": \"https://t.co/gN5JJwhQy7\",
-                    \"protected\": false,
-                    \"followers_count\": 58213762,
-                    \"friends_count\": 155,
-                    \"listed_count\": 90496,
-                    \"created_at\": \"Tue Feb 20 14:35:54 +0000 2007\",
-                    \"favourites_count\": 3003,
-                    \"utc_offset\": -28800,
-                    \"time_zone\": \"Pacific Time (US & Canada)\",
-                    \"geo_enabled\": true,
-                    \"verified\": true,
-                    \"statuses_count\": 3695,
-                    \"lang\": \"en\",
-                    \"contributors_enabled\": false,
-                    \"is_translator\": false,
-                    \"is_translation_enabled\": false,
-                    \"profile_background_color\": \"ACDED6\",
-                    \"profile_background_image_url\":
-                        \"http://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png\",
-                    \"profile_background_image_url_https\":
-                        \"https://pbs.twimg.com/profile_background_images/657090062/l1uqey5sy82r9ijhke1i.png\",
-                    \"profile_background_tile\": true,
-                    \"profile_image_url\":
-                        \"http://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg\",
-                    \"profile_image_url_https\":
-                        \"https://pbs.twimg.com/profile_images/767879603977191425/29zfZY6I_normal.jpg\",
-                    \"profile_banner_url\": \"https://pbs.twimg.com/profile_banners/783214/1476219753\",
-                    \"profile_link_color\": \"226699\",
-                    \"profile_sidebar_border_color\": \"FFFFFF\",
-                    \"profile_sidebar_fill_color\": \"F6F6F6\",
-                    \"profile_text_color\": \"333333\",
-                    \"profile_use_background_image\": true,
-                    \"default_profile\": false,
-                    \"default_profile_image\": false,
-                    \"following\": null,
-                    \"follow_request_sent\": false,
-                    \"notifications\": false,
-                    \"translator_type\": \"regular\"
-                },
-                \"target\": {
-                    \"id\": 12,
-                    \"id_str\": \"12\",
-                    \"name\": \"jack\",
-                    \"screen_name\": \"jack\",
-                    \"location\": \"California, USA\",
-                    \"description\": \"\",
-                    \"url\": null,
-                    \"protected\": false,
-                    \"followers_count\": 3949461,
-                    \"friends_count\": 2379,
-                    \"listed_count\": 26918,
-                    \"created_at\": \"Tue Mar 21 20:50:14 +0000 2006\",
-                    \"favourites_count\": 15494,
-                    \"utc_offset\": -28800,
-                    \"time_zone\": \"Pacific Time (US & Canada)\",
-                    \"geo_enabled\": true,
-                    \"verified\": true,
-                    \"statuses_count\": 21033,
-                    \"lang\": \"en\",
-                    \"contributors_enabled\": false,
-                    \"is_translator\": false,
-                    \"is_translation_enabled\": false,
-                    \"profile_background_color\": \"EBEBEB\",
-                    \"profile_background_image_url\": \"http://abs.twimg.com/images/themes/theme7/bg.gif\",
-                    \"profile_background_image_url_https\": \"https://abs.twimg.com/images/themes/theme7/bg.gif\",
-                    \"profile_background_tile\": false,
-                    \"profile_image_url\":
-                        \"http://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg\",
-                    \"profile_image_url_https\":
-                        \"https://pbs.twimg.com/profile_images/768529565966667776/WScYY_cq_normal.jpg\",
-                    \"profile_banner_url\": \"https://pbs.twimg.com/profile_banners/12/1483046077\",
-                    \"profile_link_color\": \"990000\",
-                    \"profile_sidebar_border_color\": \"DFDFDF\",
-                    \"profile_sidebar_fill_color\": \"F3F3F3\",
-                    \"profile_text_color\": \"333333\",
-                    \"profile_use_background_image\": true,
-                    \"default_profile\": false,
-                    \"default_profile_image\": false,
-                    \"following\": null,
-                    \"follow_request_sent\": false,
-                    \"notifications\": false,
-                    \"translator_type\": \"regular\"
-                }
-            }").unwrap()
-        );
+impl_event! {
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum TargetObject {
+        :Favorite("favorite", Tweet),
+        :Unfavorite("unfavorite", Tweet),
+        :ListCreated("list_created", List),
+        :ListDestroyed("list_destroyed", List),
+        :ListUpdated("list_updated", List),
+        :ListMemberAdded("list_member_added", List),
+        :ListMemberRemoved("list_member_removed", List),
+        :ListUserSubscribed("list_user_subscribed", List),
+        :ListUserUnsubscribed("list_user_unsubscribed", List),
+        :QuotedTweet("quoted_tweet", Tweet);
+        :AccessRevoked("access_revoked"),
+        :Block("block"),
+        :Unblock("unblock"),
+        :Follow("follow"),
+        :Unfollow("unfollow"),
+        :UserUpdate("user_update");
+        :Custom(_, _),
     }
 }
