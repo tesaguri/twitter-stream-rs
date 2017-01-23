@@ -127,10 +127,13 @@ string_enums! {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Url {
     /// Version of the URL to display to clients.
+    #[serde(deserialize_with = "nullable_string")] // nullable in Retweets.
+    #[serde(default)]
     pub display_url: String,
 
     /// Expanded version of `display_url`.
     #[serde(deserialize_with = "nullable_string")] // nullable in Retweets.
+    #[serde(default)]
     pub expanded_url: String,
 
     /// A pair of integers representing offsets within the Tweet text where the URL begins and ends.

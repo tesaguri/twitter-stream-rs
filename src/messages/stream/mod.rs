@@ -21,35 +21,51 @@ use json::value::{Deserializer as JsonDeserializer, Map, Value};
 pub enum StreamMessage {
     /// Tweet
     Tweet(Tweet),
+
     /// Notifications about non-Tweet events.
     Event(Event),
+
     /// Indicate that a given Tweet has been deleted.
     Delete(Delete),
+
     /// Indicate that geolocated data must be stripped from a range of Tweets.
     ScrubGeo(ScrubGeo),
+
     /// Indicate that a filtered stream has matched more Tweets than its current rate limit allows to be delivered,
     /// noticing a total count of the number of undelivered Tweets since the connection was opened.
     Limit(Limit),
+
     /// Indicate that a given tweet has had its content withheld.
     StatusWithheld(StatusWithheld),
+
     /// Indicate that a user has had their content withheld.
     UserWithheld(UserWithheld),
+
     /// This message is sent when a stream is disconnected, indicating why the stream was closed.
     Disconnect(Disconnect),
+
     /// Variout warning message
     Warning(Warning),
+
     /// List of the user's friends. Only be sent upon establishing a User Stream connection.
     Friends(Friends),
+
     // FriendsStr(Vec<String>), // TODO: deserialize `friends_str` into `Friends`
+
     /// Direct message
     DirectMessage(DirectMessage),
+
     /// A [control URI][1] for Site Streams.
     /// [1]: https://dev.twitter.com/streaming/sitestreams/controlstreams
     Control(Control), 
+
     /// An [envelope][1] for Site Stream.
     /// [1]: https://dev.twitter.com/streaming/overview/messages-types#envelopes_for_user
     ForUser(UserId, Box<StreamMessage>),
+
     // ForUserStr(String, Box<StreamMessage>),
+
+    /// A message not known to this library.
     Custom(Map<String, Value>),
 }
 

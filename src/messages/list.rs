@@ -34,4 +34,5 @@ string_enums! {
     }
 }
 
+/// ID of a list.
 pub type ListId = u64;

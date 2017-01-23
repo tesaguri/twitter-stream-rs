@@ -165,4 +165,5 @@ pub struct User {
     pub withheld_scope: Option<WithheldScope>,
 }
 
+/// Numerical ID of a user.
 pub type UserId = u64;

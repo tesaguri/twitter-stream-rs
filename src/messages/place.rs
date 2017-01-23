@@ -40,4 +40,6 @@ pub struct Place {
 }
 
 pub type Attributes = HashMap<String, String>;
+
+/// ID of a place.
 pub type PlaceId = String;

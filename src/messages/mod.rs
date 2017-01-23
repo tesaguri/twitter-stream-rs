@@ -101,7 +101,7 @@ pub mod stream;
 pub mod tweet;
 pub mod user;
 
-pub use self::direct_message::DirectMessage;
+pub use self::direct_message::{DirectMessage, DirectMessageId};
 pub use self::entities::Entities;
 pub use self::geometry::Geometry;
 pub use self::list::{List, ListId};

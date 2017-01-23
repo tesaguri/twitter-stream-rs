@@ -144,4 +144,5 @@ pub struct Tweet {
     pub withheld_scope: Option<WithheldScope>,
 }
 
+/// ID of a Tweet.
 pub type StatusId = u64;

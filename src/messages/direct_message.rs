@@ -7,7 +7,7 @@ pub struct DirectMessage {
     #[serde(deserialize_with = "super::deserialize_datetime")]
     pub created_at: DateTime,
     pub entities: Entities,
-    pub id: u64,
+    pub id: DirectMessageId,
     pub recipient: User,
     pub recipient_id: UserId,
     pub recipient_screen_name: String,
@@ -16,3 +16,6 @@ pub struct DirectMessage {
     pub sender_screen_name: String,
     pub text: String,
 }
+
+/// ID of a direct message.
+pub type DirectMessageId = u64;
