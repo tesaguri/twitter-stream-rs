@@ -9,6 +9,7 @@ license = "MIT"
 
 [dependencies]
 chrono = { version = "*", features = ["serde"] }
+flate2 = "*"
 futures = "*"
 hyper = { version = "*", default-features = false }
 hyper-native-tls = { version = "*", optional = true }

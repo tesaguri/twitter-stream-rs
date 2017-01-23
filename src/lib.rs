@@ -54,6 +54,7 @@ stream
 */
 
 extern crate chrono;
+extern crate flate2;
 extern crate futures;
 extern crate hyper;
 #[macro_use]
@@ -76,8 +77,8 @@ pub use json::Error as JsonError;
 pub use messages::StreamMessage;
 
 use futures::{Async, Future, Poll, Stream};
-use hyper::client::{Client, Response};
-use hyper::header::{Headers, Authorization, ContentType, UserAgent};
+use hyper::client::Client;
+use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use hyper::net::HttpsConnector;
 use messages::{FilterLevel, UserId};
 use messages::stream::Disconnect;
@@ -373,19 +374,18 @@ impl<'a> TwitterStreamBuilder<'a> {
     /// Attempt to start listening on the Stream API and returns a stream which yields JSON messages from the API.
     pub fn listen_json(&self) -> Result<TwitterJsonStream> {
         Ok(TwitterJsonStream {
-            lines: util::lines(BufReader::new(self.connect()?)),
+            lines: self.connect()?,
             timeout: self.timeout,
             timer: Timeout::after(self.timeout),
         })
     }
 
     /// Attempt to make an HTTP connection to the end point of the Stream API.
-    fn connect(&self) -> Result<Response> {
-        use hyper::mime::{Mime, SubLevel, TopLevel};
-
+    fn connect(&self) -> Result<Lines> {
         let mut url = Url::parse(self.end_point)?;
 
         let mut headers = Headers::new();
+        headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));
         if let Some(ua) = self.user_agent {
             headers.set(UserAgent(ua.to_owned()));
         }
@@ -411,6 +411,8 @@ impl<'a> TwitterStreamBuilder<'a> {
             .unwrap_or_else(|| Hold::Owned(default_client()));
 
         let res = if Method::Post == self.method {
+            use hyper::mime::{Mime, SubLevel, TopLevel};
+
             headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, vec![])));
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
@@ -430,8 +432,17 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .send()?
         };
 
-        match &res.status {
-            &StatusCode::Ok => Ok(res),
+        match res.status {
+            StatusCode::Ok => if res.headers
+                .get::<ContentEncoding>()
+                .map(|&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
+                .unwrap_or(false)
+            {
+                use flate2::read::GzDecoder;
+                Ok(util::lines(BufReader::new(GzDecoder::new(res)?)))
+            } else {
+                Ok(util::lines(BufReader::new(res)))
+            },
             _ => return Err(res.status.into()),
         }
     }
