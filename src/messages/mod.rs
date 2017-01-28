@@ -109,6 +109,7 @@ pub use self::tweet::{StatusId, Tweet};
 pub use self::user::{User, UserId};
 
 use chrono::{self, DateTime as ChronoDateTime, TimeZone, UTC};
+use serde::de::{Deserialize, Deserializer, Error};
 
 string_enums! {
     /// Represents the `filter_level` field in Tweets or `filter_level` parameter in API request.
@@ -141,4 +142,8 @@ impl ::std::default::Default for FilterLevel {
 
 fn parse_datetime(s: &str) -> chrono::format::ParseResult<DateTime> {
     UTC.datetime_from_str(s, "%a %b %e %H:%M:%S %z %Y")
+}
+
+fn deserialize_datetime<D: Deserializer>(d: &mut D) -> Result<DateTime, D::Error> {
+    parse_datetime(&String::deserialize(d)?).map_err(|e| D::Error::custom(e.to_string()))
 }

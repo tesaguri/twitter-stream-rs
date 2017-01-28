@@ -1,6 +1,6 @@
 use serde::de::{Deserialize, Deserializer, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
-use super::super::UserId;
+use super::UserId;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Warning {

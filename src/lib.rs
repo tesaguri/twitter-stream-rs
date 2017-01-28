@@ -89,7 +89,6 @@ extern crate futures;
 extern crate hyper;
 extern crate oauthcli;
 extern crate serde;
-#[cfg(feature = "serde_derive")]
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json as json;
@@ -105,7 +104,7 @@ pub use hyper::status::StatusCode;
 pub use json::Error as JsonError;
 pub use messages::StreamMessage;
 
-use futures::{Future, Poll, Stream};
+use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use hyper::net::HttpsConnector;
@@ -120,14 +119,6 @@ use std::io::{self, BufReader};
 use std::time::{Duration, Instant};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
-
-mod serde_types {
-    #[cfg(feature = "serde_derive")]
-    include!("serde_types.in.rs");
-
-    #[cfg(feature = "serde_codegen")]
-    include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
-}
 
 macro_rules! def_stream {
     (
@@ -588,7 +579,7 @@ impl Stream for TwitterStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
-        use futures::Async::*;
+        use Async::*;
 
         match self.inner.poll()? {
             Ready(Some(line)) => match json::from_str(&line)? {
@@ -606,7 +597,7 @@ impl Stream for TwitterJsonStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<String>, Error> {
-        use futures::Async::*;
+        use Async::*;
 
         loop {
             match self.lines.poll()? {

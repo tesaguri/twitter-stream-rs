@@ -2,7 +2,7 @@ use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
 use super::super::DateTime;
 use json::value::{Deserializer as JsonDeserializer, Value};
-use super::super::{List, Tweet, User};
+use super::{List, Tweet, User};
 
 /// Represents notifications about non-Tweet events are also sent over a stream.
 ///

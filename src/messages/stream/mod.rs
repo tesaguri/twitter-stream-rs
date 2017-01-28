@@ -9,7 +9,7 @@ pub use self::warning::{Warning, WarningCode};
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
 use std::fmt;
-use super::{DirectMessage, StatusId, Tweet, UserId};
+use super::{DirectMessage, List, StatusId, Tweet, User, UserId};
 use json::value::{Deserializer as JsonDeserializer, Map, Value};
 
 /// Represents a message from Twitter Streaming API.
@@ -76,7 +76,38 @@ pub struct Delete {
     pub user_id: UserId,
 }
 
-pub use serde_types::stream::*;
+/// Represents a range of Tweets whose geolocated data must be stripped.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Hash)]
+pub struct ScrubGeo {
+    pub user_id: UserId,
+    pub up_to_status_id: StatusId,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Hash)]
+pub struct Limit {
+    pub track: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
+pub struct StatusWithheld {
+    pub id: StatusId,
+    pub user_id: UserId,
+    pub withheld_in_countries: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
+pub struct UserWithheld {
+    pub id: UserId,
+    pub withheld_in_countries: Vec<String>,
+}
+
+/// Indicates why a stream was closed.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
+pub struct Disconnect {
+    pub code: DisconnectCode,
+    pub stream_name: String,
+    pub reason: String,
+}
 
 macro_rules! number_enum {
     (
@@ -155,6 +186,12 @@ number_enum! {
         /// Reconnect as usual.
         :ShedLoad = 12,
     }
+}
+
+/// Represents a control message.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
+pub struct Control {
+    control_uri: String,
 }
 
 pub type Friends = Vec<UserId>;
@@ -248,7 +285,9 @@ impl Deserialize for Delete {
             type Value = Delete;
 
             fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Delete, V::Error> {
-                use serde_types::stream_delete::Status;
+                #[allow(dead_code)]
+                #[derive(Deserialize)]
+                struct Status { id: StatusId, user_id: UserId };
 
                 while let Some(k) = v.visit_key::<String>()? {
                     match k.as_str() {
