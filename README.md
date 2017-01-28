@@ -1,8 +1,7 @@
 # Twitter Stream
 
-[![Current Version](http://meritbadge.herokuapp.com/twitter-stream)](https://crates.io/crates/twitter-stream)
-
-[Documentation](https://docs.rs/twitter-stream/)
+[![Current Version](https://img.shields.io/crates/v/twitter-stream.svg)](https://crates.io/crates/twitter-stream)
+[![Documentation](https://docs.rs/twitter-stream/badge.svg)](https://docs.rs/twitter-stream/)
 
 A Rust library for listening on Twitter Streaming API.
 
