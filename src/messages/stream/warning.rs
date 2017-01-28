@@ -1,5 +1,6 @@
-use serde::de::{Deserialize, Deserializer, MapVisitor, Visitor};
+use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
+use std::fmt;
 use super::UserId;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -16,20 +17,15 @@ pub enum WarningCode {
 }
 
 impl Deserialize for Warning {
-    fn deserialize<D: Deserializer>(d: &mut D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
         struct WarningVisitor;
 
         impl Visitor for WarningVisitor {
             type Value = Warning;
 
-            fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Warning, V::Error> {
-                string_enums! {
-                    pub enum Code {
-                        :FallingBehind("FALLING_BEHIND"),
-                        :FollowsOverLimit("FOLLOWS_OVER_LIMIT");
-                        :Custom(_),
-                    }
-                }
+            fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Warning, V::Error> {
+                const FALLING_BEHIND: &'static str = "FALLING_BEHIND";
+                const FOLLOWS_OVER_LIMIT: &'static str = "FOLLOWS_OVER_LIMIT";
 
                 let mut code = None;
                 let mut message: Option<String> = None;
@@ -38,7 +34,7 @@ impl Deserialize for Warning {
 
                 while let Some(k) = v.visit_key::<String>()? {
                     match k.as_str() {
-                        "code" => code = Some(v.visit_value::<Code>()?),
+                        "code" => code = Some(v.visit_value::<String>()?),
                         "message" => message = Some(v.visit_value()?),
                         "percent_full" => percent_full = Some(v.visit_value()?),
                         "user_id" => user_id = Some(v.visit_value()?),
@@ -47,31 +43,30 @@ impl Deserialize for Warning {
 
                     macro_rules! end {
                         () => {{
-                            while let Some(_) = v.visit::<IgnoredAny,IgnoredAny>()? {}
-                            v.end()?;
+                            while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
                         }};
                     }
 
-                    match (code.as_ref(), message.as_ref(), percent_full, user_id) {
-                        (Some(&Code::FallingBehind), Some(_), Some(percent_full), _) => {
+                    match (code.as_ref().map(String::as_str), message.as_ref(), percent_full, user_id) {
+                        (Some(FALLING_BEHIND), Some(_), Some(percent_full), _) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
                                 code: WarningCode::FallingBehind(percent_full),
                             });
                         },
-                        (Some(&Code::FollowsOverLimit), Some(_), _, Some(user_id)) => {
+                        (Some(FOLLOWS_OVER_LIMIT), Some(_), _, Some(user_id)) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
                                 code: WarningCode::FollowsOverLimit(user_id),
                             });
                         },
-                        (Some(&Code::Custom(ref c)), Some(_), _, _) => {
+                        (Some(_), Some(_), _, _) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
-                                code: WarningCode::Custom(c.to_owned()),
+                                code: WarningCode::Custom(code.unwrap()),
                             });
                         },
                         _ => (),
@@ -79,14 +74,18 @@ impl Deserialize for Warning {
                 }
 
                 if code.is_none() {
-                    v.missing_field("code")
+                    Err(V::Error::missing_field("code"))
                 } else if message.is_none() {
-                    v.missing_field("message")
-                } else if code == Some(Code::FallingBehind) {
-                    v.missing_field("percent_full")
+                    Err(V::Error::missing_field("message"))
+                } else if code.as_ref().map(String::as_str) == Some(FALLING_BEHIND) {
+                    Err(V::Error::missing_field("percent_full"))
                 } else {
-                    v.missing_field("user_id")
+                    Err(V::Error::missing_field("user_id"))
                 }
+            }
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a map")
             }
         }
 

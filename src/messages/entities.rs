@@ -1,6 +1,7 @@
 //! Entities
 
 use serde::de::{Deserializer, Visitor};
+use std::fmt;
 use super::{StatusId, UserId};
 
 pub type MediaId = u64;
@@ -173,22 +174,26 @@ pub struct Symbol {
     pub indices: (u64, u64),
 }
 
-fn nullable_string<D: Deserializer>(d: &mut D) -> Result<String, D::Error> {
+fn nullable_string<D: Deserializer>(d: D) -> Result<String, D::Error> {
     struct NSVisitor;
 
     impl Visitor for NSVisitor {
         type Value = String;
 
-        fn visit_str<E>(&mut self, v: &str) -> Result<String, E> {
+        fn visit_str<E>(self, v: &str) -> Result<String, E> {
             Ok(v.to_owned())
         }
 
-        fn visit_string<E>(&mut self, v: String) -> Result<String, E> {
+        fn visit_string<E>(self, v: String) -> Result<String, E> {
             Ok(v)
         }
 
-        fn visit_unit<E>(&mut self) -> Result<String, E> {
+        fn visit_unit<E>(self) -> Result<String, E> {
             Ok(String::new())
+        }
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "a string")
         }
     }
 

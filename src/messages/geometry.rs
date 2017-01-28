@@ -1,7 +1,8 @@
 //! Geometry object
 
-use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Type, Visitor};
+use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Unexpected, Visitor};
 use serde::de::impls::IgnoredAny;
+use std::fmt;
 
 /// The Geometry object specified in [The GeoJSON Format (RFC7946)](https://tools.ietf.org/html/rfc7946).
 // https://tools.ietf.org/html/rfc7946#section-3.1
@@ -30,13 +31,13 @@ pub type Polygon = Vec<LinearRing>;
 pub type LinearRing = LineString;
 
 impl Deserialize for Geometry {
-    fn deserialize<D: Deserializer>(d: &mut D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
         struct GeometryVisitor;
 
         impl Visitor for GeometryVisitor {
             type Value = Geometry;
 
-            fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Geometry, V::Error> {
+            fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Geometry, V::Error> {
                 enum Coordinates {
                     F64(f64),
                     Dim0(Position), // Point
@@ -46,25 +47,25 @@ impl Deserialize for Geometry {
                 }
 
                 impl Deserialize for Coordinates {
-                    fn deserialize<D: Deserializer>(d: &mut D) -> Result<Self, D::Error> {
+                    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
                         struct CoordinatesVisitor;
 
                         impl Visitor for CoordinatesVisitor {
                             type Value = Coordinates;
 
-                            fn visit_f64<E>(&mut self, v: f64) -> Result<Coordinates, E> {
+                            fn visit_f64<E>(self, v: f64) -> Result<Coordinates, E> {
                                 Ok(Coordinates::F64(v))
                             }
 
-                            fn visit_i64<E>(&mut self, v: i64) -> Result<Coordinates, E> {
+                            fn visit_i64<E>(self, v: i64) -> Result<Coordinates, E> {
                                 Ok(Coordinates::F64(v as _))
                             }
 
-                            fn visit_u64<E>(&mut self, v: u64) -> Result<Coordinates, E> {
+                            fn visit_u64<E>(self, v: u64) -> Result<Coordinates, E> {
                                 Ok(Coordinates::F64(v as _))
                             }
 
-                            fn visit_seq<V: SeqVisitor>(&mut self, mut v: V) -> Result<Coordinates, V::Error> {
+                            fn visit_seq<V: SeqVisitor>(self, mut v: V) -> Result<Coordinates, V::Error> {
                                 macro_rules! match_val {
                                     (
                                         $C:ident,
@@ -74,10 +75,9 @@ impl Deserialize for Geometry {
                                             Some($C::F64(v1)) => {
                                                 let v2 = match v.visit()? {
                                                     Some(val) => val,
-                                                    None => return Err(V::Error::invalid_length(1)),
+                                                    None => return Err(V::Error::invalid_length(1, &self)),
                                                 };
-                                                while let Some(_) = v.visit::<IgnoredAny>()? {}
-                                                v.end()?;
+                                                while v.visit::<IgnoredAny>()?.is_some() {}
                                                 Ok($C::Dim0(Position(v1, v2)))
                                             },
                                             $(Some($C::$V(val)) => {
@@ -86,10 +86,9 @@ impl Deserialize for Geometry {
                                                 while let Some(val) = v.visit()? {
                                                     ret.push(val);
                                                 }
-                                                v.end()?;
                                                 Ok($C::$R(ret))
                                             },)*
-                                            Some($C::Dim3(_)) => Err(V::Error::invalid_type(Type::Seq)),
+                                            Some($C::Dim3(_)) => Err(V::Error::invalid_type(Unexpected::Seq, &self)),
                                             None => Ok($C::Dim1(Vec::new())),
                                         }
                                     };
@@ -101,6 +100,13 @@ impl Deserialize for Geometry {
                                     Dim1 => Dim2,
                                     Dim2 => Dim3,
                                 }
+                            }
+
+                            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                                write!(f,
+                                    "a floating point number \
+                                    or an array of floating point number with a depth of 4 or lower"
+                                )
                             }
                         }
 
@@ -114,8 +120,7 @@ impl Deserialize for Geometry {
 
                 macro_rules! end {
                     () => {{
-                        while let Some(_) = v.visit::<IgnoredAny, IgnoredAny>()? {}
-                        v.end()?;
+                        while v.visit::<IgnoredAny, IgnoredAny>()?.is_some() {}
                     }};
                 }
 
@@ -124,7 +129,8 @@ impl Deserialize for Geometry {
                         "type" => {
                             let t = v.visit_value::<String>()?;
                             macro_rules! match_type {
-                                ($C:ident, $($($V:ident($typ:expr))|* => $D:ident,)*) => {
+                                ($C:ident, $($($V:ident($typ:expr))|* => $D:ident,)*) => {{
+                                    const EXPECTED: &'static [&'static str] = &[$($($typ),*),*];
                                     match t.as_str() {
                                         $($($typ => match c {
                                             Some($C::$D(val)) => {
@@ -145,9 +151,9 @@ impl Deserialize for Geometry {
                                             },
                                             _ => return Err(V::Error::custom("invalid coordinates type")),
                                         },)*)*
-                                        s => return Err(V::Error::unknown_variant(&s)),
+                                        s => return Err(V::Error::unknown_variant(&s, EXPECTED)),
                                     }
-                                };
+                                }};
                             }
                             match_type! {
                                 Coordinates,
@@ -162,7 +168,11 @@ impl Deserialize for Geometry {
                     }
                 }
 
-                v.missing_field("type")
+                Err(V::Error::missing_field("type"))
+            }
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a map with `type` and `coordinate` fields")
             }
         }
 

@@ -26,24 +26,28 @@ macro_rules! string_enums {
             }
 
             impl ::serde::Deserialize for $E {
-                fn deserialize<D: ::serde::Deserializer>(d: &mut D) -> ::std::result::Result<Self, D::Error> {
+                fn deserialize<D: ::serde::Deserializer>(d: D) -> ::std::result::Result<Self, D::Error> {
                     struct V;
 
                     impl ::serde::de::Visitor for V {
                         type Value = $E;
 
-                        fn visit_str<E>(&mut self, s: &str) -> ::std::result::Result<$E, E> {
+                        fn visit_str<E>(self, s: &str) -> ::std::result::Result<$E, E> {
                             match s {
                                 $($by => Ok($E::$V),)*
                                 _ => Ok($E::$U(s.to_owned())),
                             }
                         }
 
-                        fn visit_string<E>(&mut self, s: String) -> ::std::result::Result<$E, E> {
+                        fn visit_string<E>(self, s: String) -> ::std::result::Result<$E, E> {
                             match s.as_str() {
                                 $($by => Ok($E::$V),)*
                                 _ => Ok($E::$U(s)),
                             }
+                        }
+
+                        fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                            write!(f, "a string")
                         }
                     }
 
@@ -144,6 +148,6 @@ fn parse_datetime(s: &str) -> chrono::format::ParseResult<DateTime> {
     UTC.datetime_from_str(s, "%a %b %e %H:%M:%S %z %Y")
 }
 
-fn deserialize_datetime<D: Deserializer>(d: &mut D) -> Result<DateTime, D::Error> {
+fn deserialize_datetime<D: Deserializer>(d: D) -> Result<DateTime, D::Error> {
     parse_datetime(&String::deserialize(d)?).map_err(|e| D::Error::custom(e.to_string()))
 }

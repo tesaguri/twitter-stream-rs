@@ -6,11 +6,11 @@ mod warning;
 pub use self::event::{Event, EventKind};
 pub use self::warning::{Warning, WarningCode};
 
-use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
+use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Unexpected, Visitor};
 use serde::de::impls::IgnoredAny;
 use std::fmt;
 use super::{DirectMessage, List, StatusId, Tweet, User, UserId};
-use json::value::{Deserializer as JsonDeserializer, Map, Value};
+use json::value::{Map, Value};
 
 /// Represents a message from Twitter Streaming API.
 ///
@@ -127,22 +127,26 @@ macro_rules! number_enum {
             )*
         }
 
-        impl ::serde::Deserialize for $E {
-            fn deserialize<D: Deserializer>(d: &mut D) -> Result<Self, D::Error> {
-                struct Visitor;
+        impl Deserialize for $E {
+            fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
+                struct NEVisitor;
 
-                impl ::serde::de::Visitor for Visitor {
+                impl Visitor for NEVisitor {
                     type Value = $E;
 
-                    fn visit_u64<E: Error>(&mut self, v: u64) -> Result<$E, E> {
+                    fn visit_u64<E: Error>(self, v: u64) -> Result<$E, E> {
                         match v {
                             $($n => Ok($E::$V),)*
-                            _ => Err(E::invalid_value(&v.to_string())),
+                            _ => Err(E::invalid_value(Unexpected::Unsigned(v), &self)),
                         }
+                    }
+
+                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                        write!(f, concat!("one of the following integers: ", $($n, ','),*))
                     }
                 }
 
-                d.deserialize_u64(Visitor)
+                d.deserialize_u64(NEVisitor)
             }
         }
 
@@ -197,19 +201,16 @@ pub struct Control {
 pub type Friends = Vec<UserId>;
 
 impl Deserialize for StreamMessage {
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error> where D: Deserializer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer {
         struct SMVisitor;
 
         impl Visitor for SMVisitor {
             type Value = StreamMessage;
 
-            fn visit_map<V>(&mut self, mut v: V) -> Result<StreamMessage, V::Error> where V: MapVisitor {
+            fn visit_map<V>(self, mut v: V) -> Result<StreamMessage, V::Error> where V: MapVisitor {
                 let key = match v.visit_key::<String>()? {
                     Some(k) => k,
-                    None => {
-                        v.end()?;
-                        return Ok(StreamMessage::Custom(Map::new()));
-                    },
+                    None => return Ok(StreamMessage::Custom(Map::new())),
                 };
 
                 let ret = match key.as_str() {
@@ -230,7 +231,6 @@ impl Deserialize for StreamMessage {
                 if let Some(ret) = ret {
                     if ret.is_ok() {
                         while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
-                        v.end()?;
                     }
                     return ret;
                 }
@@ -242,27 +242,27 @@ impl Deserialize for StreamMessage {
                 while let Some((k, v)) = v.visit()? {
                     map.insert(k, v);
                 }
-                v.end()?;
 
                 if map.contains_key("id") {
-                    let mut d = JsonDeserializer::new(Value::Object(map));
-                    Tweet::deserialize(&mut d)
+                    Tweet::deserialize(Value::Object(map))
                         .map(StreamMessage::Tweet)
                         .map_err(|e| V::Error::custom(e.to_string()))
                 } else if map.contains_key("event") {
-                    let mut d = JsonDeserializer::new(Value::Object(map));
-                    Event::deserialize(&mut d)
+                    Event::deserialize(Value::Object(map))
                         .map(StreamMessage::Event)
                         .map_err(|e| V::Error::custom(e.to_string()))
                 } else if let Some(id) = map.remove("for_user") {
-                    if let Value::U64(id) = id {
-                        if let Some(m) = map.remove("message") {
-                            let mut d = JsonDeserializer::new(m);
-                            StreamMessage::deserialize(&mut d)
-                                .map(|m| StreamMessage::ForUser(id, Box::new(m)))
-                                .map_err(|e| V::Error::custom(e.to_string()))
+                    if let Value::Number(id) = id {
+                        if let Some(id) = id.as_u64() {
+                            if let Some(msg) = map.remove("message") {
+                                StreamMessage::deserialize(msg)
+                                    .map(|m| StreamMessage::ForUser(id, Box::new(m)))
+                                    .map_err(|e| V::Error::custom(e.to_string()))
+                            } else {
+                                Err(V::Error::missing_field("message"))
+                            }
                         } else {
-                            v.missing_field("message")
+                            Err(V::Error::custom("expected u64"))
                         }
                     } else {
                         Err(V::Error::custom("expected u64"))
@@ -271,6 +271,10 @@ impl Deserialize for StreamMessage {
                     Ok(StreamMessage::Custom(map))
                 }
             }
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "map")
+            }
         }
 
         deserializer.deserialize_map(SMVisitor)
@@ -278,13 +282,15 @@ impl Deserialize for StreamMessage {
 }
 
 impl Deserialize for Delete {
-    fn deserialize<D: Deserializer>(d: &mut D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
         struct DeleteVisitor;
 
         impl Visitor for DeleteVisitor {
             type Value = Delete;
 
-            fn visit_map<V: MapVisitor>(&mut self, mut v: V) -> Result<Delete, V::Error> {
+            fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Delete, V::Error> {
+                use std::mem;
+
                 #[allow(dead_code)]
                 #[derive(Deserialize)]
                 struct Status { id: StatusId, user_id: UserId };
@@ -292,16 +298,21 @@ impl Deserialize for Delete {
                 while let Some(k) = v.visit_key::<String>()? {
                     match k.as_str() {
                         "status" => {
-                            let ret = unsafe { ::std::mem::transmute::<_,_>(v.visit_value::<Status>()?) };
-                            while let Some(_) = v.visit::<IgnoredAny,IgnoredAny>()? {}
-                            v.end()?;
-                            return Ok(ret);
+                            let ret = v.visit_value::<Status>()?;
+                            while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
+                            unsafe {
+                                return Ok(mem::transmute(ret));
+                            }
                         },
                         _ => { v.visit_value::<IgnoredAny>()?; },
                     }
                 }
 
-                v.missing_field("status")
+                Err(V::Error::missing_field("status"))
+            }
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a map with a field `status` which contains field `id` and `user_id` of integer type`")
             }
         }
 
