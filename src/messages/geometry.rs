@@ -3,6 +3,8 @@
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Type, Visitor};
 use serde::de::impls::IgnoredAny;
 
+pub use serde_types::geometry::*;
+
 /// The Geometry object specified in [The GeoJSON Format (RFC7946)](https://tools.ietf.org/html/rfc7946).
 // https://tools.ietf.org/html/rfc7946#section-3.1
 #[derive(Clone, Debug, PartialEq)]
@@ -15,15 +17,6 @@ pub enum Geometry {
     MultiPolygon(Vec<Polygon>),
     // GeometryCollection(Vec<Geometry>),
 }
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Position(
-    /// Longitude
-    pub f64,
-    /// Latitude
-    pub f64,
-    // Twitter API does not provide altitudes
-);
 
 pub type LineString = Vec<Position>;
 pub type Polygon = Vec<LinearRing>;
