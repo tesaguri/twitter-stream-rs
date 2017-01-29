@@ -4,6 +4,8 @@ use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Unexpe
 use serde::de::impls::IgnoredAny;
 use std::fmt;
 
+#[allow(unknown_lints)]
+#[allow(doc_markdown)]
 /// The Geometry object specified in [The GeoJSON Format (RFC7946)](https://tools.ietf.org/html/rfc7946).
 // https://tools.ietf.org/html/rfc7946#section-3.1
 #[derive(Clone, Debug, PartialEq)]
@@ -139,12 +141,11 @@ impl Deserialize for Geometry {
                                             },
                                             None => {
                                                 while let Some(k) = v.visit_key::<String>()? {
-                                                    match k.as_str() {
-                                                        "coordinates" => {
-                                                            end!();
-                                                            return Ok($V(v.visit_value()?));
-                                                        },
-                                                        _ => { v.visit_value::<IgnoredAny>()?; },
+                                                    if "coordinates" == k.as_str() {
+                                                        end!();
+                                                        return Ok($V(v.visit_value()?));
+                                                    } else {
+                                                        v.visit_value::<IgnoredAny>()?;
                                                     }
                                                 }
                                                 return Err(V::Error::missing_field("coordinates"));

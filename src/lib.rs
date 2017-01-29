@@ -460,14 +460,12 @@ impl<'a> TwitterStreamBuilder<'a> {
             }
         }
 
-        let client = self.client
-            .map(Hold::Borrowed)
-            .unwrap_or_else(|| Hold::Owned(default_client()));
+        let client = self.client.map_or_else(|| Hold::Owned(default_client()), Hold::Borrowed);
 
         let res = if Method::Post == self.method {
             use hyper::mime::{Mime, SubLevel, TopLevel};
 
-            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, vec![])));
+            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
             let body = body.finish();
@@ -486,18 +484,17 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .send()?
         };
 
-        match res.status {
-            StatusCode::Ok => if res.headers
-                .get::<ContentEncoding>()
-                .map(|&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
-                .unwrap_or(false)
+        if StatusCode::Ok == res.status {
+            if res.headers.get::<ContentEncoding>()
+                .map_or(false, |&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
             {
                 use flate2::read::GzDecoder;
                 Ok(util::lines(BufReader::new(GzDecoder::new(res)?)))
             } else {
                 Ok(util::lines(BufReader::new(res)))
-            },
-            _ => return Err(res.status.into()),
+            }
+        } else {
+            Err(res.status.into())
         }
     }
 
@@ -562,7 +559,7 @@ impl<'a> TwitterStreamBuilder<'a> {
         use url::form_urlencoded;
 
         let mut oauth = OAuthAuthorizationHeaderBuilder::new(
-            self.method.as_ref(), &url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
+            self.method.as_ref(), url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
         );
         oauth.token(self.token, self.token_secret);
         if let Some(p) = params {
@@ -662,11 +659,9 @@ impl StdError for Error {
         match *self {
             Url(ref e) => Some(e),
             Hyper(ref e) => Some(e),
-            Http(_) => None,
             Io(ref e) => Some(e),
-            TimedOut(_) => None,
             Json(ref e) => Some(e),
-            Disconnect(_) => None,
+            Http(_) | TimedOut(_) | Disconnect(_) => None,
         }
     }
 }

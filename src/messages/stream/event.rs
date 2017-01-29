@@ -165,9 +165,9 @@ impl_event! {
     /// | User blocks someone                 | `Block`                | Current user       | Blocked user   |
     /// | User removes a block                | `Unblock`              | Current user       | Unblocked user |
     /// | User favorites a Tweet              | `Favorite`             | Current user       | Tweet author   |
-    /// | User’s Tweet is favorited           | `Favorite`             | Favoriting user    | Current user   |
+    /// | User's Tweet is favorited           | `Favorite`             | Favoriting user    | Current user   |
     /// | User unfavorites a Tweet            | `Unfavorite`           | Current user       | Tweet author   |
-    /// | User’s Tweet is unfavorited         | `Unfavorite`           | Unfavoriting user  | Current user   |
+    /// | User's Tweet is unfavorited         | `Unfavorite`           | Unfavoriting user  | Current user   |
     /// | User follows someone                | `Follow`               | Current user       | Followed user  |
     /// | User is followed                    | `Follow`               | Following user     | Current user   |
     /// | User unfollows someone              | `Unfollow`             | Current user       | Followed user  |
@@ -179,10 +179,10 @@ impl_event! {
     /// | User removes someone from a list    | `ListMemberRemoved`    | Current user       | Removed user   |
     /// | User is removed from a list         | `ListMemberRemoved`    | Removing user      | Current user   |
     /// | User subscribes to a list           | `ListUserSubscribed`   | Current user       | List owner     |
-    /// | User’s list is subscribed to        | `ListUserSubscribed`   | Subscribing user   | Current user   |
+    /// | User's list is subscribed to        | `ListUserSubscribed`   | Subscribing user   | Current user   |
     /// | User unsubscribes from a list       | `ListUserUnsubscribed` | Current user       | List owner     |
-    /// | User’s list is unsubscribed from    | `ListUserUnsubscribed` | Unsubscribing user | Current user   |
-    /// | User’s Tweet is quoted              | `QuotedTweet`          | quoting User       | Current User   |
+    /// | User's list is unsubscribed from    | `ListUserUnsubscribed` | Unsubscribing user | Current user   |
+    /// | User's Tweet is quoted              | `QuotedTweet`          | quoting User       | Current User   |
     /// | User updates their profile          | `UserUpdate`           | Current user       | Current user   |
     /// | User updates their protected status | `UserUpdate`           | Current user       | Current user   |
     #[derive(Clone, Debug, PartialEq)]

@@ -296,15 +296,14 @@ impl Deserialize for Delete {
                 struct Status { id: StatusId, user_id: UserId };
 
                 while let Some(k) = v.visit_key::<String>()? {
-                    match k.as_str() {
-                        "status" => {
-                            let ret = v.visit_value::<Status>()?;
-                            while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
-                            unsafe {
-                                return Ok(mem::transmute(ret));
-                            }
-                        },
-                        _ => { v.visit_value::<IgnoredAny>()?; },
+                    if "status" == k.as_str() {
+                        let ret = v.visit_value::<Status>()?;
+                        while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
+                        unsafe {
+                            return Ok(mem::transmute(ret));
+                        }
+                    } else {
+                        v.visit_value::<IgnoredAny>()?;
                     }
                 }
 
