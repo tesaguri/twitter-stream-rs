@@ -112,7 +112,7 @@ macro_rules! impl_event {
                                 } else {
                                     v.visit_value::<IgnoredAny>()?;
                                 },
-                                _ => { v.visit_value()?; },
+                                _ => { v.visit_value::<()>()?; },
                             }
 
                             if let EventBuffer {
