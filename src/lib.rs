@@ -89,7 +89,6 @@ extern crate futures;
 extern crate hyper;
 extern crate oauthcli;
 extern crate serde;
-#[cfg(feature = "serde_derive")]
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json as json;
@@ -105,7 +104,7 @@ pub use hyper::status::StatusCode;
 pub use json::Error as JsonError;
 pub use messages::StreamMessage;
 
-use futures::{Future, Poll, Stream};
+use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use hyper::net::HttpsConnector;
@@ -120,14 +119,6 @@ use std::io::{self, BufReader};
 use std::time::{Duration, Instant};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
-
-mod serde_types {
-    #[cfg(feature = "serde_derive")]
-    include!("serde_types.in.rs");
-
-    #[cfg(feature = "serde_codegen")]
-    include!(concat!(env!("OUT_DIR"), "/serde_types.rs"));
-}
 
 macro_rules! def_stream {
     (
@@ -469,14 +460,12 @@ impl<'a> TwitterStreamBuilder<'a> {
             }
         }
 
-        let client = self.client
-            .map(Hold::Borrowed)
-            .unwrap_or_else(|| Hold::Owned(default_client()));
+        let client = self.client.map_or_else(|| Hold::Owned(default_client()), Hold::Borrowed);
 
         let res = if Method::Post == self.method {
             use hyper::mime::{Mime, SubLevel, TopLevel};
 
-            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, vec![])));
+            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
             let body = body.finish();
@@ -495,18 +484,17 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .send()?
         };
 
-        match res.status {
-            StatusCode::Ok => if res.headers
-                .get::<ContentEncoding>()
-                .map(|&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
-                .unwrap_or(false)
+        if StatusCode::Ok == res.status {
+            if res.headers.get::<ContentEncoding>()
+                .map_or(false, |&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
             {
                 use flate2::read::GzDecoder;
                 Ok(util::lines(BufReader::new(GzDecoder::new(res)?)))
             } else {
                 Ok(util::lines(BufReader::new(res)))
-            },
-            _ => return Err(res.status.into()),
+            }
+        } else {
+            Err(res.status.into())
         }
     }
 
@@ -571,7 +559,7 @@ impl<'a> TwitterStreamBuilder<'a> {
         use url::form_urlencoded;
 
         let mut oauth = OAuthAuthorizationHeaderBuilder::new(
-            self.method.as_ref(), &url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
+            self.method.as_ref(), url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
         );
         oauth.token(self.token, self.token_secret);
         if let Some(p) = params {
@@ -588,7 +576,7 @@ impl Stream for TwitterStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
-        use futures::Async::*;
+        use Async::*;
 
         match self.inner.poll()? {
             Ready(Some(line)) => match json::from_str(&line)? {
@@ -606,7 +594,7 @@ impl Stream for TwitterJsonStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<String>, Error> {
-        use futures::Async::*;
+        use Async::*;
 
         loop {
             match self.lines.poll()? {
@@ -671,11 +659,9 @@ impl StdError for Error {
         match *self {
             Url(ref e) => Some(e),
             Hyper(ref e) => Some(e),
-            Http(_) => None,
             Io(ref e) => Some(e),
-            TimedOut(_) => None,
             Json(ref e) => Some(e),
-            Disconnect(_) => None,
+            Http(_) | TimedOut(_) | Disconnect(_) => None,
         }
     }
 }
