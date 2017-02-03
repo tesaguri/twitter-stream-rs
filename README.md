@@ -1,5 +1,6 @@
 # Twitter Stream
 
+[![Build Status](https://travis-ci.org/d12i/twitter-stream-rs.svg?branch=master)](https://travis-ci.org/d12i/twitter-stream-rs/)
 [![Current Version](https://img.shields.io/crates/v/twitter-stream.svg)](https://crates.io/crates/twitter-stream)
 [![Documentation](https://docs.rs/twitter-stream/badge.svg)](https://docs.rs/twitter-stream/)
 
