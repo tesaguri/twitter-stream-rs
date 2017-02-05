@@ -1,7 +1,11 @@
 use futures::{Future, Poll, Sink, Stream};
 use futures::stream::{self, Then};
 use futures::sync::mpsc::{self, Receiver};
+use hyper;
+use oauthcli::{OAuthAuthorizationHeader, ParseOAuthAuthorizationHeaderError};
+use std::fmt;
 use std::io::BufRead;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -14,6 +18,9 @@ pub type Lines = Then<
     fn(Result<Result<String, Error>, ()>) -> Result<String, Error>,
     Result<String, Error>,
 >;
+
+#[derive(Clone, Debug)]
+pub struct OAuthHeaderWrapper(pub OAuthAuthorizationHeader);
 
 /// A future which resolves at a specific period of time.
 pub struct Timeout {
@@ -39,6 +46,24 @@ pub fn lines<A: BufRead + Send + 'static>(a: A) -> Lines {
     }
 
     rx
+}
+
+impl FromStr for OAuthHeaderWrapper {
+    type Err = ParseOAuthAuthorizationHeaderError;
+
+    fn from_str(s: &str) -> Result<Self, ParseOAuthAuthorizationHeaderError> {
+        Ok(OAuthHeaderWrapper(OAuthAuthorizationHeader::from_str(s)?))
+    }
+}
+
+impl hyper::header::Scheme for OAuthHeaderWrapper {
+    fn scheme() -> Option<&'static str> {
+        Some("OAuth")
+    }
+
+    fn fmt_scheme(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0.auth_param())
+    }
 }
 
 impl Timeout {

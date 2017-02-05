@@ -110,8 +110,8 @@ use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, Con
 use hyper::net::HttpsConnector;
 use messages::{FilterLevel, UserId};
 use messages::stream::Disconnect;
-use oauthcli::{OAuthAuthorizationHeader, OAuthAuthorizationHeaderBuilder, SignatureMethod};
-use util::{Lines, Timeout};
+use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
+use util::{Lines, OAuthHeaderWrapper, Timeout};
 use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt::{self, Display, Formatter};
@@ -555,7 +555,8 @@ impl<'a> TwitterStreamBuilder<'a> {
         }
     }
 
-    fn create_authorization_header(&self, url: &Url, params: Option<&[u8]>) -> Authorization<OAuthAuthorizationHeader> {
+    fn create_authorization_header(&self, url: &Url, params: Option<&[u8]>) -> Authorization<OAuthHeaderWrapper>
+    {
         use url::form_urlencoded;
 
         let mut oauth = OAuthAuthorizationHeaderBuilder::new(
@@ -567,7 +568,7 @@ impl<'a> TwitterStreamBuilder<'a> {
         }
         let oauth = oauth.finish_for_twitter();
 
-        Authorization(oauth)
+        Authorization(OAuthHeaderWrapper(oauth))
     }
 }
 
