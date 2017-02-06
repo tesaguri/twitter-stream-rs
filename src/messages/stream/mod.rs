@@ -20,10 +20,10 @@ use json::value::{Map, Value};
 #[derive(Clone, Debug, PartialEq)]
 pub enum StreamMessage {
     /// Tweet
-    Tweet(Tweet),
+    Tweet(Box<Tweet>),
 
     /// Notifications about non-Tweet events.
-    Event(Event),
+    Event(Box<Event>),
 
     /// Indicate that a given Tweet has been deleted.
     Delete(Delete),
@@ -53,7 +53,7 @@ pub enum StreamMessage {
     // FriendsStr(Vec<String>), // TODO: deserialize `friends_str` into `Friends`
 
     /// Direct message
-    DirectMessage(DirectMessage),
+    DirectMessage(Box<DirectMessage>),
 
     /// A [control URI][1] for Site Streams.
     /// [1]: https://dev.twitter.com/streaming/sitestreams/controlstreams
@@ -245,10 +245,12 @@ impl Deserialize for StreamMessage {
 
                 if map.contains_key("id") {
                     Tweet::deserialize(Value::Object(map))
+                        .map(Box::new)
                         .map(StreamMessage::Tweet)
                         .map_err(|e| V::Error::custom(e.to_string()))
                 } else if map.contains_key("event") {
                     Event::deserialize(Value::Object(map))
+                        .map(Box::new)
                         .map(StreamMessage::Event)
                         .map_err(|e| V::Error::custom(e.to_string()))
                 } else if let Some(id) = map.remove("for_user") {
