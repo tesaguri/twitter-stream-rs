@@ -95,21 +95,21 @@ extern crate serde_json as json;
 extern crate url;
 
 #[macro_use]
-pub mod messages;
+pub mod message;
 
 mod util;
 
 pub use hyper::method::Method;
 pub use hyper::status::StatusCode;
 pub use json::Error as JsonError;
-pub use messages::StreamMessage;
+pub use message::StreamMessage;
 
 use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use hyper::net::HttpsConnector;
-use messages::{FilterLevel, UserId};
-use messages::stream::Disconnect;
+use message::{FilterLevel, UserId};
+use message::stream::Disconnect;
 use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
 use util::{Lines, OAuthHeaderWrapper, Timeout};
 use std::convert::From;
