@@ -24,8 +24,13 @@ impl Deserialize for Warning {
             type Value = Warning;
 
             fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Warning, V::Error> {
-                const FALLING_BEHIND: &'static str = "FALLING_BEHIND";
-                const FOLLOWS_OVER_LIMIT: &'static str = "FOLLOWS_OVER_LIMIT";
+                string_enums! {
+                    pub enum Code {
+                        :FallingBehind("FALLING_BEHIND"),
+                        :FollowsOverLimit("FOLLOWS_OVER_LIMIT");
+                        :Custom(_),
+                    }
+                }
 
                 let mut code = None;
                 let mut message: Option<String> = None;
@@ -34,7 +39,7 @@ impl Deserialize for Warning {
 
                 while let Some(k) = v.visit_key::<String>()? {
                     match k.as_str() {
-                        "code" => code = Some(v.visit_value::<String>()?),
+                        "code" => code = Some(v.visit_value::<Code>()?),
                         "message" => message = Some(v.visit_value()?),
                         "percent_full" => percent_full = Some(v.visit_value()?),
                         "user_id" => user_id = Some(v.visit_value()?),
@@ -47,27 +52,31 @@ impl Deserialize for Warning {
                         }};
                     }
 
-                    match (code.as_ref().map(String::as_str), message.as_ref(), percent_full, user_id) {
-                        (Some(FALLING_BEHIND), Some(_), Some(percent_full), _) => {
+                    match (code.as_ref(), message.as_ref(), percent_full, user_id) {
+                        (Some(&Code::FallingBehind), Some(_), Some(percent_full), _) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
                                 code: WarningCode::FallingBehind(percent_full),
                             });
                         },
-                        (Some(FOLLOWS_OVER_LIMIT), Some(_), _, Some(user_id)) => {
+                        (Some(&Code::FollowsOverLimit), Some(_), _, Some(user_id)) => {
                             end!();
                             return Ok(Warning {
                                 message: message.unwrap(),
                                 code: WarningCode::FollowsOverLimit(user_id),
                             });
                         },
-                        (Some(_), Some(_), _, _) => {
+                        (Some(&Code::Custom(_)), Some(_), _, _) => {
                             end!();
-                            return Ok(Warning {
-                                message: message.unwrap(),
-                                code: WarningCode::Custom(code.unwrap()),
-                            });
+                            if let Some(Code::Custom(code)) = code {
+                                return Ok(Warning {
+                                    message: message.unwrap(),
+                                    code: WarningCode::Custom(code),
+                                });
+                            } else {
+                                unreachable!();
+                            }
                         },
                         _ => (),
                     }
@@ -77,7 +86,7 @@ impl Deserialize for Warning {
                     Err(V::Error::missing_field("code"))
                 } else if message.is_none() {
                     Err(V::Error::missing_field("message"))
-                } else if code.as_ref().map(String::as_str) == Some(FALLING_BEHIND) {
+                } else if code == Some(Code::FallingBehind) {
                     Err(V::Error::missing_field("percent_full"))
                 } else {
                     Err(V::Error::missing_field("user_id"))

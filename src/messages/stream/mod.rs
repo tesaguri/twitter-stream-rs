@@ -57,7 +57,7 @@ pub enum StreamMessage {
 
     /// A [control URI][1] for Site Streams.
     /// [1]: https://dev.twitter.com/streaming/sitestreams/controlstreams
-    Control(Control), 
+    Control(Control),
 
     /// An [envelope][1] for Site Stream.
     /// [1]: https://dev.twitter.com/streaming/overview/messages-types#envelopes_for_user
@@ -324,5 +324,27 @@ impl Deserialize for Delete {
 impl fmt::Display for Disconnect {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {} {}: {}", self.stream_name, self.code as u32, self.code.as_ref(), self.reason)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use json;
+    use super::*;
+
+    #[test]
+    fn warning() {
+        assert_eq!(
+            StreamMessage::Warning(Warning {
+                message: "Your connection is falling behind and messages are being queued for delivery to you. \
+                    Your queue is now over 60% full. You will be disconnected when the queue is full.".to_owned(),
+                code: WarningCode::FallingBehind(60),
+            }),
+            json::from_str(
+                "{\"warning\":{\"code\":\"FALLING_BEHIND\",\"message\":\"Your connection is falling \
+                    behind and messages are being queued for delivery to you. Your queue is now over 60% full. \
+                    You will be disconnected when the queue is full.\",\"percent_full\": 60}}"
+            ).unwrap()
+        )
     }
 }
