@@ -18,17 +18,21 @@ chrono = { version = ">= 0.2, < 0.4", features = ["serde"] }
 flate2 = "0.2"
 futures = "0.1"
 hyper = "0.10"
-hyper-native-tls = { version = "0.2", optional = true }
-hyper-openssl = { version = "0.2", optional = true }
-hyper-rustls = { version = "0.3", optional = true }
 oauthcli = "1.0"
 serde = "0.9"
 serde_derive = "0.9"
 serde_json = "0.9"
 url = "1.3"
+hyper-native-tls = { version = "0.2", optional = true }
+native-tls = { version = "0.1", optional = true }
+hyper-openssl = { version = "0.2", optional = true }
+openssl = { version = "0.9", optional = true }
+hyper-rustls = { version = "0.3", optional = true }
 
 [features]
-default = ["native-tls"]
-native-tls = ["hyper-native-tls"]
-openssl = ["hyper-openssl"]
-rustls = ["hyper-rustls"]
+default = ["tls-native-tls"]
+tls = []
+tls-failable = ["tls"]
+tls-native-tls = ["hyper-native-tls", "native-tls", "tls-failable"]
+tls-openssl = ["hyper-openssl", "openssl", "tls-failable"]
+tls-rustls = ["hyper-rustls", "tls"]

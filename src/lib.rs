@@ -107,7 +107,6 @@ pub use message::StreamMessage;
 use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
-use hyper::net::HttpsConnector;
 use message::{FilterLevel, UserId};
 use message::stream::Disconnect;
 use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
@@ -408,6 +407,9 @@ pub enum Error {
     Hyper(hyper::Error),
     /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
     Url(url::ParseError),
+    #[cfg(feature = "tls-failable")]
+    /// An error returned from a TLS client.
+    Tls(default_client::Error),
 }
 
 /// An error occured while listening on the Stream API.
@@ -477,7 +479,18 @@ impl<'a> TwitterStreamBuilder<'a> {
             }
         }
 
-        let client = self.client.map_or_else(|| Hold::Owned(default_client()), Hold::Borrowed);
+        let client = if let Some(c) = self.client {
+            Hold::Borrowed(c)
+        } else {
+            #[cfg(feature = "tls-failable")]
+            {
+                default_client::new().map(Hold::Owned).map_err(Error::Tls)?
+            }
+            #[cfg(not(feature = "tls-failable"))]
+            {
+                Hold::Owned(default_client::new())
+            }
+        };
 
         let res = if Method::Post == self.method {
             use hyper::mime::{Mime, SubLevel, TopLevel};
@@ -666,6 +679,8 @@ impl StdError for Error {
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
             Url(ref e) => e.description(),
+            #[cfg(feature = "tls-failable")]
+            Tls(ref e) => e.description(),
         }
     }
 
@@ -677,6 +692,8 @@ impl StdError for Error {
             Http(_) => None,
             Hyper(ref e) => Some(e),
             Url(ref e) => Some(e),
+            #[cfg(feature = "tls-failable")]
+            Tls(ref e) => Some(e),
         }
     }
 }
@@ -733,6 +750,8 @@ impl Display for Error {
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
             Url(ref e) => Display::fmt(e, f),
+            #[cfg(feature = "tls-failable")]
+            Tls(ref e) => Display::fmt(e, f),
         }
     }
 }
@@ -796,31 +815,57 @@ impl From<io::Error> for JsonStreamError {
     }
 }
 
-#[cfg(feature = "native-tls")]
-fn default_client() -> Client {
+#[cfg(feature = "hyper-native-tls")]
+mod default_client {
     extern crate hyper_native_tls;
+    extern crate native_tls;
 
-    Client::with_connector(HttpsConnector::new(hyper_native_tls::NativeTlsClient::new().unwrap()))
+    use hyper::client::Client;
+    use hyper::net::HttpsConnector;
+
+    pub type Error = native_tls::Error;
+
+    pub fn new() -> Result<Client, Error> {
+        hyper_native_tls::NativeTlsClient::new()
+            .map(HttpsConnector::new)
+            .map(Client::with_connector)
+    }
 }
 
-#[cfg(feature = "openssl")]
-fn default_client() -> Client {
+#[cfg(feature = "hyper-openssl")]
+mod default_client {
     extern crate hyper_openssl;
+    extern crate openssl;
 
-    Client::with_connector(HttpsConnector::new(hyper_openssl::OpensslClient::new().unwrap()))
+    use hyper::client::Client;
+    use hyper::net::HttpsConnector;
+
+    pub type Error = openssl::error::ErrorStack;
+
+    pub fn new() -> Result<Client, Error> {
+        hyper_openssl::OpensslClient::new()
+            .map(HttpsConnector::new)
+            .map(Client::with_connector)
+    }
 }
 
-#[cfg(feature = "rustls")]
-fn default_client() -> Client {
+#[cfg(feature = "hyper-rustls")]
+mod default_client {
     extern crate hyper_rustls;
 
-    Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new()))
+    use hyper::client::Client;
+    use hyper::net::HttpsConnector;
+
+    pub fn new() -> Client {
+        Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new()))
+    }
 }
 
-#[cfg(not(any(feature = "native-tls", feature = "openssl", feature = "rustls")))]
-fn default_client() -> Client {
-    #[allow(unused_imports)]
-    use self::HttpsConnector; // suppress unused_imports
+#[cfg(not(feature = "tls"))]
+mod default_client {
+    use hyper::client::Client;
 
-    Client::new()
+    pub fn new() -> Client {
+        Client::new()
+    }
 }
