@@ -4,19 +4,18 @@ use futures::sync::mpsc::{self, Receiver};
 use hyper;
 use oauthcli::{OAuthAuthorizationHeader, ParseOAuthAuthorizationHeaderError};
 use std::fmt;
-use std::io::BufRead;
+use std::io::{self, BufRead};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
-use Error;
 
 /// A stream over each line on a `BufRead`.
 pub type Lines = Then<
-    Receiver<Result<String, Error>>,
-    fn(Result<Result<String, Error>, ()>) -> Result<String, Error>,
-    Result<String, Error>,
+    Receiver<Result<String, io::Error>>,
+    fn(Result<Result<String, io::Error>, ()>) -> Result<String, io::Error>,
+    Result<String, io::Error>,
 >;
 
 #[derive(Clone, Debug)]
@@ -35,17 +34,16 @@ pub fn lines<A: BufRead + Send + 'static>(a: A) -> Lines {
     let (tx, rx) = mpsc::channel(8); // TODO: is this a proper value?
 
     thread::spawn(move || {
-        let iter = a.lines().map(|r| Ok(r.map_err(Error::Io)));
+        let iter = a.lines().map(Ok);
         let stream = stream::iter(iter);
         tx.send_all(stream).wait().is_ok() // Fails silently when `tx` is dropped.
     });
 
-    let rx = rx.then(thener as _);
-    fn thener(r: Result<Result<String, Error>, ()>) -> Result<String, Error> {
+    fn thener(r: Result<Result<String, io::Error>, ()>) -> Result<String, io::Error> {
         r.expect("Receiver failed")
     }
 
-    rx
+    rx.then(thener as _)
 }
 
 impl FromStr for OAuthHeaderWrapper {

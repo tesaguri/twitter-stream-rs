@@ -116,6 +116,7 @@ use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufReader};
+use std::result;
 use std::time::{Duration, Instant};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
@@ -172,7 +173,7 @@ macro_rules! def_stream {
         }
 
         impl<$lifetime> $B<$lifetime> {
-            /// Constructs a builder for a stream from custom end point.
+            /// Constructs a builder for a Stream at a custom end point.
             pub fn custom($($b_field: $bf_ty),*) -> Self {
                 $B {
                     $($b_field: $b_field,)*
@@ -396,36 +397,52 @@ string_enums! {
     }
 }
 
-/// An error occurred while connecting to the Stream API.
+/// An error occurred while trying to connect to the Stream API.
 #[derive(Debug)]
 pub enum Error {
-    /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
-    Url(url::ParseError),
-    /// An error from the `hyper` crate.
-    Hyper(hyper::Error),
+    /// An error occured while parsing the gzip header of the response from the server.
+    Gzip(io::Error),
     /// An HTTP error from the Stream.
     Http(StatusCode),
+    /// An error from the `hyper` crate.
+    Hyper(hyper::Error),
+    /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
+    Url(url::ParseError),
+}
+
+/// An error occured while listening on the Stream API.
+#[derive(Debug)]
+pub enum StreamError {
+    /// The Stream has been disconnected by the server.
+    Disconnect(Disconnect),
+    /// An error from the Stream.
+    Stream(JsonStreamError),
+    /// Failed to parse a JSON message from Stream API.
+    Json(JsonError),
+}
+
+/// An error occured while listening on the Stream API through `TwitterJsonStream`.
+#[derive(Debug)]
+pub enum JsonStreamError {
     /// An I/O error.
     Io(io::Error),
     /// The Stream has timed out.
     TimedOut(u64),
-    /// Failed to parse a JSON message from Stream API.
-    Json(JsonError),
-    /// The Stream has been disconnected by the server.
-    Disconnect(Disconnect),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
+pub type StreamResult<T> = result::Result<T, StreamError>;
+pub type JsonStreamResult<T> = result::Result<T, JsonStreamError>;
 
 impl<'a> TwitterStreamBuilder<'a> {
-    /// Attempt to start listening on the Stream API and returns a stream which yields parsed messages from the API.
+    /// Attempt to start listening on the Stream API and returns a `Stream` which yields parsed messages from the API.
     pub fn listen(&self) -> Result<TwitterStream> {
         Ok(TwitterStream {
             inner: self.listen_json()?,
         })
     }
 
-    /// Attempt to start listening on the Stream API and returns a stream which yields JSON messages from the API.
+    /// Attempt to start listening on the Stream API and returns a `Stream` which yields JSON messages from the API.
     pub fn listen_json(&self) -> Result<TwitterJsonStream> {
         Ok(TwitterJsonStream {
             lines: self.connect()?,
@@ -489,7 +506,8 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .map_or(false, |&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
             {
                 use flate2::read::GzDecoder;
-                Ok(util::lines(BufReader::new(GzDecoder::new(res)?)))
+                let res = GzDecoder::new(res).map_err(Error::Gzip)?;
+                Ok(util::lines(BufReader::new(res)))
             } else {
                 Ok(util::lines(BufReader::new(res)))
             }
@@ -574,14 +592,14 @@ impl<'a> TwitterStreamBuilder<'a> {
 
 impl Stream for TwitterStream {
     type Item = StreamMessage;
-    type Error = Error;
+    type Error = StreamError;
 
-    fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
+    fn poll(&mut self) -> Poll<Option<StreamMessage>, StreamError> {
         use Async::*;
 
         match self.inner.poll()? {
             Ready(Some(line)) => match json::from_str(&line)? {
-                StreamMessage::Disconnect(d) => Err(Error::Disconnect(d)),
+                StreamMessage::Disconnect(d) => Err(StreamError::Disconnect(d)),
                 msg => Ok(Ready(Some(msg))),
             },
             Ready(None) => Ok(Ready(None)),
@@ -592,9 +610,9 @@ impl Stream for TwitterStream {
 
 impl Stream for TwitterJsonStream {
     type Item = String;
-    type Error = Error;
+    type Error = JsonStreamError;
 
-    fn poll(&mut self) -> Poll<Option<String>, Error> {
+    fn poll(&mut self) -> Poll<Option<String>, JsonStreamError> {
         use Async::*;
 
         loop {
@@ -611,7 +629,7 @@ impl Stream for TwitterJsonStream {
                 Ready(None) => return Ok(None.into()),
                 NotReady => {
                     if let Ok(Ready(())) = self.timer.poll() {
-                        return Err(Error::TimedOut(self.timeout.as_secs()));
+                        return Err(JsonStreamError::TimedOut(self.timeout.as_secs()));
                     } else {
                         return Ok(NotReady);
                     }
@@ -622,7 +640,7 @@ impl Stream for TwitterJsonStream {
 }
 
 impl IntoIterator for TwitterStream {
-    type Item = Result<StreamMessage>;
+    type Item = StreamResult<StreamMessage>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -631,7 +649,7 @@ impl IntoIterator for TwitterStream {
 }
 
 impl IntoIterator for TwitterJsonStream {
-    type Item = Result<String>;
+    type Item = JsonStreamResult<String>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -644,13 +662,10 @@ impl StdError for Error {
         use Error::*;
 
         match *self {
-            Url(ref e) => e.description(),
-            Hyper(ref e) => e.description(),
+            Gzip(ref e) => e.description(),
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
-            Io(ref e) => e.description(),
-            TimedOut(_) => "timed out",
-            Json(ref e) => e.description(),
-            Disconnect(ref d) => &d.reason,
+            Hyper(ref e) => e.description(),
+            Url(ref e) => e.description(),
         }
     }
 
@@ -658,40 +673,90 @@ impl StdError for Error {
         use Error::*;
 
         match *self {
-            Url(ref e) => Some(e),
+            Gzip(ref e) => Some(e),
+            Http(_) => None,
             Hyper(ref e) => Some(e),
-            Io(ref e) => Some(e),
-            Json(ref e) => Some(e),
-            Http(_) | TimedOut(_) | Disconnect(_) => None,
+            Url(ref e) => Some(e),
         }
     }
 }
+
+impl StdError for StreamError {
+    fn description(&self) -> &str {
+        use StreamError::*;
+
+        match *self {
+            Disconnect(ref d) => &d.reason,
+            Stream(ref e) => e.description(),
+            Json(ref e) => e.description(),
+        }
+    }
+
+    fn cause(&self) -> Option<&StdError> {
+        use StreamError::*;
+
+        match *self {
+            Disconnect(_) => None,
+            Stream(ref e) => Some(e),
+            Json(ref e) => Some(e),
+        }
+    }
+}
+
+impl StdError for JsonStreamError {
+    fn description(&self) -> &str {
+        use JsonStreamError::*;
+
+        match *self {
+            Io(ref e) => e.description(),
+            TimedOut(_) => "timed out",
+        }
+    }
+
+    fn cause(&self) -> Option<&StdError> {
+        use JsonStreamError::*;
+
+        match *self {
+            Io(ref e) => Some(e),
+            TimedOut(_) => None,
+        }
+    }
+}
+
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use Error::*;
 
         match *self {
-            Url(ref e) => Display::fmt(e, f),
-            Hyper(ref e) => Display::fmt(e, f),
+            Gzip(ref e) => Display::fmt(e, f),
             Http(ref code) => Display::fmt(code, f),
-            Io(ref e) => Display::fmt(e, f),
-            TimedOut(timeout) => write!(f, "connection timed out after {} sec", timeout),
-            Json(ref e) => Display::fmt(e, f),
-            Disconnect(ref d) => Display::fmt(d, f),
+            Hyper(ref e) => Display::fmt(e, f),
+            Url(ref e) => Display::fmt(e, f),
         }
     }
 }
 
-impl From<url::ParseError> for Error {
-    fn from(e: url::ParseError) -> Self {
-        Error::Url(e)
+impl Display for StreamError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        use StreamError::*;
+
+        match *self {
+            Disconnect(ref d) => Display::fmt(d, f),
+            Stream(ref e) => Display::fmt(e, f),
+            Json(ref e) => Display::fmt(e, f),
+        }
     }
 }
 
-impl From<hyper::Error> for Error {
-    fn from(e: hyper::Error) -> Self {
-        Error::Hyper(e)
+impl Display for JsonStreamError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        use JsonStreamError::*;
+
+        match *self {
+            Io(ref e) => Display::fmt(e, f),
+            TimedOut(timeout) => write!(f, "connection timed out after {} sec", timeout),
+        }
     }
 }
 
@@ -701,15 +766,33 @@ impl From<StatusCode> for Error {
     }
 }
 
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Error::Io(e)
+impl From<hyper::Error> for Error {
+    fn from(e: hyper::Error) -> Self {
+        Error::Hyper(e)
     }
 }
 
-impl From<JsonError> for Error {
+impl From<url::ParseError> for Error {
+    fn from(e: url::ParseError) -> Self {
+        Error::Url(e)
+    }
+}
+
+impl From<JsonError> for StreamError {
     fn from(e: JsonError) -> Self {
-        Error::Json(e)
+        StreamError::Json(e)
+    }
+}
+
+impl From<JsonStreamError> for StreamError {
+    fn from(e: JsonStreamError) -> Self {
+        StreamError::Stream(e)
+    }
+}
+
+impl From<io::Error> for JsonStreamError {
+    fn from(e: io::Error) -> Self {
+        JsonStreamError::Io(e)
     }
 }
 
