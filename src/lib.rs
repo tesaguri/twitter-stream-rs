@@ -121,7 +121,6 @@ use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use message::Disconnect;
 use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
-use util::{Lines, OAuthHeaderWrapper};
 use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt::{self, Display, Formatter};
@@ -131,6 +130,7 @@ use std::time::Duration;
 use types::{FilterLevel, JsonError, RequestMethod, StatusCode, UrlError, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
+use util::{Lines, OAuthHeaderWrapper};
 use user::UserId;
 
 macro_rules! def_stream {
@@ -185,15 +185,6 @@ macro_rules! def_stream {
         }
 
         impl<$lifetime> $B<$lifetime> {
-            /// Constructs a builder for a Stream at a custom end point.
-            pub fn custom($($b_field: $bf_ty),*) -> Self {
-                $B {
-                    $($b_field: $b_field,)*
-                    $($setter: $default,)*
-                    $($option: None,)*
-                }
-            }
-
             $(
                 $(#[$constructor_attr])*
                 pub fn $constructor(consumer_key: &$lifetime str, consumer_secret: &$lifetime str,
@@ -202,6 +193,15 @@ macro_rules! def_stream {
                     $B::custom(RequestMethod::$Method, $end_point, consumer_key, consumer_secret, token, token_secret)
                 }
             )*
+
+            /// Constructs a builder for a Stream at a custom end point.
+            pub fn custom($($b_field: $bf_ty),*) -> Self {
+                $B {
+                    $($b_field: $b_field,)*
+                    $($setter: $default,)*
+                    $($option: None,)*
+                }
+            }
 
             $(
                 $(#[$setter_attr])*
@@ -336,7 +336,7 @@ def_stream! {
 
     // Constructors for `TwitterStreamBuilder`:
 
-    /// Create a builder for `POST statuses/filter`.
+    /// Create a builder for `POST statuses/filter` endpoint.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
@@ -346,7 +346,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::filter().listen_json()`.
     pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
 
-    /// Create a builder for `GET statuses/sample`.
+    /// Create a builder for `GET statuses/sample` endpoint.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
@@ -356,7 +356,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
     pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
 
-    /// Create a builder for `GET statuses/firehose`. This endpoint requires special permission to access.
+    /// Create a builder for `GET statuses/firehose` endpoint. The endpoint requires special permission to access.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/firehose
@@ -366,7 +366,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::firehose().listen_json()`.
     pub fn firehose(Get, "https://stream.twitter.com/1.1/statuses/firehose.json");
 
-    /// Create a builder for `GET user` (a.k.a. User Stream).
+    /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
@@ -376,7 +376,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
     pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
 
-    /// Create a builder for `GET site` (a.k.a. Site Stream).
+    /// Create a builder for `GET site` endpoint (a.k.a. Site Stream).
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/site

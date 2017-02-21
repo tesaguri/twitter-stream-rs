@@ -4,8 +4,6 @@ use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Unexpe
 use serde::de::impls::IgnoredAny;
 use std::fmt;
 
-#[allow(unknown_lints)]
-#[allow(doc_markdown)]
 /// The Geometry object specified in [The GeoJSON Format (RFC7946)](https://tools.ietf.org/html/rfc7946).
 // https://tools.ietf.org/html/rfc7946#section-3.1
 #[derive(Clone, Debug, PartialEq)]
@@ -193,7 +191,7 @@ mod tests {
             json::from_str("{\"coordinates\":[-75.14310264,40.05701649],\"type\":\"Point\"}").unwrap()
         );
         assert_eq!(
-            Geometry::Polygon(vec![vec![Position(2.2241006,48.8155414), Position(2.4699099,48.8155414), 
+            Geometry::Polygon(vec![vec![Position(2.2241006,48.8155414), Position(2.4699099,48.8155414),
                 Position(2.4699099,48.9021461), Position(2.2241006,48.9021461)]]),
             json::from_str("{\"coordinates\":[
                 [[2.2241006,48.8155414],[2.4699099,48.8155414],[2.4699099,48.9021461],[2.2241006,48.9021461]]
