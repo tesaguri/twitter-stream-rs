@@ -1,6 +1,7 @@
 //! Users
 
-use super::{DateTime, WithheldScope};
+use types::{DateTime, WithheldScope};
+use util;
 
 /// Represents a user on Twitter.
 ///
@@ -14,7 +15,7 @@ pub struct User {
     pub contributors_enabled: bool,
 
     /// The UTC datetime that the user account was created on Twitter.
-    #[serde(deserialize_with = "super::deserialize_datetime")]
+    #[serde(deserialize_with = "util::deserialize_datetime")]
     pub created_at: DateTime,
 
     /// When `true`, indicates that the user has not altered the theme or background of their user profile.
@@ -122,7 +123,7 @@ pub struct User {
     /// The hexadecimal color the user has chosen to display text with in their Twitter UI.
     pub profile_text_color: String,
 
-    /// When `true`, indicates the user wants their uploaded background image to be used. 
+    /// When `true`, indicates the user wants their uploaded background image to be used.
     pub profile_use_background_image: bool,
 
     /// When `true`, indicates that this user has chosen to protect their Tweets.

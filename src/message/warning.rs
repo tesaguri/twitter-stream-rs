@@ -1,7 +1,7 @@
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
 use std::fmt;
-use super::UserId;
+use user::UserId;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Warning {

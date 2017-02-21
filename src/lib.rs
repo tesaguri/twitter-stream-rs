@@ -95,20 +95,31 @@ extern crate serde_json as json;
 extern crate url;
 
 #[macro_use]
-pub mod message;
-
 mod util;
 
-pub use hyper::method::Method;
-pub use hyper::status::StatusCode;
-pub use json::Error as JsonError;
+pub mod direct_message;
+pub mod entities;
+pub mod geometry;
+pub mod list;
+pub mod message;
+pub mod place;
+pub mod tweet;
+pub mod types;
+pub mod user;
+
+pub use direct_message::DirectMessage;
+pub use entities::Entities;
+pub use geometry::Geometry;
+pub use list::List;
 pub use message::StreamMessage;
+pub use place::Place;
+pub use tweet::Tweet;
+pub use user::User;
 
 use futures::{Async, Future, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
-use message::{FilterLevel, UserId};
-use message::stream::Disconnect;
+use message::Disconnect;
 use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
 use util::{Lines, OAuthHeaderWrapper, Timeout};
 use std::convert::From;
@@ -117,8 +128,10 @@ use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufReader};
 use std::result;
 use std::time::{Duration, Instant};
+use types::{FilterLevel, JsonError, RequestMethod, StatusCode, UrlError, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
+use user::UserId;
 
 macro_rules! def_stream {
     (
@@ -186,7 +199,7 @@ macro_rules! def_stream {
                 pub fn $constructor(consumer_key: &$lifetime str, consumer_secret: &$lifetime str,
                     token: &$lifetime str, token_secret: &$lifetime str) -> Self
                 {
-                    $B::custom(Method::$Method, $end_point, consumer_key, consumer_secret, token, token_secret)
+                    $B::custom(RequestMethod::$Method, $end_point, consumer_key, consumer_secret, token, token_secret)
                 }
             )*
 
@@ -235,7 +248,7 @@ def_stream! {
     /// A builder for `TwitterStream`.
     #[derive(Clone, Debug)]
     pub struct TwitterStreamBuilder<'a> {
-        method: Method,
+        method: RequestMethod,
         end_point: &'a str,
         consumer_key: &'a str,
         consumer_secret: &'a str,
@@ -381,21 +394,6 @@ def_stream! {
     pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
 }
 
-string_enums! {
-    /// A value for `with` parameter for User and Site Streams.
-    #[derive(Clone, Debug)]
-    pub enum With {
-        /// Instruct the stream to send messages only from the user associated with that stream.
-        /// The default for Site Streams.
-        :User("user"),
-        /// Instruct the stream to send messages from accounts the user follows as well, equivalent
-        /// to the user’s home timeline. The default for User Streams.
-        :Following("following");
-        /// Custom value.
-        :Custom(_),
-    }
-}
-
 /// An error occurred while trying to connect to the Stream API.
 #[derive(Debug)]
 pub enum Error {
@@ -492,7 +490,7 @@ impl<'a> TwitterStreamBuilder<'a> {
             }
         };
 
-        let res = if Method::Post == self.method {
+        let res = if RequestMethod::Post == self.method {
             use hyper::mime::{Mime, SubLevel, TopLevel};
 
             headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
@@ -791,8 +789,8 @@ impl From<hyper::Error> for Error {
     }
 }
 
-impl From<url::ParseError> for Error {
-    fn from(e: url::ParseError) -> Self {
+impl From<UrlError> for Error {
+    fn from(e: UrlError) -> Self {
         Error::Url(e)
     }
 }

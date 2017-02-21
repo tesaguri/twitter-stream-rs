@@ -1,9 +1,10 @@
+use {List, Tweet, User};
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
 use std::fmt;
-use super::super::DateTime;
+use types::DateTime;
+use util;
 use json::Value;
-use super::{List, Tweet, User};
 
 /// Represents notifications about non-Tweet events are also sent over a stream.
 ///
@@ -79,7 +80,7 @@ macro_rules! impl_event {
                             match k.as_str() {
                                 "created_at" => {
                                     let val = v.visit_value::<String>()?;
-                                    event.created_at = Some(super::super::parse_datetime(&val).map_err(err_map!())?);
+                                    event.created_at = Some(util::parse_datetime(&val).map_err(err_map!())?);
                                 },
                                 "event" => {
                                     let e = v.visit_value::<String>()?;

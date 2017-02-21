@@ -1,7 +1,7 @@
 //! Place
 
+use geometry::Geometry;
 use std::collections::HashMap;
-use super::Geometry;
 
 /// Represents `place` field in `Tweet`.
 ///

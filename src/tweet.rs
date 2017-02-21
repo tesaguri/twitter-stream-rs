@@ -1,7 +1,10 @@
 //! Tweets
 
+use {Entities, Geometry, Place};
 use std::collections::HashMap;
-use super::{DateTime, Entities, FilterLevel, Geometry, Place, User, UserId, WithheldScope};
+use types::{DateTime, FilterLevel, WithheldScope};
+use user::{User, UserId};
+use util;
 use json::Value;
 
 /// Represents a Tweet.
@@ -17,7 +20,7 @@ pub struct Tweet {
     pub coordinates: Option<Geometry>,
 
     /// UTC time when this Tweet was created.
-    #[serde(deserialize_with = "super::deserialize_datetime")]
+    #[serde(deserialize_with = "util::deserialize_datetime")]
     pub created_at: DateTime,
 
     // pub current_user_retweet: Option<StatusId>,

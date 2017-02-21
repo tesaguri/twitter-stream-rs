@@ -1,6 +1,8 @@
 //! Lists
 
-use super::{DateTime, User};
+use User;
+use types::DateTime;
+use util;
 
 /// Represents a List.
 ///
@@ -11,7 +13,7 @@ use super::{DateTime, User};
 pub struct List {
     pub slug: String,
     pub name: String,
-    #[serde(deserialize_with = "super::deserialize_datetime")]
+    #[serde(deserialize_with = "util::deserialize_datetime")]
     pub created_at: DateTime,
     pub uri: String,
     pub subscriber_count: u64,
