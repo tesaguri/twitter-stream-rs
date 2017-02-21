@@ -116,18 +116,18 @@ pub use place::Place;
 pub use tweet::Tweet;
 pub use user::User;
 
-use futures::{Async, Future, Poll, Stream};
+use futures::{Async, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use message::Disconnect;
 use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
-use util::{Lines, OAuthHeaderWrapper, Timeout};
+use util::{Lines, OAuthHeaderWrapper};
 use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufReader};
 use std::result;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use types::{FilterLevel, JsonError, RequestMethod, StatusCode, UrlError, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
@@ -257,11 +257,6 @@ def_stream! {
 
         // Setters:
 
-        /// Set a timeout for the stream. The default is 90 secs.
-        :timeout: Duration = Duration::from_secs(90),
-
-        // Setters of API parameters:
-
         // delimited: bool,
 
         /// Set whether to receive messages when in danger of being disconnected.
@@ -337,8 +332,6 @@ def_stream! {
     /// Same as `TwitterStream` except that it yields raw JSON string messages.
     pub struct TwitterJsonStream {
         lines: Lines,
-        timeout: Duration,
-        timer: Timeout,
     }
 
     // Constructors for `TwitterStreamBuilder`:
@@ -415,24 +408,14 @@ pub enum Error {
 pub enum StreamError {
     /// The Stream has been disconnected by the server.
     Disconnect(Disconnect),
-    /// An error from the Stream.
-    Stream(JsonStreamError),
+    /// An I/O error.
+    Io(io::Error),
     /// Failed to parse a JSON message from Stream API.
     Json(JsonError),
 }
 
-/// An error occured while listening on the Stream API through `TwitterJsonStream`.
-#[derive(Debug)]
-pub enum JsonStreamError {
-    /// An I/O error.
-    Io(io::Error),
-    /// The Stream has timed out.
-    TimedOut(u64),
-}
-
 pub type Result<T> = result::Result<T, Error>;
 pub type StreamResult<T> = result::Result<T, StreamError>;
-pub type JsonStreamResult<T> = result::Result<T, JsonStreamError>;
 
 impl<'a> TwitterStreamBuilder<'a> {
     /// Attempt to start listening on the Stream API and returns a `Stream` which yields parsed messages from the API.
@@ -446,8 +429,6 @@ impl<'a> TwitterStreamBuilder<'a> {
     pub fn listen_json(&self) -> Result<TwitterJsonStream> {
         Ok(TwitterJsonStream {
             lines: self.connect()?,
-            timeout: self.timeout,
-            timer: Timeout::after(self.timeout),
         })
     }
 
@@ -482,7 +463,9 @@ impl<'a> TwitterStreamBuilder<'a> {
         } else {
             #[cfg(feature = "tls-failable")]
             {
-                default_client::new().map(Hold::Owned).map_err(Error::Tls)?
+                let mut cli = default_client::new().map_err(Error::Tls)?;
+                cli.set_read_timeout(Some(Duration::from_secs(90)));
+                Hold::Owned(cli)
             }
             #[cfg(not(feature = "tls-failable"))]
             {
@@ -621,30 +604,20 @@ impl Stream for TwitterStream {
 
 impl Stream for TwitterJsonStream {
     type Item = String;
-    type Error = JsonStreamError;
+    type Error = io::Error;
 
-    fn poll(&mut self) -> Poll<Option<String>, JsonStreamError> {
+    fn poll(&mut self) -> Poll<Option<String>, io::Error> {
         use Async::*;
 
         loop {
             match self.lines.poll()? {
                 Ready(Some(line)) => {
-                    let now = Instant::now();
-                    self.timer = Timeout::after(self.timeout);
-                    self.timer.park(now);
-
                     if !line.is_empty() {
                         return Ok(Ready(Some(line)));
                     }
                 },
-                Ready(None) => return Ok(None.into()),
-                NotReady => {
-                    if let Ok(Ready(())) = self.timer.poll() {
-                        return Err(JsonStreamError::TimedOut(self.timeout.as_secs()));
-                    } else {
-                        return Ok(NotReady);
-                    }
-                },
+                Ready(None) => return Ok(Ready(None)),
+                NotReady => return Ok(NotReady),
             }
         }
     }
@@ -660,7 +633,7 @@ impl IntoIterator for TwitterStream {
 }
 
 impl IntoIterator for TwitterJsonStream {
-    type Item = JsonStreamResult<String>;
+    type Item = io::Result<String>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -702,7 +675,7 @@ impl StdError for StreamError {
 
         match *self {
             Disconnect(ref d) => &d.reason,
-            Stream(ref e) => e.description(),
+            Io(ref e) => e.description(),
             Json(ref e) => e.description(),
         }
     }
@@ -712,32 +685,11 @@ impl StdError for StreamError {
 
         match *self {
             Disconnect(_) => None,
-            Stream(ref e) => Some(e),
+            Io(ref e) => Some(e),
             Json(ref e) => Some(e),
         }
     }
 }
-
-impl StdError for JsonStreamError {
-    fn description(&self) -> &str {
-        use JsonStreamError::*;
-
-        match *self {
-            Io(ref e) => e.description(),
-            TimedOut(_) => "timed out",
-        }
-    }
-
-    fn cause(&self) -> Option<&StdError> {
-        use JsonStreamError::*;
-
-        match *self {
-            Io(ref e) => Some(e),
-            TimedOut(_) => None,
-        }
-    }
-}
-
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -760,19 +712,8 @@ impl Display for StreamError {
 
         match *self {
             Disconnect(ref d) => Display::fmt(d, f),
-            Stream(ref e) => Display::fmt(e, f),
-            Json(ref e) => Display::fmt(e, f),
-        }
-    }
-}
-
-impl Display for JsonStreamError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        use JsonStreamError::*;
-
-        match *self {
             Io(ref e) => Display::fmt(e, f),
-            TimedOut(timeout) => write!(f, "connection timed out after {} sec", timeout),
+            Json(ref e) => Display::fmt(e, f),
         }
     }
 }
@@ -795,21 +736,15 @@ impl From<UrlError> for Error {
     }
 }
 
+impl From<io::Error> for StreamError {
+    fn from(e: io::Error) -> Self {
+        StreamError::Io(e)
+    }
+}
+
 impl From<JsonError> for StreamError {
     fn from(e: JsonError) -> Self {
         StreamError::Json(e)
-    }
-}
-
-impl From<JsonStreamError> for StreamError {
-    fn from(e: JsonStreamError) -> Self {
-        StreamError::Stream(e)
-    }
-}
-
-impl From<io::Error> for JsonStreamError {
-    fn from(e: io::Error) -> Self {
-        JsonStreamError::Io(e)
     }
 }
 

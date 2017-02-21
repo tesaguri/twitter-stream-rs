@@ -1,5 +1,5 @@
 use chrono::{TimeZone, UTC};
-use futures::{Future, Poll, Sink, Stream};
+use futures::{Future, Sink, Stream};
 use futures::stream::{self, Then};
 use futures::sync::mpsc::{self, Receiver};
 use hyper;
@@ -8,10 +8,7 @@ use serde::de::{Deserialize, Deserializer, Error};
 use std::fmt;
 use std::io::{self, BufRead};
 use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
 use types::DateTime;
 
 /// A stream over each line on a `BufRead`.
@@ -23,13 +20,6 @@ pub type Lines = Then<
 
 #[derive(Clone, Debug)]
 pub struct OAuthHeaderWrapper(pub OAuthAuthorizationHeader);
-
-/// A future which resolves at a specific period of time.
-pub struct Timeout {
-    when: Instant,
-    parked: bool,
-    is_active: Arc<AtomicBool>,
-}
 
 macro_rules! string_enums {
     (
@@ -166,59 +156,5 @@ impl hyper::header::Scheme for OAuthHeaderWrapper {
 
     fn fmt_scheme(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(self.0.auth_param())
-    }
-}
-
-impl Timeout {
-    pub fn after(dur: Duration) -> Self {
-        Timeout::at(Instant::now() + dur)
-    }
-
-    pub fn at(at: Instant) -> Self {
-        Timeout {
-            when: at,
-            parked: false,
-            is_active: Arc::new(AtomicBool::new(true)),
-        }
-    }
-
-    pub fn park(&mut self, now: Instant) {
-        use futures::task;
-
-        if !self.parked {
-            let wait = self.when - now; // Panics if `self.when < now`.
-            let is_active = self.is_active.clone();
-            let task = task::park();
-            thread::spawn(move || {
-                thread::sleep(wait);
-                if is_active.load(Ordering::Relaxed) {
-                    task.unpark();
-                }
-            });
-            self.parked = true;
-        }
-    }
-}
-
-impl Future for Timeout {
-    type Item = ();
-    type Error = ();
-
-    fn poll(&mut self) -> Poll<(), ()> {
-        use futures::Async::*;
-
-        let now = Instant::now();
-        if now < self.when {
-            self.park(now);
-            Ok(NotReady)
-        } else {
-            Ok(Ready(()))
-        }
-    }
-}
-
-impl Drop for Timeout {
-    fn drop(&mut self) {
-        self.is_active.store(false, Ordering::Relaxed);
     }
 }
