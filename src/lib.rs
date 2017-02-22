@@ -1,7 +1,7 @@
 /*!
 # Twitter Stream
 
-A library for listening on Twitter Stream API.
+A library for listening on Twitter Streaming API.
 
 ## Usage
 
@@ -324,7 +324,7 @@ def_stream! {
         :with: Option<With>;
     }
 
-    /// A listener for Twitter Stream API.
+    /// A listener for Twitter Streaming API.
     pub struct TwitterStream {
         inner: TwitterJsonStream,
     }
@@ -387,7 +387,7 @@ def_stream! {
     pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
 }
 
-/// An error occurred while trying to connect to the Stream API.
+/// An error occurred while trying to connect to a Stream.
 #[derive(Debug)]
 pub enum Error {
     /// An error occured while parsing the gzip header of the response from the server.
@@ -403,14 +403,14 @@ pub enum Error {
     Tls(default_client::Error),
 }
 
-/// An error occured while listening on the Stream API.
+/// An error occured while listening on a Stream.
 #[derive(Debug)]
 pub enum StreamError {
     /// The Stream has been disconnected by the server.
     Disconnect(Disconnect),
     /// An I/O error.
     Io(io::Error),
-    /// Failed to parse a JSON message from Stream API.
+    /// Failed to parse a JSON message from a Stream.
     Json(JsonError),
 }
 
@@ -418,21 +418,21 @@ pub type Result<T> = result::Result<T, Error>;
 pub type StreamResult<T> = result::Result<T, StreamError>;
 
 impl<'a> TwitterStreamBuilder<'a> {
-    /// Attempt to start listening on the Stream API and returns a `Stream` which yields parsed messages from the API.
+    /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self) -> Result<TwitterStream> {
         Ok(TwitterStream {
             inner: self.listen_json()?,
         })
     }
 
-    /// Attempt to start listening on the Stream API and returns a `Stream` which yields JSON messages from the API.
+    /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
     pub fn listen_json(&self) -> Result<TwitterJsonStream> {
         Ok(TwitterJsonStream {
             lines: self.connect()?,
         })
     }
 
-    /// Attempt to make an HTTP connection to the end point of the Stream API.
+    /// Attempt to make an HTTP connection to an end point of the Streaming API.
     fn connect(&self) -> Result<Lines> {
         let mut url = Url::parse(self.end_point)?;
 
@@ -442,7 +442,7 @@ impl<'a> TwitterStreamBuilder<'a> {
             headers.set(UserAgent(ua.to_owned()));
         }
 
-        // Holds a borrowed or owned value.
+        /// Holds a borrowed or owned value.
         enum Hold<'a, T: 'a> {
             Borrowed(&'a T),
             Owned(T),
