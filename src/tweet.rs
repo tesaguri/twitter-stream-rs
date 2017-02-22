@@ -2,10 +2,9 @@
 
 use {Entities, Geometry, Place};
 use std::collections::HashMap;
-use types::{DateTime, FilterLevel, WithheldScope};
+use types::{DateTime, FilterLevel, JsonValue, WithheldScope};
 use user::{User, UserId};
 use util;
-use json::Value;
 
 /// Represents a Tweet.
 ///
@@ -88,7 +87,7 @@ pub struct Tweet {
 
     /// A set of key-value pairs indicating the intended contextual delivery of the containing Tweet.
     /// Currently used by Twitter’s Promoted Products.
-    pub scopes: Option<HashMap<String, Value>>,
+    pub scopes: Option<HashMap<String, JsonValue>>,
 
     /// Number of times this Tweet has been retweeted.
     pub retweet_count: u64,
