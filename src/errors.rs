@@ -1,13 +1,12 @@
 /// Error types
 
-use default_client;
 use hyper;
 use message::Disconnect;
 use std::error::Error as StdError;
 use std::fmt::{self, Display, Formatter};
 use std::result;
 use std::io;
-use types::{JsonError, StatusCode, UrlError};
+use types::{HyperError, JsonError, StatusCode, UrlError};
 
 /// An error occurred while trying to connect to a Stream.
 #[derive(Debug)]
@@ -17,12 +16,12 @@ pub enum Error {
     /// An HTTP error from the Stream.
     Http(StatusCode),
     /// An error from the `hyper` crate.
-    Hyper(hyper::Error),
+    Hyper(HyperError),
     /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
     Url(UrlError),
     #[cfg(feature = "tls-failable")]
     /// An error returned from a TLS client.
-    Tls(default_client::Error),
+    Tls(::types::TlsError),
 }
 
 /// An error occured while listening on a Stream.

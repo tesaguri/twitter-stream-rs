@@ -124,7 +124,6 @@ use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
 use std::io::{self, BufReader};
-use std::time::Duration;
 use types::{FilterLevel, RequestMethod, StatusCode, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
@@ -432,7 +431,7 @@ impl<'a> TwitterStreamBuilder<'a> {
             #[cfg(feature = "tls-failable")]
             {
                 let mut cli = default_client::new().map_err(Error::Tls)?;
-                cli.set_read_timeout(Some(Duration::from_secs(90)));
+                cli.set_read_timeout(Some(std::time::Duration::from_secs(90)));
                 Hold::Owned(cli)
             }
             #[cfg(not(feature = "tls-failable"))]
@@ -614,14 +613,13 @@ mod default_client {
     extern crate hyper_native_tls;
     extern crate native_tls;
 
-    use hyper::client::Client;
-    use hyper::net::HttpsConnector;
+    pub use self::native_tls::Error as Error;
 
-    pub type Error = native_tls::Error;
+    use hyper::{self, Client};
 
     pub fn new() -> Result<Client, Error> {
         hyper_native_tls::NativeTlsClient::new()
-            .map(HttpsConnector::new)
+            .map(hyper::net::HttpsConnector::new)
             .map(Client::with_connector)
     }
 }
@@ -631,14 +629,13 @@ mod default_client {
     extern crate hyper_openssl;
     extern crate openssl;
 
-    use hyper::client::Client;
-    use hyper::net::HttpsConnector;
+    pub use self::openssl::error::ErrorStack as Error;
 
-    pub type Error = openssl::error::ErrorStack;
+    use hyper::{self, Client};
 
     pub fn new() -> Result<Client, Error> {
         hyper_openssl::OpensslClient::new()
-            .map(HttpsConnector::new)
+            .map(hyper::net::HttpsConnector::new)
             .map(Client::with_connector)
     }
 }
@@ -647,7 +644,7 @@ mod default_client {
 mod default_client {
     extern crate hyper_rustls;
 
-    use hyper::client::Client;
+    use hyper::Client;
     use hyper::net::HttpsConnector;
 
     pub fn new() -> Client {
@@ -657,7 +654,7 @@ mod default_client {
 
 #[cfg(not(feature = "tls"))]
 mod default_client {
-    use hyper::client::Client;
+    use hyper::Client;
 
     pub fn new() -> Client {
         Client::new()
