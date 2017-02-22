@@ -26,15 +26,12 @@ Here is a basic example that prints each Tweet's text from User Stream:
 extern crate futures;
 extern crate twitter_stream;
 use futures::{Future, Stream};
-use twitter_stream::{StreamMessage, TwitterStream};
+use twitter_stream::{StreamMessage, Token, TwitterStream};
 
 # fn main() {
-let consumer_key = "...";
-let consumer_secret = "...";
-let token = "...";
-let token_secret = "...";
+let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let stream = TwitterStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
+let stream = TwitterStream::user(&token).unwrap();
 
 stream
     .filter_map(|msg| {
@@ -61,11 +58,11 @@ If you don't want this behavior, you can opt to parse the messages manually:
 extern crate serde_json;
 
 # use futures::{Future, Stream};
-use twitter_stream::{StreamMessage, TwitterJsonStream};
+use twitter_stream::{StreamMessage, Token, TwitterJsonStream};
 
 # fn main() {
-# let (consumer_key, consumer_secret, token, token_secret) = ("", "", "", "");
-let stream = TwitterJsonStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
+# let token = Token::new("", "", "", "");
+let stream = TwitterJsonStream::user(&token).unwrap();
 
 stream
     .filter_map(|json| {
@@ -107,8 +104,10 @@ pub mod tweet;
 pub mod types;
 pub mod user;
 
+mod auth;
 mod errors;
 
+pub use auth::Token;
 pub use direct_message::DirectMessage;
 pub use entities::Entities;
 pub use errors::*;
@@ -121,13 +120,12 @@ pub use user::User;
 
 use futures::{Async, Poll, Stream};
 use hyper::client::Client;
-use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
-use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
+use hyper::header::{Headers, AcceptEncoding, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use std::io::{self, BufReader};
 use types::{FilterLevel, RequestMethod, StatusCode, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
-use util::{Lines, OAuthHeaderWrapper};
+use util::Lines;
 use user::UserId;
 
 macro_rules! def_stream {
@@ -184,10 +182,9 @@ macro_rules! def_stream {
         impl<$lifetime> $B<$lifetime> {
             $(
                 $(#[$constructor_attr])*
-                pub fn $constructor(consumer_key: &$lifetime str, consumer_secret: &$lifetime str,
-                    token: &$lifetime str, token_secret: &$lifetime str) -> Self
+                pub fn $constructor(token: &$lifetime Token<$lifetime>) -> Self
                 {
-                    $B::custom(RequestMethod::$Method, $end_point, consumer_key, consumer_secret, token, token_secret)
+                    $B::custom(RequestMethod::$Method, $end_point, token)
                 }
             )*
 
@@ -220,10 +217,9 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
-                    token: &'a str, token_secret: &'a str) -> Result<Self>
+                pub fn $constructor<'a>(token: &'a Token<'a>) -> Result<Self>
                 {
-                    $B::$constructor(consumer_key, consumer_secret, token, token_secret).listen()
+                    $B::$constructor(token).listen()
                 }
             )*
         }
@@ -231,10 +227,9 @@ macro_rules! def_stream {
         impl $JS {
             $(
                 $(#[$js_constructor_attr])*
-                pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
-                    token: &'a str, token_secret: &'a str) -> Result<Self>
+                pub fn $constructor<'a>(token: &'a Token<'a>) -> Result<Self>
                 {
-                    $B::$constructor(consumer_key, consumer_secret, token, token_secret).listen_json()
+                    $B::$constructor(token).listen_json()
                 }
             )*
         }
@@ -247,10 +242,7 @@ def_stream! {
     pub struct TwitterStreamBuilder<'a> {
         method: RequestMethod,
         end_point: &'a str,
-        consumer_key: &'a str,
-        consumer_secret: &'a str,
-        token: &'a str,
-        token_secret: &'a str;
+        token: &'a Token<'a>;
 
         // Setters:
 
@@ -447,7 +439,7 @@ impl<'a> TwitterStreamBuilder<'a> {
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
             let body = body.finish();
-            headers.set(self.create_authorization_header(&url, Some(body.as_ref())));
+            headers.set(auth::create_authorization_header(self.token, &self.method, &url, Some(body.as_ref())));
             client
                 .post(url)
                 .headers(headers)
@@ -455,7 +447,7 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .send()?
         } else {
             self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(self.create_authorization_header(&url, None));
+            headers.set(auth::create_authorization_header(self.token, &self.method, &url, None));
             client
                 .request(self.method.clone(), url)
                 .headers(headers)
@@ -532,22 +524,6 @@ impl<'a> TwitterStreamBuilder<'a> {
         if self.replies {
             pairs.append_pair("replies", "all");
         }
-    }
-
-    fn create_authorization_header(&self, url: &Url, params: Option<&[u8]>) -> Authorization<OAuthHeaderWrapper>
-    {
-        use url::form_urlencoded;
-
-        let mut oauth = OAuthAuthorizationHeaderBuilder::new(
-            self.method.as_ref(), url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
-        );
-        oauth.token(self.token, self.token_secret);
-        if let Some(p) = params {
-            oauth.request_parameters(form_urlencoded::parse(p));
-        }
-        let oauth = oauth.finish_for_twitter();
-
-        Authorization(OAuthHeaderWrapper(oauth))
     }
 }
 
