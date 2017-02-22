@@ -107,8 +107,11 @@ pub mod tweet;
 pub mod types;
 pub mod user;
 
+mod errors;
+
 pub use direct_message::DirectMessage;
 pub use entities::Entities;
+pub use errors::*;
 pub use geometry::Geometry;
 pub use list::List;
 pub use message::StreamMessage;
@@ -119,15 +122,10 @@ pub use user::User;
 use futures::{Async, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
-use message::Disconnect;
 use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
-use std::convert::From;
-use std::error::Error as StdError;
-use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufReader};
-use std::result;
 use std::time::Duration;
-use types::{FilterLevel, JsonError, RequestMethod, StatusCode, UrlError, With};
+use types::{FilterLevel, RequestMethod, StatusCode, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
 use util::{Lines, OAuthHeaderWrapper};
@@ -387,36 +385,6 @@ def_stream! {
     pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
 }
 
-/// An error occurred while trying to connect to a Stream.
-#[derive(Debug)]
-pub enum Error {
-    /// An error occured while parsing the gzip header of the response from the server.
-    Gzip(io::Error),
-    /// An HTTP error from the Stream.
-    Http(StatusCode),
-    /// An error from the `hyper` crate.
-    Hyper(hyper::Error),
-    /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
-    Url(url::ParseError),
-    #[cfg(feature = "tls-failable")]
-    /// An error returned from a TLS client.
-    Tls(default_client::Error),
-}
-
-/// An error occured while listening on a Stream.
-#[derive(Debug)]
-pub enum StreamError {
-    /// The Stream has been disconnected by the server.
-    Disconnect(Disconnect),
-    /// An I/O error.
-    Io(io::Error),
-    /// Failed to parse a JSON message from a Stream.
-    Json(JsonError),
-}
-
-pub type Result<T> = result::Result<T, Error>;
-pub type StreamResult<T> = result::Result<T, StreamError>;
-
 impl<'a> TwitterStreamBuilder<'a> {
     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self) -> Result<TwitterStream> {
@@ -638,113 +606,6 @@ impl IntoIterator for TwitterJsonStream {
 
     fn into_iter(self) -> Self::IntoIter {
         self.wait()
-    }
-}
-
-impl StdError for Error {
-    fn description(&self) -> &str {
-        use Error::*;
-
-        match *self {
-            Gzip(ref e) => e.description(),
-            Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
-            Hyper(ref e) => e.description(),
-            Url(ref e) => e.description(),
-            #[cfg(feature = "tls-failable")]
-            Tls(ref e) => e.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&StdError> {
-        use Error::*;
-
-        match *self {
-            Gzip(ref e) => Some(e),
-            Http(_) => None,
-            Hyper(ref e) => Some(e),
-            Url(ref e) => Some(e),
-            #[cfg(feature = "tls-failable")]
-            Tls(ref e) => Some(e),
-        }
-    }
-}
-
-impl StdError for StreamError {
-    fn description(&self) -> &str {
-        use StreamError::*;
-
-        match *self {
-            Disconnect(ref d) => &d.reason,
-            Io(ref e) => e.description(),
-            Json(ref e) => e.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&StdError> {
-        use StreamError::*;
-
-        match *self {
-            Disconnect(_) => None,
-            Io(ref e) => Some(e),
-            Json(ref e) => Some(e),
-        }
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        use Error::*;
-
-        match *self {
-            Gzip(ref e) => Display::fmt(e, f),
-            Http(ref code) => Display::fmt(code, f),
-            Hyper(ref e) => Display::fmt(e, f),
-            Url(ref e) => Display::fmt(e, f),
-            #[cfg(feature = "tls-failable")]
-            Tls(ref e) => Display::fmt(e, f),
-        }
-    }
-}
-
-impl Display for StreamError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        use StreamError::*;
-
-        match *self {
-            Disconnect(ref d) => Display::fmt(d, f),
-            Io(ref e) => Display::fmt(e, f),
-            Json(ref e) => Display::fmt(e, f),
-        }
-    }
-}
-
-impl From<StatusCode> for Error {
-    fn from(e: StatusCode) -> Self {
-        Error::Http(e)
-    }
-}
-
-impl From<hyper::Error> for Error {
-    fn from(e: hyper::Error) -> Self {
-        Error::Hyper(e)
-    }
-}
-
-impl From<UrlError> for Error {
-    fn from(e: UrlError) -> Self {
-        Error::Url(e)
-    }
-}
-
-impl From<io::Error> for StreamError {
-    fn from(e: io::Error) -> Self {
-        StreamError::Io(e)
-    }
-}
-
-impl From<JsonError> for StreamError {
-    fn from(e: JsonError) -> Self {
-        StreamError::Json(e)
     }
 }
 
