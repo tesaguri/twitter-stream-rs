@@ -421,15 +421,11 @@ impl<'a> TwitterStreamBuilder<'a> {
             Hold::Borrowed(c)
         } else {
             #[cfg(feature = "tls-failable")]
-            {
-                let mut cli = default_client::new().map_err(Error::Tls)?;
-                cli.set_read_timeout(Some(std::time::Duration::from_secs(90)));
-                Hold::Owned(cli)
-            }
+            let mut cli = default_client::new().map_err(Error::Tls)?;
             #[cfg(not(feature = "tls-failable"))]
-            {
-                Hold::Owned(default_client::new())
-            }
+            let mut cli = default_client::new();
+            cli.set_read_timeout(Some(std::time::Duration::from_secs(90)));
+            Hold::Owned(cli)
         };
 
         let res = if RequestMethod::Post == self.method {
