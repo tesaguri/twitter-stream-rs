@@ -5,7 +5,7 @@ use futures::sync::mpsc::{self, Receiver};
 use hyper;
 use oauthcli::{OAuthAuthorizationHeader, ParseOAuthAuthorizationHeaderError};
 use serde::de::{Deserialize, Deserializer, Error};
-use std::fmt;
+use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufRead};
 use std::str::FromStr;
 use std::thread;
@@ -17,6 +17,10 @@ pub type Lines = Then<
     fn(Result<Result<String, io::Error>, ()>) -> Result<String, io::Error>,
     Result<String, io::Error>,
 >;
+
+/// Represents an infallible operation in `default_client::new`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum Never {}
 
 #[derive(Clone, Debug)]
 pub struct OAuthHeaderWrapper(pub OAuthAuthorizationHeader);
@@ -139,6 +143,18 @@ pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
 
 pub fn deserialize_datetime<D: Deserializer>(d: D) -> Result<DateTime, D::Error> {
     parse_datetime(&String::deserialize(d)?).map_err(|e| D::Error::custom(e.to_string()))
+}
+
+impl ::std::error::Error for Never {
+    fn description(&self) -> &str {
+        unreachable!()
+    }
+}
+
+impl Display for Never {
+    fn fmt(&self, _: &mut Formatter) -> fmt::Result {
+        unreachable!()
+    }
 }
 
 impl FromStr for OAuthHeaderWrapper {

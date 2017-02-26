@@ -1,14 +1,19 @@
-/// Error types
+//! Error types
 
-use hyper;
+pub use default_client::Error as TlsError;
+pub use hyper::Error as HyperError;
+pub use json::Error as JsonError;
+pub use url::ParseError as UrlError;
+
 use message::Disconnect;
 use std::error::Error as StdError;
 use std::fmt::{self, Display, Formatter};
 use std::result;
 use std::io;
-use types::{HyperError, JsonError, StatusCode, UrlError};
+use types::StatusCode;
 
 /// An error occurred while trying to connect to a Stream.
+#[allow(unreachable_patterns)]
 #[derive(Debug)]
 pub enum Error {
     /// An error occured while parsing the gzip header of the response from the server.
@@ -19,9 +24,8 @@ pub enum Error {
     Hyper(HyperError),
     /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
     Url(UrlError),
-    #[cfg(feature = "tls-failable")]
-    /// An error returned from a TLS client.
-    Tls(::types::TlsError),
+    /// An error occured when initializing a TLS client.
+    Tls(TlsError),
 }
 
 /// An error occured while listening on a Stream.
@@ -36,18 +40,17 @@ pub enum StreamError {
 }
 
 pub type Result<T> = result::Result<T, Error>;
-pub type StreamResult<T> = result::Result<T, StreamError>;
 
 impl StdError for Error {
     fn description(&self) -> &str {
         use Error::*;
 
+        #[allow(unreachable_patterns)]
         match *self {
             Gzip(ref e) => e.description(),
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
             Url(ref e) => e.description(),
-            #[cfg(feature = "tls-failable")]
             Tls(ref e) => e.description(),
         }
     }
@@ -55,12 +58,12 @@ impl StdError for Error {
     fn cause(&self) -> Option<&StdError> {
         use Error::*;
 
+        #[allow(unreachable_patterns)]
         match *self {
             Gzip(ref e) => Some(e),
             Http(_) => None,
             Hyper(ref e) => Some(e),
             Url(ref e) => Some(e),
-            #[cfg(feature = "tls-failable")]
             Tls(ref e) => Some(e),
         }
     }
@@ -92,12 +95,12 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use Error::*;
 
+        #[allow(unreachable_patterns)]
         match *self {
             Gzip(ref e) => Display::fmt(e, f),
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
             Url(ref e) => Display::fmt(e, f),
-            #[cfg(feature = "tls-failable")]
             Tls(ref e) => Display::fmt(e, f),
         }
     }
@@ -115,15 +118,22 @@ impl Display for StreamError {
     }
 }
 
+impl From<JsonError> for StreamError {
+    fn from(e: JsonError) -> Self {
+        StreamError::Json(e)
+    }
+}
+
 impl From<StatusCode> for Error {
     fn from(e: StatusCode) -> Self {
         Error::Http(e)
     }
 }
 
-impl From<hyper::Error> for Error {
-    fn from(e: hyper::Error) -> Self {
-        Error::Hyper(e)
+// Assuming that `TlsError` is not `JsonError`, `StatusCode`, `UrlError`, `HyperError` or `io::Error`.
+impl From<TlsError> for Error {
+    fn from(e: TlsError) -> Self {
+        Error::Tls(e)
     }
 }
 
@@ -133,14 +143,14 @@ impl From<UrlError> for Error {
     }
 }
 
-impl From<io::Error> for StreamError {
-    fn from(e: io::Error) -> Self {
-        StreamError::Io(e)
+impl From<HyperError> for Error {
+    fn from(e: HyperError) -> Self {
+        Error::Hyper(e)
     }
 }
 
-impl From<JsonError> for StreamError {
-    fn from(e: JsonError) -> Self {
-        StreamError::Json(e)
+impl From<io::Error> for StreamError {
+    fn from(e: io::Error) -> Self {
+        StreamError::Io(e)
     }
 }

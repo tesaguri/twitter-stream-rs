@@ -96,6 +96,7 @@ mod util;
 
 pub mod direct_message;
 pub mod entities;
+pub mod error;
 pub mod geometry;
 pub mod list;
 pub mod message;
@@ -105,12 +106,11 @@ pub mod types;
 pub mod user;
 
 mod auth;
-mod errors;
 
 pub use auth::Token;
 pub use direct_message::DirectMessage;
 pub use entities::Entities;
-pub use errors::*;
+pub use error::{Error, StreamError, Result};
 pub use geometry::Geometry;
 pub use list::List;
 pub use message::StreamMessage;
@@ -420,10 +420,7 @@ impl<'a> TwitterStreamBuilder<'a> {
         let client = if let Some(c) = self.client {
             Hold::Borrowed(c)
         } else {
-            #[cfg(feature = "tls-failable")]
-            let mut cli = default_client::new().map_err(Error::Tls)?;
-            #[cfg(not(feature = "tls-failable"))]
-            let mut cli = default_client::new();
+            let mut cli = default_client::new()?;
             cli.set_read_timeout(Some(std::time::Duration::from_secs(90)));
             Hold::Owned(cli)
         };
@@ -563,7 +560,7 @@ impl Stream for TwitterJsonStream {
 }
 
 impl IntoIterator for TwitterStream {
-    type Item = StreamResult<StreamMessage>;
+    type Item = std::result::Result<StreamMessage, StreamError>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -616,19 +613,27 @@ mod default_client {
 mod default_client {
     extern crate hyper_rustls;
 
+    pub use util::Never as Error;
+
     use hyper::Client;
     use hyper::net::HttpsConnector;
 
-    pub fn new() -> Client {
-        Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new()))
+    pub fn new() -> Result<Client, Error> {
+        Ok(Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new())))
     }
 }
 
-#[cfg(not(feature = "tls"))]
+#[cfg(not(any(
+    feature = "hyper-native-tls",
+    feature = "hyper-openssl",
+    feature = "hyper-rustls",
+)))]
 mod default_client {
+    pub use util::Never as Error;
+
     use hyper::Client;
 
-    pub fn new() -> Client {
-        Client::new()
+    pub fn new() -> Result<Client, Error> {
+        Ok(Client::new())
     }
 }

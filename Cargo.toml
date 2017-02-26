@@ -33,10 +33,6 @@ hyper-rustls = { version = "0.3", optional = true }
 
 [features]
 default = ["tls-native-tls"]
-tls-native-tls = ["hyper-native-tls", "native-tls", "tls-failable"]
-tls-openssl = ["hyper-openssl", "openssl", "tls-failable"]
-tls-rustls = ["hyper-rustls", "tls"]
-
-# For internal use:
-tls = []
-tls-failable = ["tls"]
+tls-native-tls = ["hyper-native-tls", "native-tls"]
+tls-openssl = ["hyper-openssl", "openssl"]
+tls-rustls = ["hyper-rustls"]

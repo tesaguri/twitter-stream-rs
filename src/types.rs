@@ -1,15 +1,10 @@
 //! Common types used across the crate.
 
-#[cfg(feature = "tls-failable")]
-pub use default_client::Error as TlsError;
-pub use hyper::Error as HyperError;
 pub use hyper::method::Method as RequestMethod;
 pub use hyper::status::StatusCode;
-pub use json::Error as JsonError;
 pub use json::Map as JsonMap;
 pub use json::Number as JsonNumber;
 pub use json::Value as JsonValue;
-pub use url::ParseError as UrlError;
 
 use chrono::{DateTime as ChronoDateTime, UTC};
 
