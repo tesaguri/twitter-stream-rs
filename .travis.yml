@@ -6,8 +6,14 @@ rust:
 matrix:
   allow_failures:
     - rust: nightly
-sudo: false
 script:
-  - cargo build --verbose
-  - cargo test --verbose
-  - cargo doc --no-deps
+  - cargo build --verbose --no-default-features --features=$FEATURES
+  - cargo test --verbose --no-default-features --features=$FEATURES
+  - cargo doc --verbose --no-deps --no-default-features --features=$FEATURES
+env:
+  - FEATURES=
+  - FEATURES=egg-mode
+  - FEATURES=tweetust
+  - FEATURES=tls-native-tls
+  - FEATURES=tls-openssl
+  - FEATURES=tls-rustls

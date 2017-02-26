@@ -1,7 +1,7 @@
 /*!
 # Twitter Stream
 
-A library for listening on Twitter Stream API.
+A library for listening on Twitter Streaming API.
 
 ## Usage
 
@@ -9,7 +9,7 @@ Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-twitter-stream = "0.1"
+twitter-stream = "0.2"
 ```
 
 and this to your crate root:
@@ -26,33 +26,25 @@ Here is a basic example that prints each Tweet's text from User Stream:
 extern crate futures;
 extern crate twitter_stream;
 use futures::{Future, Stream};
-use twitter_stream::{StreamMessage, TwitterStream};
+use twitter_stream::{StreamMessage, Token, TwitterStream};
 
 # fn main() {
-let consumer_key = "...";
-let consumer_secret = "...";
-let token = "...";
-let token_secret = "...";
+let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let stream = TwitterStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
+let stream = TwitterStream::user(&token).unwrap();
 
 stream
-    .filter_map(|msg| {
+    .for_each(|msg| {
         if let StreamMessage::Tweet(tweet) = msg {
-            Some(tweet.text)
-        } else {
-            None
+            println!("{}", tweet.text);
         }
-    })
-    .for_each(|tweet| {
-        println!("{}", tweet);
         Ok(())
     })
     .wait().unwrap();
 # }
 ```
 
-In the example above, `stream` disconnects and returns error when a JSON message from Stream was failed to parse.
+In the example above, `stream` disconnects and returns an error when a JSON message from Stream has failed to parse.
 If you don't want this behavior, you can opt to parse the messages manually:
 
 ```rust,no_run
@@ -61,22 +53,17 @@ If you don't want this behavior, you can opt to parse the messages manually:
 extern crate serde_json;
 
 # use futures::{Future, Stream};
-use twitter_stream::{StreamMessage, TwitterJsonStream};
+use twitter_stream::{StreamMessage, Token, TwitterJsonStream};
 
 # fn main() {
-# let (consumer_key, consumer_secret, token, token_secret) = ("", "", "", "");
-let stream = TwitterJsonStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
+# let token = Token::new("", "", "", "");
+let stream = TwitterJsonStream::user(&token).unwrap();
 
 stream
-    .filter_map(|json| {
+    .for_each(|json| {
         if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
-            Some(tweet.text)
-        } else {
-            None
+            println!("{}", tweet.text);
         }
-    })
-    .for_each(|tweet| {
-        println!("{}", tweet);
         Ok(())
     })
     .wait().unwrap();
@@ -95,30 +82,41 @@ extern crate serde_json as json;
 extern crate url;
 
 #[macro_use]
-pub mod messages;
-
 mod util;
 
-pub use hyper::method::Method;
-pub use hyper::status::StatusCode;
-pub use json::Error as JsonError;
-pub use messages::StreamMessage;
+pub mod direct_message;
+pub mod entities;
+pub mod error;
+pub mod geometry;
+pub mod list;
+pub mod message;
+pub mod place;
+pub mod tweet;
+pub mod types;
+pub mod user;
 
-use futures::{Async, Future, Poll, Stream};
+mod auth;
+
+pub use auth::Token;
+pub use direct_message::DirectMessage;
+pub use entities::Entities;
+pub use error::{Error, StreamError, Result};
+pub use geometry::Geometry;
+pub use list::List;
+pub use message::StreamMessage;
+pub use place::Place;
+pub use tweet::Tweet;
+pub use user::User;
+
+use futures::{Async, Poll, Stream};
 use hyper::client::Client;
-use hyper::header::{Headers, AcceptEncoding, Authorization, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
-use hyper::net::HttpsConnector;
-use messages::{FilterLevel, UserId};
-use messages::stream::Disconnect;
-use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
-use util::{Lines, OAuthHeaderWrapper, Timeout};
-use std::convert::From;
-use std::error::Error as StdError;
-use std::fmt::{self, Display, Formatter};
+use hyper::header::{Headers, AcceptEncoding, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use std::io::{self, BufReader};
-use std::time::{Duration, Instant};
+use types::{FilterLevel, RequestMethod, StatusCode, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
+use util::Lines;
+use user::UserId;
 
 macro_rules! def_stream {
     (
@@ -172,7 +170,15 @@ macro_rules! def_stream {
         }
 
         impl<$lifetime> $B<$lifetime> {
-            /// Constructs a builder for a stream from custom end point.
+            $(
+                $(#[$constructor_attr])*
+                pub fn $constructor(token: &$lifetime Token<$lifetime>) -> Self
+                {
+                    $B::custom(RequestMethod::$Method, $end_point, token)
+                }
+            )*
+
+            /// Constructs a builder for a Stream at a custom end point.
             pub fn custom($($b_field: $bf_ty),*) -> Self {
                 $B {
                     $($b_field: $b_field,)*
@@ -180,15 +186,6 @@ macro_rules! def_stream {
                     $($option: None,)*
                 }
             }
-
-            $(
-                $(#[$constructor_attr])*
-                pub fn $constructor(consumer_key: &$lifetime str, consumer_secret: &$lifetime str,
-                    token: &$lifetime str, token_secret: &$lifetime str) -> Self
-                {
-                    $B::custom(Method::$Method, $end_point, consumer_key, consumer_secret, token, token_secret)
-                }
-            )*
 
             $(
                 $(#[$setter_attr])*
@@ -210,10 +207,9 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
-                    token: &'a str, token_secret: &'a str) -> Result<Self>
+                pub fn $constructor<'a>(token: &'a Token<'a>) -> Result<Self>
                 {
-                    $B::$constructor(consumer_key, consumer_secret, token, token_secret).listen()
+                    $B::$constructor(token).listen()
                 }
             )*
         }
@@ -221,10 +217,9 @@ macro_rules! def_stream {
         impl $JS {
             $(
                 $(#[$js_constructor_attr])*
-                pub fn $constructor<'a>(consumer_key: &'a str, consumer_secret: &'a str,
-                    token: &'a str, token_secret: &'a str) -> Result<Self>
+                pub fn $constructor<'a>(token: &'a Token<'a>) -> Result<Self>
                 {
-                    $B::$constructor(consumer_key, consumer_secret, token, token_secret).listen_json()
+                    $B::$constructor(token).listen_json()
                 }
             )*
         }
@@ -235,19 +230,11 @@ def_stream! {
     /// A builder for `TwitterStream`.
     #[derive(Clone, Debug)]
     pub struct TwitterStreamBuilder<'a> {
-        method: Method,
+        method: RequestMethod,
         end_point: &'a str,
-        consumer_key: &'a str,
-        consumer_secret: &'a str,
-        token: &'a str,
-        token_secret: &'a str;
+        token: &'a Token<'a>;
 
         // Setters:
-
-        /// Set a timeout for the stream. The default is 90 secs.
-        :timeout: Duration = Duration::from_secs(90),
-
-        // Setters of API parameters:
 
         // delimited: bool,
 
@@ -281,7 +268,7 @@ def_stream! {
 
         // Optional setters for API parameters:
 
-        /// Set a comma-separated language identifiers to only receive Tweets written in the specified languages.
+        /// Set a comma-separated language identifiers to receive Tweets written in the specified languages only.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#language
@@ -316,7 +303,7 @@ def_stream! {
         :with: Option<With>;
     }
 
-    /// A listener for Twitter Stream API.
+    /// A listener for Twitter Streaming API.
     pub struct TwitterStream {
         inner: TwitterJsonStream,
     }
@@ -324,13 +311,11 @@ def_stream! {
     /// Same as `TwitterStream` except that it yields raw JSON string messages.
     pub struct TwitterJsonStream {
         lines: Lines,
-        timeout: Duration,
-        timer: Timeout,
     }
 
     // Constructors for `TwitterStreamBuilder`:
 
-    /// Create a builder for `POST statuses/filter`.
+    /// Create a builder for `POST statuses/filter` endpoint.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
@@ -340,7 +325,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::filter().listen_json()`.
     pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
 
-    /// Create a builder for `GET statuses/sample`.
+    /// Create a builder for `GET statuses/sample` endpoint.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
@@ -350,17 +335,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
     pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
 
-    /// Create a builder for `GET statuses/firehose`. This endpoint requires special permission to access.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/firehose
-    -
-    /// A shorthand for `TwitterStreamBuilder::firehose().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::firehose().listen_json()`.
-    pub fn firehose(Get, "https://stream.twitter.com/1.1/statuses/firehose.json");
-
-    /// Create a builder for `GET user` (a.k.a. User Stream).
+    /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
@@ -369,72 +344,24 @@ def_stream! {
     -
     /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
     pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
-
-    /// Create a builder for `GET site` (a.k.a. Site Stream).
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    /// [1]: https://dev.twitter.com/streaming/reference/get/site
-    -
-    /// A shorthand for `TwitterStreamBuilder::site().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::site().listen_json()`.
-    pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
 }
-
-string_enums! {
-    /// A value for `with` parameter for User and Site Streams.
-    #[derive(Clone, Debug)]
-    pub enum With {
-        /// Instruct the stream to send messages only from the user associated with that stream.
-        /// The default for Site Streams.
-        :User("user"),
-        /// Instruct the stream to send messages from accounts the user follows as well, equivalent
-        /// to the user’s home timeline. The default for User Streams.
-        :Following("following");
-        /// Custom value.
-        :Custom(_),
-    }
-}
-
-/// An error occurred while connecting to the Stream API.
-#[derive(Debug)]
-pub enum Error {
-    /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
-    Url(url::ParseError),
-    /// An error from the `hyper` crate.
-    Hyper(hyper::Error),
-    /// An HTTP error from the Stream.
-    Http(StatusCode),
-    /// An I/O error.
-    Io(io::Error),
-    /// The Stream has timed out.
-    TimedOut(u64),
-    /// Failed to parse a JSON message from Stream API.
-    Json(JsonError),
-    /// The Stream has been disconnected by the server.
-    Disconnect(Disconnect),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 impl<'a> TwitterStreamBuilder<'a> {
-    /// Attempt to start listening on the Stream API and returns a stream which yields parsed messages from the API.
+    /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self) -> Result<TwitterStream> {
         Ok(TwitterStream {
             inner: self.listen_json()?,
         })
     }
 
-    /// Attempt to start listening on the Stream API and returns a stream which yields JSON messages from the API.
+    /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
     pub fn listen_json(&self) -> Result<TwitterJsonStream> {
         Ok(TwitterJsonStream {
             lines: self.connect()?,
-            timeout: self.timeout,
-            timer: Timeout::after(self.timeout),
         })
     }
 
-    /// Attempt to make an HTTP connection to the end point of the Stream API.
+    /// Attempt to make an HTTP connection to an end point of the Streaming API.
     fn connect(&self) -> Result<Lines> {
         let mut url = Url::parse(self.end_point)?;
 
@@ -444,7 +371,7 @@ impl<'a> TwitterStreamBuilder<'a> {
             headers.set(UserAgent(ua.to_owned()));
         }
 
-        // Holds a borrowed or owned value.
+        /// Holds a borrowed or owned value.
         enum Hold<'a, T: 'a> {
             Borrowed(&'a T),
             Owned(T),
@@ -460,16 +387,22 @@ impl<'a> TwitterStreamBuilder<'a> {
             }
         }
 
-        let client = self.client.map_or_else(|| Hold::Owned(default_client()), Hold::Borrowed);
+        let client = if let Some(c) = self.client {
+            Hold::Borrowed(c)
+        } else {
+            let mut cli = default_client::new()?;
+            cli.set_read_timeout(Some(std::time::Duration::from_secs(90)));
+            Hold::Owned(cli)
+        };
 
-        let res = if Method::Post == self.method {
+        let res = if RequestMethod::Post == self.method {
             use hyper::mime::{Mime, SubLevel, TopLevel};
 
             headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
             let body = body.finish();
-            headers.set(self.create_authorization_header(&url, Some(body.as_ref())));
+            headers.set(auth::create_authorization_header(self.token, &self.method, &url, Some(body.as_ref())));
             client
                 .post(url)
                 .headers(headers)
@@ -477,7 +410,7 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .send()?
         } else {
             self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(self.create_authorization_header(&url, None));
+            headers.set(auth::create_authorization_header(self.token, &self.method, &url, None));
             client
                 .request(self.method.clone(), url)
                 .headers(headers)
@@ -489,7 +422,8 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .map_or(false, |&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
             {
                 use flate2::read::GzDecoder;
-                Ok(util::lines(BufReader::new(GzDecoder::new(res)?)))
+                let res = GzDecoder::new(res).map_err(Error::Gzip)?;
+                Ok(util::lines(BufReader::new(res)))
             } else {
                 Ok(util::lines(BufReader::new(res)))
             }
@@ -554,34 +488,18 @@ impl<'a> TwitterStreamBuilder<'a> {
             pairs.append_pair("replies", "all");
         }
     }
-
-    fn create_authorization_header(&self, url: &Url, params: Option<&[u8]>) -> Authorization<OAuthHeaderWrapper>
-    {
-        use url::form_urlencoded;
-
-        let mut oauth = OAuthAuthorizationHeaderBuilder::new(
-            self.method.as_ref(), url, self.consumer_key, self.consumer_secret, SignatureMethod::HmacSha1
-        );
-        oauth.token(self.token, self.token_secret);
-        if let Some(p) = params {
-            oauth.request_parameters(form_urlencoded::parse(p));
-        }
-        let oauth = oauth.finish_for_twitter();
-
-        Authorization(OAuthHeaderWrapper(oauth))
-    }
 }
 
 impl Stream for TwitterStream {
     type Item = StreamMessage;
-    type Error = Error;
+    type Error = StreamError;
 
-    fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
+    fn poll(&mut self) -> Poll<Option<StreamMessage>, StreamError> {
         use Async::*;
 
         match self.inner.poll()? {
             Ready(Some(line)) => match json::from_str(&line)? {
-                StreamMessage::Disconnect(d) => Err(Error::Disconnect(d)),
+                StreamMessage::Disconnect(d) => Err(StreamError::Disconnect(d)),
                 msg => Ok(Ready(Some(msg))),
             },
             Ready(None) => Ok(Ready(None)),
@@ -592,37 +510,27 @@ impl Stream for TwitterStream {
 
 impl Stream for TwitterJsonStream {
     type Item = String;
-    type Error = Error;
+    type Error = io::Error;
 
-    fn poll(&mut self) -> Poll<Option<String>, Error> {
+    fn poll(&mut self) -> Poll<Option<String>, io::Error> {
         use Async::*;
 
         loop {
             match self.lines.poll()? {
                 Ready(Some(line)) => {
-                    let now = Instant::now();
-                    self.timer = Timeout::after(self.timeout);
-                    self.timer.park(now);
-
                     if !line.is_empty() {
                         return Ok(Ready(Some(line)));
                     }
                 },
-                Ready(None) => return Ok(None.into()),
-                NotReady => {
-                    if let Ok(Ready(())) = self.timer.poll() {
-                        return Err(Error::TimedOut(self.timeout.as_secs()));
-                    } else {
-                        return Ok(NotReady);
-                    }
-                },
+                Ready(None) => return Ok(Ready(None)),
+                NotReady => return Ok(NotReady),
             }
         }
     }
 }
 
 impl IntoIterator for TwitterStream {
-    type Item = Result<StreamMessage>;
+    type Item = std::result::Result<StreamMessage, StreamError>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -631,7 +539,7 @@ impl IntoIterator for TwitterStream {
 }
 
 impl IntoIterator for TwitterJsonStream {
-    type Item = Result<String>;
+    type Item = io::Result<String>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -639,105 +547,63 @@ impl IntoIterator for TwitterJsonStream {
     }
 }
 
-impl StdError for Error {
-    fn description(&self) -> &str {
-        use Error::*;
-
-        match *self {
-            Url(ref e) => e.description(),
-            Hyper(ref e) => e.description(),
-            Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
-            Io(ref e) => e.description(),
-            TimedOut(_) => "timed out",
-            Json(ref e) => e.description(),
-            Disconnect(ref d) => &d.reason,
-        }
-    }
-
-    fn cause(&self) -> Option<&StdError> {
-        use Error::*;
-
-        match *self {
-            Url(ref e) => Some(e),
-            Hyper(ref e) => Some(e),
-            Io(ref e) => Some(e),
-            Json(ref e) => Some(e),
-            Http(_) | TimedOut(_) | Disconnect(_) => None,
-        }
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        use Error::*;
-
-        match *self {
-            Url(ref e) => Display::fmt(e, f),
-            Hyper(ref e) => Display::fmt(e, f),
-            Http(ref code) => Display::fmt(code, f),
-            Io(ref e) => Display::fmt(e, f),
-            TimedOut(timeout) => write!(f, "connection timed out after {} sec", timeout),
-            Json(ref e) => Display::fmt(e, f),
-            Disconnect(ref d) => Display::fmt(d, f),
-        }
-    }
-}
-
-impl From<url::ParseError> for Error {
-    fn from(e: url::ParseError) -> Self {
-        Error::Url(e)
-    }
-}
-
-impl From<hyper::Error> for Error {
-    fn from(e: hyper::Error) -> Self {
-        Error::Hyper(e)
-    }
-}
-
-impl From<StatusCode> for Error {
-    fn from(e: StatusCode) -> Self {
-        Error::Http(e)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Error::Io(e)
-    }
-}
-
-impl From<JsonError> for Error {
-    fn from(e: JsonError) -> Self {
-        Error::Json(e)
-    }
-}
-
-#[cfg(feature = "native-tls")]
-fn default_client() -> Client {
+#[cfg(feature = "hyper-native-tls")]
+mod default_client {
     extern crate hyper_native_tls;
+    extern crate native_tls;
 
-    Client::with_connector(HttpsConnector::new(hyper_native_tls::NativeTlsClient::new().unwrap()))
+    pub use self::native_tls::Error as Error;
+
+    use hyper::{self, Client};
+
+    pub fn new() -> Result<Client, Error> {
+        hyper_native_tls::NativeTlsClient::new()
+            .map(hyper::net::HttpsConnector::new)
+            .map(Client::with_connector)
+    }
 }
 
-#[cfg(feature = "openssl")]
-fn default_client() -> Client {
+#[cfg(feature = "hyper-openssl")]
+mod default_client {
     extern crate hyper_openssl;
+    extern crate openssl;
 
-    Client::with_connector(HttpsConnector::new(hyper_openssl::OpensslClient::new().unwrap()))
+    pub use self::openssl::error::ErrorStack as Error;
+
+    use hyper::{self, Client};
+
+    pub fn new() -> Result<Client, Error> {
+        hyper_openssl::OpensslClient::new()
+            .map(hyper::net::HttpsConnector::new)
+            .map(Client::with_connector)
+    }
 }
 
-#[cfg(feature = "rustls")]
-fn default_client() -> Client {
+#[cfg(feature = "hyper-rustls")]
+mod default_client {
     extern crate hyper_rustls;
 
-    Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new()))
+    pub use util::Never as Error;
+
+    use hyper::Client;
+    use hyper::net::HttpsConnector;
+
+    pub fn new() -> Result<Client, Error> {
+        Ok(Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new())))
+    }
 }
 
-#[cfg(not(any(feature = "native-tls", feature = "openssl", feature = "rustls")))]
-fn default_client() -> Client {
-    #[allow(unused_imports)]
-    use self::HttpsConnector; // suppress unused_imports
+#[cfg(not(any(
+    feature = "hyper-native-tls",
+    feature = "hyper-openssl",
+    feature = "hyper-rustls",
+)))]
+mod default_client {
+    pub use util::Never as Error;
 
-    Client::new()
+    use hyper::Client;
+
+    pub fn new() -> Result<Client, Error> {
+        Ok(Client::new())
+    }
 }

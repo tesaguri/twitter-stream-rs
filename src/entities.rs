@@ -2,7 +2,8 @@
 
 use serde::de::{Deserializer, Visitor};
 use std::fmt;
-use super::{StatusId, UserId};
+use tweet::StatusId;
+use user::UserId;
 
 pub type MediaId = u64;
 

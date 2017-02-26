@@ -1,4 +1,4 @@
-//! Message from Streaming API.
+//! Messages from Streaming API.
 
 mod event;
 mod warning;
@@ -6,11 +6,13 @@ mod warning;
 pub use self::event::{Event, EventKind};
 pub use self::warning::{Warning, WarningCode};
 
+use {DirectMessage};
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Unexpected, Visitor};
 use serde::de::impls::IgnoredAny;
 use std::fmt;
-use super::{DirectMessage, List, StatusId, Tweet, User, UserId};
-use json::value::{Map, Value};
+use tweet::{StatusId, Tweet};
+use types::{JsonMap, JsonValue};
+use user::UserId;
 
 /// Represents a message from Twitter Streaming API.
 ///
@@ -66,7 +68,7 @@ pub enum StreamMessage {
     // ForUserStr(String, Box<StreamMessage>),
 
     /// A message not known to this library.
-    Custom(Map<String, Value>),
+    Custom(JsonMap<String, JsonValue>),
 }
 
 /// Represents a deleted Tweet.
@@ -210,7 +212,7 @@ impl Deserialize for StreamMessage {
             fn visit_map<V>(self, mut v: V) -> Result<StreamMessage, V::Error> where V: MapVisitor {
                 let key = match v.visit_key::<String>()? {
                     Some(k) => k,
-                    None => return Ok(StreamMessage::Custom(Map::new())),
+                    None => return Ok(StreamMessage::Custom(JsonMap::new())),
                 };
 
                 let ret = match key.as_str() {
@@ -237,24 +239,24 @@ impl Deserialize for StreamMessage {
 
                 // Tweet, Event or for_user envelope:
 
-                let mut map = Map::new();
+                let mut map = JsonMap::new();
                 map.insert(key, v.visit_value()?);
                 while let Some((k, v)) = v.visit()? {
                     map.insert(k, v);
                 }
 
                 if map.contains_key("id") {
-                    Tweet::deserialize(Value::Object(map))
+                    Tweet::deserialize(JsonValue::Object(map))
                         .map(Box::new)
                         .map(StreamMessage::Tweet)
                         .map_err(|e| V::Error::custom(e.to_string()))
                 } else if map.contains_key("event") {
-                    Event::deserialize(Value::Object(map))
+                    Event::deserialize(JsonValue::Object(map))
                         .map(Box::new)
                         .map(StreamMessage::Event)
                         .map_err(|e| V::Error::custom(e.to_string()))
                 } else if let Some(id) = map.remove("for_user") {
-                    if let Value::Number(id) = id {
+                    if let JsonValue::Number(id) = id {
                         if let Some(id) = id.as_u64() {
                             if let Some(msg) = map.remove("message") {
                                 StreamMessage::deserialize(msg)

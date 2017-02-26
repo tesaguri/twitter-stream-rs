@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-twitter-stream = "0.1"
+twitter-stream = "0.2"
 ```
 
 and this to your crate root:
@@ -31,26 +31,18 @@ Here is a basic example that prints each Tweet's text from User Stream:
 extern crate futures;
 extern crate twitter_stream;
 use futures::{Future, Stream};
-use twitter_stream::{StreamMessage, TwitterStream};
+use twitter_stream::{StreamMessage, Token, TwitterStream};
 
 fn main() {
-    let consumer_key = "...";
-    let consumer_secret = "...";
-    let token = "...";
-    let token_secret = "...";
+    let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-    let stream = TwitterStream::user(consumer_key, consumer_secret, token, token_secret).unwrap();
+    let stream = TwitterStream::user(&token).unwrap();
 
     stream
         .filter_map(|msg| {
             if let StreamMessage::Tweet(tweet) = msg {
-                Some(tweet.text)
-            } else {
-                None
+                println!("{}", tweet.text);
             }
-        })
-        .for_each(|tweet| {
-            println!("{}", tweet);
             Ok(())
         })
         .wait().unwrap();

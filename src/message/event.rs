@@ -1,9 +1,9 @@
+use {List, Tweet, User};
 use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
 use serde::de::impls::IgnoredAny;
 use std::fmt;
-use super::super::DateTime;
-use json::Value;
-use super::{List, Tweet, User};
+use types::{DateTime, JsonValue};
+use util;
 
 /// Represents notifications about non-Tweet events are also sent over a stream.
 ///
@@ -48,7 +48,7 @@ macro_rules! impl_event {
                 $Label,
             )*
             $(#[$cu_attr])*
-            $Custom(String, Option<Value>),
+            $Custom(String, Option<JsonValue>),
         }
 
         impl Deserialize for Event {
@@ -69,7 +69,7 @@ macro_rules! impl_event {
 
                         let mut event = EventBuffer::default();
                         let mut event_kind: Option<String> = None;
-                        let mut target_obj: Option<Value> = None;
+                        let mut target_obj: Option<JsonValue> = None;
 
                         macro_rules! err_map {
                             () => (|e| V::Error::custom(e.to_string()));
@@ -79,7 +79,7 @@ macro_rules! impl_event {
                             match k.as_str() {
                                 "created_at" => {
                                     let val = v.visit_value::<String>()?;
-                                    event.created_at = Some(super::super::parse_datetime(&val).map_err(err_map!())?);
+                                    event.created_at = Some(util::parse_datetime(&val).map_err(err_map!())?);
                                 },
                                 "event" => {
                                     let e = v.visit_value::<String>()?;

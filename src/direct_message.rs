@@ -1,10 +1,13 @@
 //! Direct messages
 
-use super::{DateTime, Entities, User, UserId};
+use Entities;
+use types::DateTime;
+use user::{User, UserId};
+use util;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct DirectMessage {
-    #[serde(deserialize_with = "super::deserialize_datetime")]
+    #[serde(deserialize_with = "util::deserialize_datetime")]
     pub created_at: DateTime,
     pub entities: Entities,
     pub id: DirectMessageId,
