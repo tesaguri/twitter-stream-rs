@@ -34,22 +34,17 @@ let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_
 let stream = TwitterStream::user(&token).unwrap();
 
 stream
-    .filter_map(|msg| {
+    .for_each(|msg| {
         if let StreamMessage::Tweet(tweet) = msg {
-            Some(tweet.text)
-        } else {
-            None
+            println!("{}", tweet.text);
         }
-    })
-    .for_each(|tweet| {
-        println!("{}", tweet);
         Ok(())
     })
     .wait().unwrap();
 # }
 ```
 
-In the example above, `stream` disconnects and returns error when a JSON message from Stream was failed to parse.
+In the example above, `stream` disconnects and returns an error when a JSON message from Stream has failed to parse.
 If you don't want this behavior, you can opt to parse the messages manually:
 
 ```rust,no_run
@@ -65,15 +60,10 @@ use twitter_stream::{StreamMessage, Token, TwitterJsonStream};
 let stream = TwitterJsonStream::user(&token).unwrap();
 
 stream
-    .filter_map(|json| {
+    .for_each(|json| {
         if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
-            Some(tweet.text)
-        } else {
-            None
+            println!("{}", tweet.text);
         }
-    })
-    .for_each(|tweet| {
-        println!("{}", tweet);
         Ok(())
     })
     .wait().unwrap();
@@ -278,7 +268,7 @@ def_stream! {
 
         // Optional setters for API parameters:
 
-        /// Set a comma-separated language identifiers to only receive Tweets written in the specified languages.
+        /// Set a comma-separated language identifiers to receive Tweets written in the specified languages only.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#language

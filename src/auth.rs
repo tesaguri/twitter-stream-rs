@@ -11,6 +11,11 @@ use url::Url;
 use util::OAuthHeaderWrapper;
 
 /// A token used to log into Twitter.
+#[cfg_attr(feature = "tweetust", doc = "
+
+This implements `tweetust::conn::Authenticator` so you can pass it to `tweetust::TwitterClient`
+as if it were `tweetust::OAuthAuthenticator`"
+)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Token<'a> {
     pub consumer_key: Cow<'a, str>,
