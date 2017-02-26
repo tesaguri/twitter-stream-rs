@@ -335,16 +335,6 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
     pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
 
-    /// Create a builder for `GET statuses/firehose` endpoint. The endpoint requires special permission to access.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/firehose
-    -
-    /// A shorthand for `TwitterStreamBuilder::firehose().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::firehose().listen_json()`.
-    pub fn firehose(Get, "https://stream.twitter.com/1.1/statuses/firehose.json");
-
     /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
@@ -354,16 +344,6 @@ def_stream! {
     -
     /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
     pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
-
-    /// Create a builder for `GET site` endpoint (a.k.a. Site Stream).
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    /// [1]: https://dev.twitter.com/streaming/reference/get/site
-    -
-    /// A shorthand for `TwitterStreamBuilder::site().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::site().listen_json()`.
-    pub fn site(Get, "https://sitestream.twitter.com/1.1/site.json");
 }
 
 impl<'a> TwitterStreamBuilder<'a> {
