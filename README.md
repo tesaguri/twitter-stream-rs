@@ -39,7 +39,7 @@ fn main() {
     let stream = TwitterStream::user(&token).unwrap();
 
     stream
-        .filter_map(|msg| {
+        .for_each(|msg| {
             if let StreamMessage::Tweet(tweet) = msg {
                 println!("{}", tweet.text);
             }
