@@ -187,16 +187,16 @@ impl_event! {
     /// | User updates their protected status | `UserUpdate`           | Current user       | Current user   |
     #[derive(Clone, Debug, PartialEq)]
     pub enum EventKind {
-        :Favorite("favorite", Box<Tweet>),
-        :Unfavorite("unfavorite", Box<Tweet>),
-        :ListCreated("list_created", Box<List>),
-        :ListDestroyed("list_destroyed", Box<List>),
-        :ListUpdated("list_updated", Box<List>),
-        :ListMemberAdded("list_member_added", Box<List>),
-        :ListMemberRemoved("list_member_removed", Box<List>),
-        :ListUserSubscribed("list_user_subscribed", Box<List>),
-        :ListUserUnsubscribed("list_user_unsubscribed", Box<List>),
-        :QuotedTweet("quoted_tweet", Box<Tweet>);
+        :Favorite("favorite", Tweet),
+        :Unfavorite("unfavorite", Tweet),
+        :ListCreated("list_created", List),
+        :ListDestroyed("list_destroyed", List),
+        :ListUpdated("list_updated", List),
+        :ListMemberAdded("list_member_added", List),
+        :ListMemberRemoved("list_member_removed", List),
+        :ListUserSubscribed("list_user_subscribed", List),
+        :ListUserUnsubscribed("list_user_unsubscribed", List),
+        :QuotedTweet("quoted_tweet", Tweet);
         :AccessRevoked("access_revoked"),
         :Block("block"),
         :Unblock("unblock"),
