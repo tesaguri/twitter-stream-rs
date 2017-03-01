@@ -3,12 +3,18 @@ extern crate egg_mode;
 #[cfg(feature = "tweetust")]
 extern crate tweetust;
 
-use hyper::header::Authorization;
-use oauthcli::{OAuthAuthorizationHeader, OAuthAuthorizationHeaderBuilder, SignatureMethod};
+use hyper::header::{Authorization, Scheme};
+use oauthcli::{
+    OAuthAuthorizationHeader,
+    OAuthAuthorizationHeaderBuilder,
+    ParseOAuthAuthorizationHeaderError,
+    SignatureMethod,
+};
 use std::borrow::Cow;
+use std::fmt::{self, Formatter};
+use std::str::FromStr;
 use types::RequestMethod;
 use url::Url;
-use util::OAuthHeaderWrapper;
 
 /// A token used to log into Twitter.
 #[cfg_attr(feature = "tweetust", doc = "
@@ -23,6 +29,9 @@ pub struct Token<'a> {
     pub access_key: Cow<'a, str>,
     pub access_secret: Cow<'a, str>,
 }
+
+#[derive(Clone, Debug)]
+pub struct OAuthHeaderWrapper(pub OAuthAuthorizationHeader);
 
 impl<'a> Token<'a> {
     pub fn new<CK, CS, AK, AS>(consumer_key: CK, consumer_secret: CS, access_key: AK, access_secret: AS) -> Self
@@ -59,6 +68,24 @@ impl<'a> tweetust::conn::Authenticator for Token<'a> {
         };
 
         Some(authorize(self, request.method.as_ref(), &request.url, params))
+    }
+}
+
+impl FromStr for OAuthHeaderWrapper {
+    type Err = ParseOAuthAuthorizationHeaderError;
+
+    fn from_str(s: &str) -> Result<Self, ParseOAuthAuthorizationHeaderError> {
+        Ok(OAuthHeaderWrapper(OAuthAuthorizationHeader::from_str(s)?))
+    }
+}
+
+impl Scheme for OAuthHeaderWrapper {
+    fn scheme() -> Option<&'static str> {
+        Some("OAuth")
+    }
+
+    fn fmt_scheme(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(self.0.auth_param())
     }
 }
 

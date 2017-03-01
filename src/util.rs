@@ -2,12 +2,9 @@ use chrono::{TimeZone, UTC};
 use futures::{Future, Sink, Stream};
 use futures::stream::{self, Then};
 use futures::sync::mpsc::{self, Receiver};
-use hyper;
-use oauthcli::{OAuthAuthorizationHeader, ParseOAuthAuthorizationHeaderError};
 use serde::de::{Deserialize, Deserializer, Error};
 use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufRead};
-use std::str::FromStr;
 use std::thread;
 use types::DateTime;
 
@@ -21,9 +18,6 @@ pub type Lines = Then<
 /// Represents an infallible operation in `default_client::new`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum Never {}
-
-#[derive(Clone, Debug)]
-pub struct OAuthHeaderWrapper(pub OAuthAuthorizationHeader);
 
 macro_rules! string_enums {
     (
@@ -154,23 +148,5 @@ impl ::std::error::Error for Never {
 impl Display for Never {
     fn fmt(&self, _: &mut Formatter) -> fmt::Result {
         unreachable!()
-    }
-}
-
-impl FromStr for OAuthHeaderWrapper {
-    type Err = ParseOAuthAuthorizationHeaderError;
-
-    fn from_str(s: &str) -> Result<Self, ParseOAuthAuthorizationHeaderError> {
-        Ok(OAuthHeaderWrapper(OAuthAuthorizationHeader::from_str(s)?))
-    }
-}
-
-impl hyper::header::Scheme for OAuthHeaderWrapper {
-    fn scheme() -> Option<&'static str> {
-        Some("OAuth")
-    }
-
-    fn fmt_scheme(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.0.auth_param())
     }
 }
