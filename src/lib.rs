@@ -108,9 +108,11 @@ pub use place::Place;
 pub use tweet::Tweet;
 pub use user::User;
 
+use flate2::read::GzDecoder;
 use futures::{Async, Poll, Stream};
-use hyper::client::Client;
+use hyper::client::{Client, Response};
 use hyper::header::{Headers, AcceptEncoding, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
+use json::Deserializer;
 use std::io::{self, BufRead, BufReader};
 use types::{FilterLevel, RequestMethod, StatusCode, With};
 use url::Url;
@@ -305,7 +307,7 @@ def_stream! {
 
     /// A listener for Twitter Streaming API.
     pub struct TwitterStream {
-        inner: TwitterJsonStream,
+        inner: IterStream<StreamMessage, json::Error>,
     }
 
     /// Same as `TwitterStream` except that it yields raw JSON string messages.
@@ -349,21 +351,38 @@ def_stream! {
 impl<'a> TwitterStreamBuilder<'a> {
     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self) -> Result<TwitterStream> {
+        let res = self.connect()?;
+
+        let msgs = if is_gzip_encoded(&res) {
+            let res = GzDecoder::new(res).map_err(Error::Gzip)?;
+            util::iter_stream(Deserializer::from_reader(BufReader::new(res)).into_iter())
+        } else {
+            util::iter_stream(Deserializer::from_reader(BufReader::new(res)).into_iter())
+        };
+
         Ok(TwitterStream {
-            inner: self.listen_json()?,
+            inner: msgs,
         })
     }
 
     /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
     pub fn listen_json(&self) -> Result<TwitterJsonStream> {
+        let res = self.connect()?;
+
+        let lines = if is_gzip_encoded(&res) {
+            let res = GzDecoder::new(res).map_err(Error::Gzip)?;
+            util::iter_stream(BufReader::new(res).lines())
+        } else {
+            util::iter_stream(BufReader::new(res).lines())
+        };
+
         Ok(TwitterJsonStream {
-            lines: self.connect()?,
+            lines: lines,
         })
     }
 
-    /// Attempt to make an HTTP connection to an end point of the Streaming API and
-    /// return a `Stream` over each line of the response.
-    fn connect(&self) -> Result<IterStream<String, io::Error>> {
+    /// Attempt to make an HTTP connection to an end point of the Streaming API.
+    fn connect(&self) -> Result<Response> {
         let mut url = Url::parse(self.end_point)?;
 
         let mut headers = Headers::new();
@@ -419,15 +438,7 @@ impl<'a> TwitterStreamBuilder<'a> {
         };
 
         if StatusCode::Ok == res.status {
-            if res.headers.get::<ContentEncoding>()
-                .map_or(false, |&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
-            {
-                use flate2::read::GzDecoder;
-                let res = GzDecoder::new(res).map_err(Error::Gzip)?;
-                Ok(util::iter_stream(BufReader::new(res).lines()))
-            } else {
-                Ok(util::iter_stream(BufReader::new(res).lines()))
-            }
+            Ok(res)
         } else {
             Err(res.status.into())
         }
@@ -499,10 +510,8 @@ impl Stream for TwitterStream {
         use Async::*;
 
         match self.inner.poll()? {
-            Ready(Some(line)) => match json::from_str(&line)? {
-                StreamMessage::Disconnect(d) => Err(StreamError::Disconnect(d)),
-                msg => Ok(Ready(Some(msg))),
-            },
+            Ready(Some(StreamMessage::Disconnect(d))) => Err(StreamError::Disconnect(d)),
+            Ready(Some(msg)) => Ok(Ready(Some(msg))),
             Ready(None) => Ok(Ready(None)),
             NotReady => Ok(NotReady),
         }
@@ -546,6 +555,11 @@ impl IntoIterator for TwitterJsonStream {
     fn into_iter(self) -> Self::IntoIter {
         self.wait()
     }
+}
+
+fn is_gzip_encoded(res: &Response) -> bool {
+    res.headers.get::<ContentEncoding>()
+        .map_or(false, |&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
 }
 
 #[cfg(feature = "hyper-native-tls")]
