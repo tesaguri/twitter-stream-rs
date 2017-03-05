@@ -111,11 +111,11 @@ pub use user::User;
 use futures::{Async, Poll, Stream};
 use hyper::client::Client;
 use hyper::header::{Headers, AcceptEncoding, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
-use std::io::{self, BufReader};
+use std::io::{self, BufRead, BufReader};
 use types::{FilterLevel, RequestMethod, StatusCode, With};
 use url::Url;
 use url::form_urlencoded::{Serializer, Target};
-use util::Lines;
+use util::IterStream;
 use user::UserId;
 
 macro_rules! def_stream {
@@ -310,7 +310,7 @@ def_stream! {
 
     /// Same as `TwitterStream` except that it yields raw JSON string messages.
     pub struct TwitterJsonStream {
-        lines: Lines,
+        lines: IterStream<String, io::Error>,
     }
 
     // Constructors for `TwitterStreamBuilder`:
@@ -361,8 +361,9 @@ impl<'a> TwitterStreamBuilder<'a> {
         })
     }
 
-    /// Attempt to make an HTTP connection to an end point of the Streaming API.
-    fn connect(&self) -> Result<Lines> {
+    /// Attempt to make an HTTP connection to an end point of the Streaming API and
+    /// return a `Stream` over each line of the response.
+    fn connect(&self) -> Result<IterStream<String, io::Error>> {
         let mut url = Url::parse(self.end_point)?;
 
         let mut headers = Headers::new();
@@ -423,9 +424,9 @@ impl<'a> TwitterStreamBuilder<'a> {
             {
                 use flate2::read::GzDecoder;
                 let res = GzDecoder::new(res).map_err(Error::Gzip)?;
-                Ok(util::lines(BufReader::new(res)))
+                Ok(util::iter_stream(BufReader::new(res).lines()))
             } else {
-                Ok(util::lines(BufReader::new(res)))
+                Ok(util::iter_stream(BufReader::new(res).lines()))
             }
         } else {
             Err(res.status.into())

@@ -4,15 +4,13 @@ use futures::stream::{self, Then};
 use futures::sync::mpsc::{self, Receiver};
 use serde::de::{Deserialize, Deserializer, Error};
 use std::fmt::{self, Display, Formatter};
-use std::io::{self, BufRead};
 use std::thread;
 use types::DateTime;
 
-/// A stream over each line on a `BufRead`.
-pub type Lines = Then<
-    Receiver<Result<String, io::Error>>,
-    fn(Result<Result<String, io::Error>, ()>) -> Result<String, io::Error>,
-    Result<String, io::Error>,
+pub type IterStream<T, E> = Then<
+    Receiver<Result<T, E>>,
+    fn(Result<Result<T, E>, ()>) -> Result<T, E>,
+    Result<T, E>,
 >;
 
 /// Represents an infallible operation in `default_client::new`.
@@ -113,22 +111,23 @@ macro_rules! string_enums {
     }
 }
 
-/// Returns a stream over each line on `a`.
-#[allow(unused_variables)]
-pub fn lines<A: BufRead + Send + 'static>(a: A) -> Lines {
+/// Non-blocking version of `futures::stream::iter()`.
+pub fn iter_stream<T, E, I>(iter: I) -> IterStream<T, E>
+    where T: 'static + Send, E: 'static + Send, I: 'static + IntoIterator<Item=Result<T, E>> + Send
+{
     let (tx, rx) = mpsc::channel(8); // TODO: is this a proper value?
 
     thread::spawn(move || {
-        let iter = a.lines().map(Ok);
+        let iter = iter.into_iter().map(Ok);
         let stream = stream::iter(iter);
         tx.send_all(stream).wait().is_ok() // Fails silently when `tx` is dropped.
     });
 
-    fn thener(r: Result<Result<String, io::Error>, ()>) -> Result<String, io::Error> {
+    fn thener<T_, E_>(r: Result<Result<T_, E_>, ()>) -> Result<T_, E_> {
         r.expect("Receiver failed")
     }
 
-    rx.then(thener as _)
+    rx.then(thener::<T, E> as _)
 }
 
 pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
