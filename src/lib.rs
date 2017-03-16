@@ -174,9 +174,9 @@ macro_rules! def_stream {
         impl<$lifetime> $B<$lifetime> {
             $(
                 $(#[$constructor_attr])*
-                pub fn $constructor(token: &$lifetime Token<$lifetime>) -> Self
+                pub fn $constructor() -> Self
                 {
-                    $B::custom(RequestMethod::$Method, $end_point, token)
+                    $B::custom(RequestMethod::$Method, $end_point)
                 }
             )*
 
@@ -209,9 +209,9 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor<'a>(token: &'a Token<'a>) -> Result<Self>
+                pub fn $constructor(token: &Token) -> Result<Self>
                 {
-                    $B::$constructor(token).listen()
+                    $B::$constructor().listen(token)
                 }
             )*
         }
@@ -219,9 +219,9 @@ macro_rules! def_stream {
         impl $JS {
             $(
                 $(#[$js_constructor_attr])*
-                pub fn $constructor<'a>(token: &'a Token<'a>) -> Result<Self>
+                pub fn $constructor(token: &Token) -> Result<Self>
                 {
-                    $B::$constructor(token).listen_json()
+                    $B::$constructor().listen_json(token)
                 }
             )*
         }
@@ -233,8 +233,7 @@ def_stream! {
     #[derive(Clone, Debug)]
     pub struct TwitterStreamBuilder<'a> {
         method: RequestMethod,
-        end_point: &'a str,
-        token: &'a Token<'a>;
+        end_point: &'a str;
 
         // Setters:
 
@@ -322,9 +321,9 @@ def_stream! {
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
     -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
+    /// A shorthand for `TwitterStreamBuilder::filter().listen(token)`.
     -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen_json()`.
+    /// A shorthand for `TwitterStreamBuilder::filter().listen_json(token)`.
     pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
 
     /// Create a builder for `GET statuses/sample` endpoint.
@@ -332,9 +331,9 @@ def_stream! {
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
     -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
+    /// A shorthand for `TwitterStreamBuilder::sample().listen(token)`.
     -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
+    /// A shorthand for `TwitterStreamBuilder::sample().listen_json(token)`.
     pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
 
     /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
@@ -342,16 +341,16 @@ def_stream! {
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
     -
-    /// A shorthand for `TwitterStreamBuilder::user().listen()`.
+    /// A shorthand for `TwitterStreamBuilder::user().listen(token)`.
     -
-    /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
+    /// A shorthand for `TwitterStreamBuilder::user().listen_json(token)`.
     pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
 }
 
 impl<'a> TwitterStreamBuilder<'a> {
     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
-    pub fn listen(&self) -> Result<TwitterStream> {
-        let res = self.connect()?;
+    pub fn listen(&self, token: &Token) -> Result<TwitterStream> {
+        let res = self.connect(token)?;
 
         let msgs = if is_gzip_encoded(&res) {
             let res = GzDecoder::new(res).map_err(Error::Gzip)?;
@@ -366,8 +365,8 @@ impl<'a> TwitterStreamBuilder<'a> {
     }
 
     /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self) -> Result<TwitterJsonStream> {
-        let res = self.connect()?;
+    pub fn listen_json(&self, token: &Token) -> Result<TwitterJsonStream> {
+        let res = self.connect(token)?;
 
         let lines = if is_gzip_encoded(&res) {
             let res = GzDecoder::new(res).map_err(Error::Gzip)?;
@@ -382,7 +381,7 @@ impl<'a> TwitterStreamBuilder<'a> {
     }
 
     /// Attempt to make an HTTP connection to an end point of the Streaming API.
-    fn connect(&self) -> Result<Response> {
+    fn connect(&self, token: &Token) -> Result<Response> {
         let mut url = Url::parse(self.end_point)?;
 
         let mut headers = Headers::new();
@@ -422,7 +421,7 @@ impl<'a> TwitterStreamBuilder<'a> {
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
             let body = body.finish();
-            headers.set(auth::create_authorization_header(self.token, &self.method, &url, Some(body.as_ref())));
+            headers.set(auth::create_authorization_header(token, &self.method, &url, Some(body.as_ref())));
             client
                 .post(url)
                 .headers(headers)
@@ -430,7 +429,7 @@ impl<'a> TwitterStreamBuilder<'a> {
                 .send()?
         } else {
             self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(auth::create_authorization_header(self.token, &self.method, &url, None));
+            headers.set(auth::create_authorization_header(token, &self.method, &url, None));
             client
                 .request(self.method.clone(), url)
                 .headers(headers)
