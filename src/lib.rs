@@ -72,8 +72,10 @@ stream
 
 extern crate chrono;
 extern crate flate2;
+#[macro_use]
 extern crate futures;
 extern crate hyper;
+extern crate hyper_tls;
 #[macro_use]
 extern crate lazy_static;
 extern crate oauthcli;
@@ -81,6 +83,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json as json;
+extern crate tokio_core;
 extern crate url;
 
 #[macro_use]
@@ -102,7 +105,7 @@ mod auth;
 pub use auth::Token;
 pub use direct_message::DirectMessage;
 pub use entities::Entities;
-pub use error::{Error, StreamError, Result};
+pub use error::{Error, StreamError};
 pub use geometry::Geometry;
 pub use list::List;
 pub use message::StreamMessage;
@@ -110,22 +113,24 @@ pub use place::Place;
 pub use tweet::Tweet;
 pub use user::User;
 
-use flate2::read::GzDecoder;
-use futures::{Async, Poll, Stream};
-use hyper::client::{Client, Response};
-use hyper::header::{Headers, AcceptEncoding, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
+use error::HyperError;
+use futures::{Future, Poll, Stream};
+use hyper::client::{Client, Connect, FutureResponse, Request, Response};
+use hyper::header::{Headers, AcceptEncoding, ContentType, Encoding, UserAgent, qitem};
+use hyper_tls::HttpsConnector;
 use json::Deserializer;
-use std::io::{self, BufRead, BufReader};
+use std::io;
 use std::ops::Deref;
+use tokio_core::reactor::Handle;
 use types::{FilterLevel, RequestMethod, StatusCode, Url, With};
 use url::form_urlencoded::{Serializer, Target};
-use util::IterStream;
 use user::UserId;
 
 macro_rules! def_stream {
     (
         $(#[$builder_attr:meta])*
-        pub struct $B:ident<$lifetime:tt> {
+        pub struct $B:ident<$lifetime:tt, $CH:ident> {
+            $client_or_handle:ident: $ch_ty:ty = $ch_default:expr;
             $(
                 $(#[$arg_setter_attr:meta])*
                 :$arg:ident: $a_ty:ty
@@ -138,6 +143,16 @@ macro_rules! def_stream {
                 $(#[$o_attr:meta])*
                 :$option:ident: Option<$o_ty:ty>
             ),*;
+        }
+
+        $(#[$fs_attr:meta])*
+        pub struct $FS:ident {
+            $($fs_field:ident: $fsf_ty:ty,)*
+        }
+
+        $(#[$fjs_attr:meta])*
+        pub struct $FJS:ident {
+            $($fjs_field:ident: $fjsf_ty:ty,)*
         }
 
         $(#[$stream_attr:meta])*
@@ -160,10 +175,21 @@ macro_rules! def_stream {
         )*
     ) => {
         $(#[$builder_attr])*
-        pub struct $B<$lifetime> {
+        pub struct $B<$lifetime, $CH: 'a = ()> {
+            $client_or_handle: $ch_ty,
             $($arg: $a_ty,)*
             $($setter: $s_ty,)*
             $($option: Option<$o_ty>,)*
+        }
+
+        $(#[$fs_attr])*
+        pub struct $FS {
+            $($fs_field: $fsf_ty,)*
+        }
+
+        $(#[$fjs_attr])*
+        pub struct $FJS {
+            $($fjs_field: $fjsf_ty,)*
         }
 
         $(#[$stream_attr])*
@@ -176,21 +202,43 @@ macro_rules! def_stream {
             $($js_field: $jsf_ty,)*
         }
 
-        impl<$lifetime> $B<$lifetime> {
+        impl<$lifetime> $B<$lifetime, ()> {
             $(
                 $(#[$constructor_attr])*
-                pub fn $constructor() -> Self
-                {
+                pub fn $constructor() -> $B<$lifetime, ()> {
                     $B::custom(RequestMethod::$Method, $end_point.deref())
                 }
             )*
 
             /// Constructs a builder for a Stream at a custom end point.
-            pub fn custom($($arg: $a_ty),*) -> Self {
+            pub fn custom($($arg: $a_ty),*) -> $B<$lifetime, ()> {
                 $B {
+                    $client_or_handle: $ch_default,
                     $($arg: $arg,)*
                     $($setter: $default,)*
                     $($option: None,)*
+                }
+            }
+        }
+
+        impl<$lifetime, $CH> $B<$lifetime, $CH> {
+            pub fn client<C, B>(self, client: &$lifetime Client<C, B>) -> $B<$lifetime, Client<C, B>>
+                where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
+            {
+                $B {
+                    $client_or_handle: client,
+                    $($arg: self.$arg,)*
+                    $($setter: self.$setter,)*
+                    $($option: self.$option,)*
+                }
+            }
+
+            pub fn handle(self, handle: &$lifetime Handle) -> $B<$lifetime, Handle> {
+                $B {
+                    $client_or_handle: handle,
+                    $($arg: self.$arg,)*
+                    $($setter: self.$setter,)*
+                    $($option: self.$option,)*
                 }
             }
 
@@ -222,9 +270,9 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor(token: &Token) -> Result<Self>
+                pub fn $constructor(token: &Token, handle: &Handle) -> $FS
                 {
-                    $B::$constructor().listen(token)
+                    $B::$constructor().handle(handle).listen(token)
                 }
             )*
         }
@@ -232,9 +280,9 @@ macro_rules! def_stream {
         impl $JS {
             $(
                 $(#[$js_constructor_attr])*
-                pub fn $constructor(token: &Token) -> Result<Self>
+                pub fn $constructor(token: &Token, handle: &Handle) -> $FJS
                 {
-                    $B::$constructor().listen_json(token)
+                    $B::$constructor().handle(handle).listen_json(token)
                 }
             )*
         }
@@ -247,10 +295,14 @@ lazy_static! {
     static ref EP_USER: Url = Url::parse("https://userstream.twitter.com/1.1/user.json").unwrap();
 }
 
+const TUPLE_REF: &'static () = &();
+
 def_stream! {
     /// A builder for `TwitterStream`.
     #[derive(Clone, Debug)]
-    pub struct TwitterStreamBuilder<'a> {
+    pub struct TwitterStreamBuilder<'a, CH> {
+        client_or_handle: &'a CH = TUPLE_REF;
+
         :method: RequestMethod,
         :end_point: &'a Url;
 
@@ -279,9 +331,6 @@ def_stream! {
         // stringify_friend_ids: bool,
 
         // Optional setters:
-
-        /// Set a custom `hyper::client::Client` object to use when connecting to the Stream.
-        :client: Option<&'a Client>,
 
         /// Set a user agent string to be sent when connectiong to the Stream.
         :user_agent: Option<&'a str>,
@@ -323,14 +372,22 @@ def_stream! {
         :with: Option<With>;
     }
 
+    pub struct FutureTwitterStream {
+        inner: FutureResponse,
+    }
+
+    pub struct FutureTwitterJsonStream {
+        inner: FutureResponse,
+    }
+
     /// A listener for Twitter Streaming API.
     pub struct TwitterStream {
-        inner: IterStream<StreamMessage, json::Error>,
+        inner: Response,
     }
 
     /// Same as `TwitterStream` except that it yields raw JSON string messages.
     pub struct TwitterJsonStream {
-        lines: IterStream<String, io::Error>,
+        inner: Response,
     }
 
     // Constructors for `TwitterStreamBuilder`:
@@ -366,41 +423,45 @@ def_stream! {
     pub fn user(Get, EP_USER);
 }
 
-impl<'a> TwitterStreamBuilder<'a> {
-    /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
-    pub fn listen(&self, token: &Token) -> Result<TwitterStream> {
-        let res = self.connect(token)?;
-
-        let msgs = if is_gzip_encoded(&res) {
-            let res = GzDecoder::new(res).map_err(Error::Gzip)?;
-            util::iter_stream(Deserializer::from_reader(BufReader::new(res)).into_iter())
-        } else {
-            util::iter_stream(Deserializer::from_reader(BufReader::new(res)).into_iter())
-        };
-
-        Ok(TwitterStream {
-            inner: msgs,
-        })
+impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
+    where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
+{
+     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
+    pub fn listen(&self, token: &Token) -> FutureTwitterStream {
+        FutureTwitterStream {
+            inner: self.connect(token, self.client_or_handle),
+        }
     }
 
     /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self, token: &Token) -> Result<TwitterJsonStream> {
-        let res = self.connect(token)?;
+    pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
+        FutureTwitterJsonStream {
+            inner: self.connect(token, self.client_or_handle),
+        }
+    }
+}
 
-        let lines = if is_gzip_encoded(&res) {
-            let res = GzDecoder::new(res).map_err(Error::Gzip)?;
-            util::iter_stream(BufReader::new(res).lines())
-        } else {
-            util::iter_stream(BufReader::new(res).lines())
-        };
-
-        Ok(TwitterJsonStream {
-            lines: lines,
-        })
+impl<'a> TwitterStreamBuilder<'a, Handle> {
+     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
+    pub fn listen(&self, token: &Token) -> FutureTwitterStream {
+        FutureTwitterStream {
+            inner: self.connect(token, &default_client(self.client_or_handle)),
+        }
     }
 
+    /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
+    pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
+        FutureTwitterJsonStream {
+            inner: self.connect(token, &default_client(self.client_or_handle)),
+        }
+    }
+}
+
+impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
     /// Attempt to make an HTTP connection to an end point of the Streaming API.
-    fn connect(&self, token: &Token) -> Result<Response> {
+    fn connect<C, B>(&self, t: &Token, c: &Client<C, B>) -> FutureResponse
+        where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
+    {
         let mut url = self.end_point.clone();
 
         let mut headers = Headers::new();
@@ -409,56 +470,29 @@ impl<'a> TwitterStreamBuilder<'a> {
             headers.set(UserAgent(ua.to_owned()));
         }
 
-        /// Holds a borrowed or owned value.
-        enum Hold<'a, T: 'a> {
-            Borrowed(&'a T),
-            Owned(T),
-        }
-
-        impl<'a, T: 'a> std::ops::Deref for Hold<'a, T> {
-            type Target = T;
-            fn deref(&self) -> &T {
-                match *self {
-                    Hold::Borrowed(t) => t,
-                    Hold::Owned(ref t) => t,
-                }
-            }
-        }
-
-        let client = if let Some(c) = self.client {
-            Hold::Borrowed(c)
-        } else {
-            let mut cli = default_client::new()?;
-            cli.set_read_timeout(Some(std::time::Duration::from_secs(90)));
-            Hold::Owned(cli)
-        };
-
-        let res = if RequestMethod::Post == self.method {
+        if RequestMethod::Post == self.method {
             use hyper::mime::{Mime, SubLevel, TopLevel};
 
-            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
             let body = body.finish();
-            headers.set(auth::create_authorization_header(token, &self.method, &url, Some(body.as_ref())));
-            client
-                .post(url)
-                .headers(headers)
-                .body(&body)
-                .send()?
+
+            headers.set(auth::create_authorization_header(t, &self.method, &url, Some(body.as_ref())));
+            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
+
+            let mut req = Request::new(RequestMethod::Post, url);
+            *req.headers_mut() = headers;
+            req.set_body(body.into_bytes());
+
+            c.request(req)
         } else {
             self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(auth::create_authorization_header(token, &self.method, &url, None));
-            client
-                .request(self.method.clone(), url)
-                .headers(headers)
-                .send()?
-        };
+            headers.set(auth::create_authorization_header(t, &self.method, &url, None));
 
-        if StatusCode::Ok == res.status {
-            Ok(res)
-        } else {
-            Err(res.status.into())
+            let mut req = Request::new(self.method.clone(), url);
+            *req.headers_mut() = headers;
+
+            c.request(req)
         }
     }
 
@@ -520,19 +554,43 @@ impl<'a> TwitterStreamBuilder<'a> {
     }
 }
 
+macro_rules! try_status {
+    ($res:expr) => {
+        match $res.status() {
+            &StatusCode::Ok => $res,
+            err => return Err(From::from(err.clone())),
+        }
+    }
+}
+
+impl Future for FutureTwitterStream {
+    type Item = TwitterStream;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<TwitterStream, Error> {
+        Ok(TwitterStream {
+            inner: try_status!(try_ready!(self.inner.poll())),
+        }.into())
+    }
+}
+
+impl Future for FutureTwitterJsonStream {
+    type Item = TwitterJsonStream;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<TwitterJsonStream, Error> {
+        Ok(TwitterJsonStream {
+            inner: try_status!(try_ready!(self.inner.poll())),
+        }.into())
+    }
+}
+
 impl Stream for TwitterStream {
     type Item = StreamMessage;
     type Error = StreamError;
 
     fn poll(&mut self) -> Poll<Option<StreamMessage>, StreamError> {
-        use Async::*;
-
-        match self.inner.poll()? {
-            Ready(Some(StreamMessage::Disconnect(d))) => Err(StreamError::Disconnect(d)),
-            Ready(Some(msg)) => Ok(Ready(Some(msg))),
-            Ready(None) => Ok(Ready(None)),
-            NotReady => Ok(NotReady),
-        }
+        unimplemented!()
     }
 }
 
@@ -541,24 +599,12 @@ impl Stream for TwitterJsonStream {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<String>, io::Error> {
-        use Async::*;
-
-        loop {
-            match self.lines.poll()? {
-                Ready(Some(line)) => {
-                    if !line.is_empty() {
-                        return Ok(Ready(Some(line)));
-                    }
-                },
-                Ready(None) => return Ok(Ready(None)),
-                NotReady => return Ok(NotReady),
-            }
-        }
+        unimplemented!()
     }
 }
 
 impl IntoIterator for TwitterStream {
-    type Item = std::result::Result<StreamMessage, StreamError>;
+    type Item = Result<StreamMessage, StreamError>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -575,68 +621,6 @@ impl IntoIterator for TwitterJsonStream {
     }
 }
 
-fn is_gzip_encoded(res: &Response) -> bool {
-    res.headers.get::<ContentEncoding>()
-        .map_or(false, |&ContentEncoding(ref v)| v.contains(&Encoding::Gzip))
-}
-
-#[cfg(feature = "hyper-native-tls")]
-mod default_client {
-    extern crate hyper_native_tls;
-    extern crate native_tls;
-
-    pub use self::native_tls::Error as Error;
-
-    use hyper::{self, Client};
-
-    pub fn new() -> Result<Client, Error> {
-        hyper_native_tls::NativeTlsClient::new()
-            .map(hyper::net::HttpsConnector::new)
-            .map(Client::with_connector)
-    }
-}
-
-#[cfg(feature = "hyper-openssl")]
-mod default_client {
-    extern crate hyper_openssl;
-    extern crate openssl;
-
-    pub use self::openssl::error::ErrorStack as Error;
-
-    use hyper::{self, Client};
-
-    pub fn new() -> Result<Client, Error> {
-        hyper_openssl::OpensslClient::new()
-            .map(hyper::net::HttpsConnector::new)
-            .map(Client::with_connector)
-    }
-}
-
-#[cfg(feature = "hyper-rustls")]
-mod default_client {
-    extern crate hyper_rustls;
-
-    pub use util::Never as Error;
-
-    use hyper::Client;
-    use hyper::net::HttpsConnector;
-
-    pub fn new() -> Result<Client, Error> {
-        Ok(Client::with_connector(HttpsConnector::new(hyper_rustls::TlsClient::new())))
-    }
-}
-
-#[cfg(not(any(
-    feature = "hyper-native-tls",
-    feature = "hyper-openssl",
-    feature = "hyper-rustls",
-)))]
-mod default_client {
-    pub use util::Never as Error;
-
-    use hyper::Client;
-
-    pub fn new() -> Result<Client, Error> {
-        Ok(Client::new())
-    }
+fn default_client(h: &Handle) -> Client<HttpsConnector> {
+    Client::configure().connector(HttpsConnector::new(1, h)).build(h)
 }

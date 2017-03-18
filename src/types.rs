@@ -1,6 +1,6 @@
 //! Common types used across the crate.
 
-pub use hyper::method::Method as RequestMethod;
+pub use hyper::Method as RequestMethod;
 pub use hyper::status::StatusCode;
 pub use json::Map as JsonMap;
 pub use json::Number as JsonNumber;
