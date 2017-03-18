@@ -3,7 +3,6 @@
 pub use default_client::Error as TlsError;
 pub use hyper::Error as HyperError;
 pub use json::Error as JsonError;
-pub use url::ParseError as UrlError;
 
 use message::Disconnect;
 use std::error::Error as StdError;
@@ -22,8 +21,6 @@ pub enum Error {
     Http(StatusCode),
     /// An error from the `hyper` crate.
     Hyper(HyperError),
-    /// An invalid url was passed to `TwitterStreamBuilder::custom` method.
-    Url(UrlError),
     /// An error occured when initializing a TLS client.
     Tls(TlsError),
 }
@@ -50,7 +47,6 @@ impl StdError for Error {
             Gzip(ref e) => e.description(),
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
-            Url(ref e) => e.description(),
             Tls(ref e) => e.description(),
         }
     }
@@ -63,7 +59,6 @@ impl StdError for Error {
             Gzip(ref e) => Some(e),
             Http(_) => None,
             Hyper(ref e) => Some(e),
-            Url(ref e) => Some(e),
             Tls(ref e) => Some(e),
         }
     }
@@ -100,7 +95,6 @@ impl Display for Error {
             Gzip(ref e) => Display::fmt(e, f),
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
-            Url(ref e) => Display::fmt(e, f),
             Tls(ref e) => Display::fmt(e, f),
         }
     }
@@ -134,12 +128,6 @@ impl From<StatusCode> for Error {
 impl From<TlsError> for Error {
     fn from(e: TlsError) -> Self {
         Error::Tls(e)
-    }
-}
-
-impl From<UrlError> for Error {
-    fn from(e: UrlError) -> Self {
-        Error::Url(e)
     }
 }
 

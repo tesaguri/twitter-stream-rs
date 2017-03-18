@@ -74,6 +74,8 @@ extern crate chrono;
 extern crate flate2;
 extern crate futures;
 extern crate hyper;
+#[macro_use]
+extern crate lazy_static;
 extern crate oauthcli;
 extern crate serde;
 #[macro_use]
@@ -114,8 +116,8 @@ use hyper::client::{Client, Response};
 use hyper::header::{Headers, AcceptEncoding, ContentEncoding, ContentType, Encoding, UserAgent, qitem};
 use json::Deserializer;
 use std::io::{self, BufRead, BufReader};
-use types::{FilterLevel, RequestMethod, StatusCode, With};
-use url::Url;
+use std::ops::Deref;
+use types::{FilterLevel, RequestMethod, StatusCode, Url, With};
 use url::form_urlencoded::{Serializer, Target};
 use util::IterStream;
 use user::UserId;
@@ -124,7 +126,10 @@ macro_rules! def_stream {
     (
         $(#[$builder_attr:meta])*
         pub struct $B:ident<$lifetime:tt> {
-            $($b_field:ident: $bf_ty:ty),*;
+            $(
+                $(#[$arg_setter_attr:meta])*
+                :$arg:ident: $a_ty:ty
+            ),*;
             $(
                 $(#[$setter_attr:meta])*
                 :$setter:ident: $s_ty:ty = $default:expr
@@ -156,7 +161,7 @@ macro_rules! def_stream {
     ) => {
         $(#[$builder_attr])*
         pub struct $B<$lifetime> {
-            $($b_field: $bf_ty,)*
+            $($arg: $a_ty,)*
             $($setter: $s_ty,)*
             $($option: Option<$o_ty>,)*
         }
@@ -176,18 +181,26 @@ macro_rules! def_stream {
                 $(#[$constructor_attr])*
                 pub fn $constructor() -> Self
                 {
-                    $B::custom(RequestMethod::$Method, $end_point)
+                    $B::custom(RequestMethod::$Method, $end_point.deref())
                 }
             )*
 
             /// Constructs a builder for a Stream at a custom end point.
-            pub fn custom($($b_field: $bf_ty),*) -> Self {
+            pub fn custom($($arg: $a_ty),*) -> Self {
                 $B {
-                    $($b_field: $b_field,)*
+                    $($arg: $arg,)*
                     $($setter: $default,)*
                     $($option: None,)*
                 }
             }
+
+            $(
+                $(#[$arg_setter_attr])*
+                pub fn $arg(&mut self, $arg: $a_ty) -> &mut Self {
+                    self.$arg = $arg;
+                    self
+                }
+            )*
 
             $(
                 $(#[$setter_attr])*
@@ -228,12 +241,18 @@ macro_rules! def_stream {
     };
 }
 
+lazy_static! {
+    static ref EP_FILTER: Url = Url::parse("https://stream.twitter.com/1.1/statuses/filter.json").unwrap();
+    static ref EP_SAMPLE: Url = Url::parse("https://stream.twitter.com/1.1/statuses/sample.json").unwrap();
+    static ref EP_USER: Url = Url::parse("https://userstream.twitter.com/1.1/user.json").unwrap();
+}
+
 def_stream! {
     /// A builder for `TwitterStream`.
     #[derive(Clone, Debug)]
     pub struct TwitterStreamBuilder<'a> {
-        method: RequestMethod,
-        end_point: &'a str;
+        :method: RequestMethod,
+        :end_point: &'a Url;
 
         // Setters:
 
@@ -324,7 +343,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::filter().listen(token)`.
     -
     /// A shorthand for `TwitterStreamBuilder::filter().listen_json(token)`.
-    pub fn filter(Post, "https://stream.twitter.com/1.1/statuses/filter.json");
+    pub fn filter(Post, EP_FILTER);
 
     /// Create a builder for `GET statuses/sample` endpoint.
     ///
@@ -334,7 +353,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::sample().listen(token)`.
     -
     /// A shorthand for `TwitterStreamBuilder::sample().listen_json(token)`.
-    pub fn sample(Get, "https://stream.twitter.com/1.1/statuses/sample.json");
+    pub fn sample(Get, EP_SAMPLE);
 
     /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
     ///
@@ -344,7 +363,7 @@ def_stream! {
     /// A shorthand for `TwitterStreamBuilder::user().listen(token)`.
     -
     /// A shorthand for `TwitterStreamBuilder::user().listen_json(token)`.
-    pub fn user(Get, "https://userstream.twitter.com/1.1/user.json");
+    pub fn user(Get, EP_USER);
 }
 
 impl<'a> TwitterStreamBuilder<'a> {
@@ -382,7 +401,7 @@ impl<'a> TwitterStreamBuilder<'a> {
 
     /// Attempt to make an HTTP connection to an end point of the Streaming API.
     fn connect(&self, token: &Token) -> Result<Response> {
-        let mut url = Url::parse(self.end_point)?;
+        let mut url = self.end_point.clone();
 
         let mut headers = Headers::new();
         headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));

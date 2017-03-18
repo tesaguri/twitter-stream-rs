@@ -5,6 +5,7 @@ pub use hyper::status::StatusCode;
 pub use json::Map as JsonMap;
 pub use json::Number as JsonNumber;
 pub use json::Value as JsonValue;
+pub use url::Url;
 
 use chrono::{DateTime as ChronoDateTime, UTC};
 
