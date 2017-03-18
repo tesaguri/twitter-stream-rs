@@ -1,3 +1,7 @@
+branches:
+  only:
+  - master
+  - /^v\d+\.\d+\.x$/
 language: rust
 rust:
   - stable
@@ -14,6 +18,3 @@ env:
   - FEATURES=
   - FEATURES=egg-mode
   - FEATURES=tweetust
-  - FEATURES=tls-native-tls
-  - FEATURES=tls-openssl
-  - FEATURES=tls-rustls
