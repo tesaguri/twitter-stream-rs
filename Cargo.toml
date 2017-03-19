@@ -17,7 +17,7 @@ A library for listening on Twitter Streaming API.
 chrono = { version = ">= 0.2, < 0.4", features = ["serde"] }
 flate2 = "0.2"
 futures = "0.1"
-hyper = { version = "0.11.0-a", git = "https://github.com/hyperium/hyper/", rev = "34509ef51a60082fa7888c5d75eb38aaf9d3ceec" }
+hyper = { version = "0.11.0-a", git = "https://github.com/hyperium/hyper/" }
 hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/" }
 lazy_static = "0.2"
 oauthcli = "1.0"
