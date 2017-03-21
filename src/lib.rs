@@ -115,6 +115,7 @@ pub use user::User;
 
 use error::HyperError;
 use futures::{Future, Poll, Stream};
+use hyper::Uri;
 use hyper::client::{Client, Connect, FutureResponse, Request, Response};
 use hyper::header::{Headers, AcceptEncoding, ContentType, Encoding, UserAgent, qitem};
 use hyper_tls::HttpsConnector;
@@ -480,7 +481,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             headers.set(auth::create_authorization_header(t, &self.method, &url, Some(body.as_ref())));
             headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
 
-            let mut req = Request::new(RequestMethod::Post, url);
+            let mut req = Request::new(RequestMethod::Post, url.as_ref().parse().unwrap());
             *req.headers_mut() = headers;
             req.set_body(body.into_bytes());
 
@@ -489,7 +490,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             self.append_query_pairs(&mut url.query_pairs_mut());
             headers.set(auth::create_authorization_header(t, &self.method, &url, None));
 
-            let mut req = Request::new(self.method.clone(), url);
+            let mut req = Request::new(self.method.clone(), url.as_ref().parse().unwrap());
             *req.headers_mut() = headers;
 
             c.request(req)
