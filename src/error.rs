@@ -17,6 +17,7 @@ pub enum Error {
     Http(StatusCode),
     /// An error from the `hyper` crate.
     Hyper(HyperError),
+    TimedOut,
 }
 
 /// An error occured while listening on a Stream.
@@ -29,11 +30,13 @@ pub enum StreamError {
     Io(io::Error),
     /// Failed to parse a JSON message from a Stream.
     Json(JsonError),
+    TimedOut,
     Utf8(Utf8Error),
 }
 
 pub enum JsonStreamError {
     Hyper(HyperError),
+    TimedOut,
     Utf8(Utf8Error),
 }
 
@@ -44,6 +47,7 @@ impl StdError for Error {
         match *self {
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
+            TimedOut => "timed out",
         }
     }
 
@@ -51,8 +55,8 @@ impl StdError for Error {
         use Error::*;
 
         match *self {
-            Http(_) => None,
             Hyper(ref e) => Some(e),
+            Http(_) | TimedOut => None,
         }
     }
 }
@@ -66,6 +70,7 @@ impl StdError for StreamError {
             Hyper(ref e) => e.description(),
             Io(ref e) => e.description(),
             Json(ref e) => e.description(),
+            TimedOut => "timed out",
             Utf8(ref e) => e.description(),
         }
     }
@@ -74,11 +79,11 @@ impl StdError for StreamError {
         use StreamError::*;
 
         match *self {
-            Disconnect(_) => None,
             Hyper(ref e) => Some(e),
             Io(ref e) => Some(e),
             Json(ref e) => Some(e),
             Utf8(ref e) => Some(e),
+            Disconnect(_) | TimedOut => None,
         }
     }
 }
@@ -90,6 +95,7 @@ impl Display for Error {
         match *self {
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
+            TimedOut => Display::fmt(self.description(), f),
         }
     }
 }
@@ -103,6 +109,7 @@ impl Display for StreamError {
             Hyper(ref e) => Display::fmt(e, f),
             Io(ref e) => Display::fmt(e, f),
             Json(ref e) => Display::fmt(e, f),
+            TimedOut => Display::fmt(self.description(), f),
             Utf8(ref e) => Display::fmt(e, f),
         }
     }
@@ -112,6 +119,7 @@ impl From<JsonStreamError> for StreamError {
     fn from(e: JsonStreamError) -> Self {
         match e {
             JsonStreamError::Hyper(e) => StreamError::Hyper(e),
+            JsonStreamError::TimedOut => StreamError::TimedOut,
             JsonStreamError::Utf8(e) => StreamError::Utf8(e),
         }
     }

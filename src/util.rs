@@ -1,7 +1,7 @@
 use bytes::{BufMut, Bytes};
 use chrono::{TimeZone, UTC};
 use error::JsonStreamError;
-use futures::{Poll, Stream};
+use futures::{Async, Future, Poll, Stream};
 use futures::stream::Fuse;
 use serde::de::{Deserialize, Deserializer, Error as SerdeError};
 use std::time::Duration;
@@ -102,9 +102,16 @@ macro_rules! string_enums {
     }
 }
 
+pub struct BaseTimeout {
+    dur: Duration,
+    handle: Handle,
+    timer: Timeout,
+}
+
+/// Adds a timeout to a `Stream`. Inspired by `tokio_timer::TimeoutStream`.
 pub struct TimeoutStream<S> {
     stream: S,
-    inner: Option<TSInner>,
+    inner: Option<BaseTimeout>,
 }
 
 /// A stream over the lines (delimited by CRLF) of a `Body`.
@@ -113,25 +120,39 @@ pub struct Lines<B> where B: Stream {
     buf: Bytes,
 }
 
-struct TSInner {
-    dur: Duration,
-    handle: Handle,
-    timer: Timeout,
+impl BaseTimeout {
+    pub fn new(dur: Duration, handle: Handle) -> Option<Self> {
+        Timeout::new(dur, &handle).ok().map(|timer| {
+            BaseTimeout {
+                dur: dur,
+                handle: handle,
+                timer: timer,
+            }
+        })
+    }
+
+    pub fn for_stream<S>(self, stream: S) -> TimeoutStream<S> {
+        TimeoutStream {
+            stream: stream,
+            inner: Timeout::new(self.dur, &self.handle).ok().map(move |timer| {
+                BaseTimeout {
+                    timer: timer,
+                    ..self
+                }
+            }),
+        }
+    }
+
+    pub fn timer_mut(&mut self) -> &mut Timeout {
+        &mut self.timer
+    }
 }
 
 impl<S> TimeoutStream<S> {
-    pub fn new(stream: S, dur: Option<Duration>, handle: Handle) -> Self {
+    pub fn never(stream: S) -> Self {
         TimeoutStream {
             stream: stream,
-            inner: dur.and_then(|dur| {
-                Timeout::new(dur, &handle).ok().map(|timer| {
-                    TSInner {
-                        dur: dur,
-                        handle: handle,
-                        timer: timer,
-                    }
-                })
-            }),
+            inner: None,
         }
     }
 }
@@ -141,11 +162,32 @@ impl<S> Stream for TimeoutStream<S> where S: Stream, S::Error: Into<JsonStreamEr
     type Error = JsonStreamError;
 
     fn poll(&mut self) -> Poll<Option<S::Item>, JsonStreamError> {
-        if let Some(ref _inner) = self.inner {
-            unimplemented!();
+        let ret;
+
+        if let Some(ref mut inner) = self.inner {
+            match self.stream.poll() {
+                Ok(Async::Ready(Some(v))) => {
+                    ret = Ok(Some(v).into());
+                    if let Ok(timer) = Timeout::new(inner.dur, &inner.handle) {
+                        inner.timer = timer;
+                        return ret;
+                    }
+                    // goto timeout_new_failed;
+                },
+                Ok(Async::NotReady) => match inner.timer.poll() {
+                    Ok(Async::Ready(())) => return Err(JsonStreamError::TimedOut),
+                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                    Err(_) => unreachable!(), // `Timeout` never fails.
+                },
+                v => return v.map_err(Into::into),
+            }
         } else {
-            self.stream.poll().map_err(Into::into)
+            return self.stream.poll().map_err(Into::into);
         }
+
+        // timeout_new_failed:
+        self.inner = None;
+        ret
     }
 }
 

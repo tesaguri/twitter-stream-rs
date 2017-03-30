@@ -121,11 +121,12 @@ use hyper::client::{Client, Connect, FutureResponse, Request};
 use hyper::header::{Headers, AcceptEncoding, ContentType, Encoding, UserAgent, qitem};
 use hyper_tls::HttpsConnector;
 use std::ops::Deref;
+use std::time::Duration;
 use tokio_core::reactor::Handle;
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
 use url::form_urlencoded::{Serializer, Target};
 use user::UserId;
-use util::{Lines, TimeoutStream};
+use util::{BaseTimeout, Lines, TimeoutStream};
 
 macro_rules! def_stream {
     (
@@ -333,6 +334,9 @@ def_stream! {
 
         // Optional setters:
 
+        /// Set a timeout for the stream. `None` means infinity.
+        :timeout: Option<Duration>,
+
         /// Set a user agent string to be sent when connectiong to the Stream.
         :user_agent: Option<&'a str>,
 
@@ -379,7 +383,7 @@ def_stream! {
 
     pub struct FutureTwitterJsonStream {
         inner: FutureResponse,
-        handle: Option<Handle>,
+        timeout: Option<BaseTimeout>,
     }
 
     /// A listener for Twitter Streaming API.
@@ -439,7 +443,7 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
     pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
         FutureTwitterJsonStream {
             inner: self.connect(token, self.client_or_handle),
-            handle: Some(self.client_or_handle.handle().clone()),
+            timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.handle().clone())),
         }
     }
 }
@@ -456,7 +460,7 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
     pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
         FutureTwitterJsonStream {
             inner: self.connect(token, &default_client(self.client_or_handle)),
-            handle: Some(self.client_or_handle.clone()),
+            timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.clone())),
         }
     }
 }
@@ -589,12 +593,24 @@ impl Future for FutureTwitterJsonStream {
 
         match self.inner.poll()? {
             Async::Ready(res) => {
-                let handle = self.handle.take().expect("the future has already been consumed");
+                let body = try_status!(res).body();
                 Ok(TwitterJsonStream {
-                    inner: Lines::new(TimeoutStream::new(try_status!(res).body(), None, handle)),
+                    inner: Lines::new(match self.timeout.take() {
+                        Some(timeout) => timeout.for_stream(body),
+                        None => TimeoutStream::never(body),
+                    }),
                 }.into())
             },
-            Async::NotReady => Ok(Async::NotReady),
+            Async::NotReady => {
+                if let Some(ref mut timeout) = self.timeout {
+                    match timeout.timer_mut().poll() {
+                        Ok(Async::Ready(())) => return Err(Error::TimedOut),
+                        Ok(Async::NotReady) => (),
+                        Err(_) => unreachable!(), // `Timeout` never fails.
+                    }
+                }
+                Ok(Async::NotReady)
+            },
         }
     }
 }
