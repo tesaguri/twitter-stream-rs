@@ -70,6 +70,7 @@ stream
 # }
 */
 
+extern crate bytes;
 extern crate chrono;
 extern crate flate2;
 #[macro_use]
@@ -105,7 +106,7 @@ mod auth;
 pub use auth::Token;
 pub use direct_message::DirectMessage;
 pub use entities::Entities;
-pub use error::{Error, StreamError};
+pub use error::{Error, JsonStreamError, StreamError};
 pub use geometry::Geometry;
 pub use list::List;
 pub use message::StreamMessage;
@@ -115,17 +116,16 @@ pub use user::User;
 
 use error::HyperError;
 use futures::{Future, Poll, Stream};
-use hyper::Uri;
-use hyper::client::{Client, Connect, FutureResponse, Request, Response};
+use hyper::Body;
+use hyper::client::{Client, Connect, FutureResponse, Request};
 use hyper::header::{Headers, AcceptEncoding, ContentType, Encoding, UserAgent, qitem};
 use hyper_tls::HttpsConnector;
-use json::Deserializer;
-use std::io;
 use std::ops::Deref;
 use tokio_core::reactor::Handle;
-use types::{FilterLevel, RequestMethod, StatusCode, Url, With};
+use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
 use url::form_urlencoded::{Serializer, Target};
 use user::UserId;
+use util::{Lines, TimeoutStream};
 
 macro_rules! def_stream {
     (
@@ -176,7 +176,7 @@ macro_rules! def_stream {
         )*
     ) => {
         $(#[$builder_attr])*
-        pub struct $B<$lifetime, $CH: 'a = ()> {
+        pub struct $B<$lifetime, $CH: 'a> {
             $client_or_handle: $ch_ty,
             $($arg: $a_ty,)*
             $($setter: $s_ty,)*
@@ -374,21 +374,22 @@ def_stream! {
     }
 
     pub struct FutureTwitterStream {
-        inner: FutureResponse,
+        inner: FutureTwitterJsonStream,
     }
 
     pub struct FutureTwitterJsonStream {
         inner: FutureResponse,
+        handle: Option<Handle>,
     }
 
     /// A listener for Twitter Streaming API.
     pub struct TwitterStream {
-        inner: Response,
+        inner: TwitterJsonStream,
     }
 
     /// Same as `TwitterStream` except that it yields raw JSON string messages.
     pub struct TwitterJsonStream {
-        inner: Response,
+        inner: Lines<TimeoutStream<Body>>,
     }
 
     // Constructors for `TwitterStreamBuilder`:
@@ -430,7 +431,7 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self, token: &Token) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.connect(token, self.client_or_handle),
+            inner: self.listen_json(token),
         }
     }
 
@@ -438,6 +439,7 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
     pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
         FutureTwitterJsonStream {
             inner: self.connect(token, self.client_or_handle),
+            handle: Some(self.client_or_handle.handle().clone()),
         }
     }
 }
@@ -446,7 +448,7 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self, token: &Token) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.connect(token, &default_client(self.client_or_handle)),
+            inner: self.listen_json(token),
         }
     }
 
@@ -454,6 +456,7 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
     pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
         FutureTwitterJsonStream {
             inner: self.connect(token, &default_client(self.client_or_handle)),
+            handle: Some(self.client_or_handle.clone()),
         }
     }
 }
@@ -466,7 +469,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
         let mut url = self.end_point.clone();
 
         let mut headers = Headers::new();
-        headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));
+        // headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));
         if let Some(ua) = self.user_agent {
             headers.set(UserAgent(ua.to_owned()));
         }
@@ -556,12 +559,14 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
 }
 
 macro_rules! try_status {
-    ($res:expr) => {
-        match $res.status() {
-            &StatusCode::Ok => $res,
+    ($res:expr) => {{
+        let res = $res;
+        match res.status() {
+            &StatusCode::Ok => (),
             err => return Err(From::from(err.clone())),
         }
-    }
+        res
+    }}
 }
 
 impl Future for FutureTwitterStream {
@@ -570,7 +575,7 @@ impl Future for FutureTwitterStream {
 
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
         Ok(TwitterStream {
-            inner: try_status!(try_ready!(self.inner.poll())),
+            inner: try_ready!(self.inner.poll()),
         }.into())
     }
 }
@@ -580,9 +585,17 @@ impl Future for FutureTwitterJsonStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<TwitterJsonStream, Error> {
-        Ok(TwitterJsonStream {
-            inner: try_status!(try_ready!(self.inner.poll())),
-        }.into())
+        use futures::Async;
+
+        match self.inner.poll()? {
+            Async::Ready(res) => {
+                let handle = self.handle.take().expect("the future has already been consumed");
+                Ok(TwitterJsonStream {
+                    inner: Lines::new(TimeoutStream::new(try_status!(res).body(), None, handle)),
+                }.into())
+            },
+            Async::NotReady => Ok(Async::NotReady),
+        }
     }
 }
 
@@ -591,16 +604,32 @@ impl Stream for TwitterStream {
     type Error = StreamError;
 
     fn poll(&mut self) -> Poll<Option<StreamMessage>, StreamError> {
-        unimplemented!()
+        match try_ready!(self.inner.poll()) {
+            Some(line) => match json::from_str(&line)? {
+                StreamMessage::Disconnect(d) => Err(StreamError::Disconnect(d)),
+                msg => Ok(Some(msg).into()),
+            },
+            None => Ok(None.into()),
+        }
     }
 }
 
 impl Stream for TwitterJsonStream {
-    type Item = String;
-    type Error = io::Error;
+    type Item = JsonStr;
+    type Error = JsonStreamError;
 
-    fn poll(&mut self) -> Poll<Option<String>, io::Error> {
-        unimplemented!()
+    fn poll(&mut self) -> Poll<Option<JsonStr>, JsonStreamError> {
+        loop {
+            match try_ready!(self.inner.poll()) {
+                Some(line) => {
+                     // Skip whitespaces (RFC7159 §2)
+                    if ! line.iter().all(|&c| c == b' ' || c == b'\t' || c == b'\n' || c == b'\r') {
+                        return Ok(Some(JsonStr::from_utf8(line)?).into());
+                    }
+                },
+                None => return Ok(None.into()),
+            }
+        }
     }
 }
 
@@ -614,7 +643,7 @@ impl IntoIterator for TwitterStream {
 }
 
 impl IntoIterator for TwitterJsonStream {
-    type Item = io::Result<String>;
+    type Item = Result<JsonStr, JsonStreamError>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
