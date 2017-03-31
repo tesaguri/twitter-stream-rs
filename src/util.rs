@@ -315,16 +315,16 @@ mod test {
             "wxyz",
         ];
         let body = vec![
-            Bytes::from_static(b"abc\r\n"),
+            Bytes::from(b"abc\r\n".to_vec()),
             Bytes::from(b"d\r\nefg\r\n".to_vec()),
-            Bytes::from_static(b"hi"),
+            Bytes::from(b"hi".to_vec()),
             Bytes::from(b"jk".to_vec()),
             Bytes::from(b"\r\n".to_vec()),
-            Bytes::from_static(b"\r\n"),
+            Bytes::from(b"\r\n".to_vec()),
             Bytes::from(b"lmn\r\nop".to_vec()),
             Bytes::from(b"q\rrs\r".to_vec()),
-            Bytes::from_static(b"\n\n\rtuv\r\r\n"),
-            Bytes::from_static(b"wxyz"),
+            Bytes::from(b"\n\n\rtuv\r\r\n".to_vec()),
+            Bytes::from(b"wxyz".to_vec()),
         ];
 
         let mut iter1 = lines.iter().cloned();

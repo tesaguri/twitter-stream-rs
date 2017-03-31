@@ -24,23 +24,28 @@ Here is a basic example that prints each Tweet's text from User Stream:
 
 ```rust,no_run
 extern crate futures;
+extern crate tokio_core;
 extern crate twitter_stream;
+
 use futures::{Future, Stream};
+use tokio_core::reactor::Core;
 use twitter_stream::{StreamMessage, Token, TwitterStream};
 
 # fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let stream = TwitterStream::user(&token).unwrap();
+let mut core = Core::new().unwrap();
 
-stream
-    .for_each(|msg| {
-        if let StreamMessage::Tweet(tweet) = msg {
-            println!("{}", tweet.text);
-        }
-        Ok(())
-    })
-    .wait().unwrap();
+let future_stream = TwitterStream::user(&token, &core.handle());
+let stream = core.run(future_stream).unwrap();
+
+let future = stream.for_each(|msg| {
+    if let StreamMessage::Tweet(tweet) = msg {
+        println!("{}", tweet.text);
+    }
+    Ok(())
+});
+core.run(future).unwrap();
 # }
 ```
 
@@ -49,24 +54,28 @@ If you don't want this behavior, you can opt to parse the messages manually:
 
 ```rust,no_run
 # extern crate futures;
+# extern crate tokio_core;
 # extern crate twitter_stream;
 extern crate serde_json;
 
 # use futures::{Future, Stream};
+# use tokio_core::reactor::Core;
 use twitter_stream::{StreamMessage, Token, TwitterJsonStream};
 
 # fn main() {
 # let token = Token::new("", "", "", "");
-let stream = TwitterJsonStream::user(&token).unwrap();
+# let mut core = Core::new().unwrap();
 
-stream
-    .for_each(|json| {
-        if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
-            println!("{}", tweet.text);
-        }
-        Ok(())
-    })
-    .wait().unwrap();
+let future_stream = TwitterJsonStream::user(&token, &core.handle());
+let stream = core.run(future_stream).unwrap();
+
+let future = stream.for_each(|json| {
+    if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
+        println!("{}", tweet.text);
+    }
+    Ok(())
+});
+core.run(future).unwrap();
 # }
 */
 
