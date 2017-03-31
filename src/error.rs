@@ -34,6 +34,7 @@ pub enum StreamError {
     Utf8(Utf8Error),
 }
 
+#[derive(Debug)]
 pub enum JsonStreamError {
     Hyper(HyperError),
     TimedOut,
