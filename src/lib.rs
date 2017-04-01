@@ -575,8 +575,8 @@ macro_rules! try_status {
     ($res:expr) => {{
         let res = $res;
         match res.status() {
-            &StatusCode::Ok => (),
-            err => return Err(From::from(err.clone())),
+            StatusCode::Ok => (),
+            err => return Err(From::from(err)),
         }
         res
     }}
