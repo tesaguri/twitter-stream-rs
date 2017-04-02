@@ -215,8 +215,8 @@ macro_rules! def_stream {
         impl<$lifetime> $B<$lifetime, ()> {
             $(
                 $(#[$constructor_attr])*
-                pub fn $constructor() -> $B<$lifetime, ()> {
-                    $B::custom(RequestMethod::$Method, $end_point.deref())
+                pub fn $constructor(token: &$lifetime Token<$lifetime>) -> $B<$lifetime, ()> {
+                    $B::custom(RequestMethod::$Method, $end_point.deref(), token)
                 }
             )*
 
@@ -280,9 +280,8 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor(token: &Token, handle: &Handle) -> $FS
-                {
-                    $B::$constructor().handle(handle).listen(token)
+                pub fn $constructor(token: &Token, handle: &Handle) -> $FS {
+                    $B::$constructor(token).handle(handle).listen()
                 }
             )*
         }
@@ -292,7 +291,7 @@ macro_rules! def_stream {
                 $(#[$js_constructor_attr])*
                 pub fn $constructor(token: &Token, handle: &Handle) -> $FJS
                 {
-                    $B::$constructor().handle(handle).listen_json(token)
+                    $B::$constructor(token).handle(handle).listen_json()
                 }
             )*
         }
@@ -314,7 +313,8 @@ def_stream! {
         client_or_handle: &'a CH = TUPLE_REF;
 
         :method: RequestMethod,
-        :end_point: &'a Url;
+        :end_point: &'a Url,
+        :token: &'a Token<'a>;
 
         // Setters:
 
@@ -411,9 +411,9 @@ def_stream! {
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
     -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen(token)`.
+    /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
     -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen_json(token)`.
+    /// A shorthand for `TwitterStreamBuilder::filter().listen_json()`.
     pub fn filter(Post, EP_FILTER);
 
     /// Create a builder for `GET statuses/sample` endpoint.
@@ -421,9 +421,9 @@ def_stream! {
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
     -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen(token)`.
+    /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
     -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen_json(token)`.
+    /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
     pub fn sample(Get, EP_SAMPLE);
 
     /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
@@ -431,9 +431,9 @@ def_stream! {
     /// See the [Twitter Developer Documentation][1] for more information.
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
     -
-    /// A shorthand for `TwitterStreamBuilder::user().listen(token)`.
+    /// A shorthand for `TwitterStreamBuilder::user().listen()`.
     -
-    /// A shorthand for `TwitterStreamBuilder::user().listen_json(token)`.
+    /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
     pub fn user(Get, EP_USER);
 }
 
@@ -441,16 +441,16 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
     where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
 {
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
-    pub fn listen(&self, token: &Token) -> FutureTwitterStream {
+    pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.listen_json(token),
+            inner: self.listen_json(),
         }
     }
 
     /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
+    pub fn listen_json(&self) -> FutureTwitterJsonStream {
         FutureTwitterJsonStream {
-            inner: self.connect(token, self.client_or_handle),
+            inner: self.connect(self.client_or_handle),
             timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.handle().clone())),
         }
     }
@@ -458,16 +458,16 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
 
 impl<'a> TwitterStreamBuilder<'a, Handle> {
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
-    pub fn listen(&self, token: &Token) -> FutureTwitterStream {
+    pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.listen_json(token),
+            inner: self.listen_json(),
         }
     }
 
     /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self, token: &Token) -> FutureTwitterJsonStream {
+    pub fn listen_json(&self) -> FutureTwitterJsonStream {
         FutureTwitterJsonStream {
-            inner: self.connect(token, &default_client(self.client_or_handle)),
+            inner: self.connect(&default_client(self.client_or_handle)),
             timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.clone())),
         }
     }
@@ -475,7 +475,7 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
 
 impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
     /// Attempt to make an HTTP connection to an end point of the Streaming API.
-    fn connect<C, B>(&self, t: &Token, c: &Client<C, B>) -> FutureResponse
+    fn connect<C, B>(&self, c: &Client<C, B>) -> FutureResponse
         where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
     {
         let mut url = self.end_point.clone();
@@ -493,7 +493,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             self.append_query_pairs(&mut body);
             let body = body.finish();
 
-            headers.set(auth::create_authorization_header(t, &self.method, &url, Some(body.as_ref())));
+            headers.set(auth::create_authorization_header(self.token, &self.method, &url, Some(body.as_ref())));
             headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
 
             let mut req = Request::new(RequestMethod::Post, url.as_ref().parse().unwrap());
@@ -503,7 +503,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             c.request(req)
         } else {
             self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(auth::create_authorization_header(t, &self.method, &url, None));
+            headers.set(auth::create_authorization_header(self.token, &self.method, &url, None));
 
             let mut req = Request::new(self.method.clone(), url.as_ref().parse().unwrap());
             *req.headers_mut() = headers;
