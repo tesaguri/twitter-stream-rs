@@ -36,15 +36,15 @@ let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_
 
 let mut core = Core::new().unwrap();
 
-let future_stream = TwitterStream::user(&token, &core.handle());
-let stream = core.run(future_stream).unwrap();
-
-let future = stream.for_each(|msg| {
-    if let StreamMessage::Tweet(tweet) = msg {
-        println!("{}", tweet.text);
-    }
-    Ok(())
+let future = TwitterStream::user(&token, &core.handle()).and_then(|stream| {
+    stream.for_each(|msg| {
+        if let StreamMessage::Tweet(tweet) = msg {
+            println!("{}", tweet.text);
+        }
+        Ok(())
+    })
 });
+
 core.run(future).unwrap();
 # }
 ```
@@ -60,21 +60,21 @@ extern crate serde_json;
 
 # use futures::{Future, Stream};
 # use tokio_core::reactor::Core;
-use twitter_stream::{StreamMessage, Token, TwitterJsonStream};
+# use twitter_stream::{StreamMessage, Token};
+use twitter_stream::TwitterJsonStream;
 
 # fn main() {
 # let token = Token::new("", "", "", "");
 # let mut core = Core::new().unwrap();
-
-let future_stream = TwitterJsonStream::user(&token, &core.handle());
-let stream = core.run(future_stream).unwrap();
-
-let future = stream.for_each(|json| {
-    if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
-        println!("{}", tweet.text);
-    }
-    Ok(())
+let future = TwitterJsonStream::user(&token, &core.handle()).and_then(|stream| {
+    stream.for_each(|json| {
+        if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
+            println!("{}", tweet.text);
+        }
+        Ok(())
+    })
 });
+
 core.run(future).unwrap();
 # }
 */
@@ -115,7 +115,7 @@ mod auth;
 pub use auth::Token;
 pub use direct_message::DirectMessage;
 pub use entities::Entities;
-pub use error::{Error, JsonStreamError, StreamError};
+pub use error::Error;
 pub use geometry::Geometry;
 pub use list::List;
 pub use message::StreamMessage;
@@ -626,12 +626,12 @@ impl Future for FutureTwitterJsonStream {
 
 impl Stream for TwitterStream {
     type Item = StreamMessage;
-    type Error = StreamError;
+    type Error = Error;
 
-    fn poll(&mut self) -> Poll<Option<StreamMessage>, StreamError> {
+    fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
         match try_ready!(self.inner.poll()) {
             Some(line) => match json::from_str(&line)? {
-                StreamMessage::Disconnect(d) => Err(StreamError::Disconnect(d)),
+                StreamMessage::Disconnect(d) => Err(Error::Disconnect(d)),
                 msg => Ok(Some(msg).into()),
             },
             None => Ok(None.into()),
@@ -641,9 +641,9 @@ impl Stream for TwitterStream {
 
 impl Stream for TwitterJsonStream {
     type Item = JsonStr;
-    type Error = JsonStreamError;
+    type Error = Error;
 
-    fn poll(&mut self) -> Poll<Option<JsonStr>, JsonStreamError> {
+    fn poll(&mut self) -> Poll<Option<JsonStr>, Error> {
         loop {
             match try_ready!(self.inner.poll()) {
                 Some(line) => {
@@ -659,7 +659,7 @@ impl Stream for TwitterJsonStream {
 }
 
 impl IntoIterator for TwitterStream {
-    type Item = Result<StreamMessage, StreamError>;
+    type Item = Result<StreamMessage, Error>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -668,7 +668,7 @@ impl IntoIterator for TwitterStream {
 }
 
 impl IntoIterator for TwitterJsonStream {
-    type Item = Result<JsonStr, JsonStreamError>;
+    type Item = Result<JsonStr, Error>;
     type IntoIter = futures::stream::Wait<Self>;
 
     fn into_iter(self) -> Self::IntoIter {

@@ -1,6 +1,6 @@
 use bytes::{BufMut, Bytes};
 use chrono::{TimeZone, UTC};
-use error::JsonStreamError;
+use error::Error;
 use futures::{Async, Future, Poll, Stream};
 use futures::stream::Fuse;
 use serde::de::{Deserialize, Deserializer, Error as SerdeError};
@@ -157,11 +157,11 @@ impl<S> TimeoutStream<S> {
     }
 }
 
-impl<S> Stream for TimeoutStream<S> where S: Stream, S::Error: Into<JsonStreamError> {
+impl<S> Stream for TimeoutStream<S> where S: Stream, S::Error: Into<Error> {
     type Item = S::Item;
-    type Error = JsonStreamError;
+    type Error = Error;
 
-    fn poll(&mut self) -> Poll<Option<S::Item>, JsonStreamError> {
+    fn poll(&mut self) -> Poll<Option<S::Item>, Error> {
         let ret;
 
         if let Some(ref mut inner) = self.inner {
@@ -175,7 +175,7 @@ impl<S> Stream for TimeoutStream<S> where S: Stream, S::Error: Into<JsonStreamEr
                     // goto timeout_new_failed;
                 },
                 Ok(Async::NotReady) => match inner.timer.poll() {
-                    Ok(Async::Ready(())) => return Err(JsonStreamError::TimedOut),
+                    Ok(Async::Ready(())) => return Err(Error::TimedOut),
                     Ok(Async::NotReady) => return Ok(Async::NotReady),
                     Err(_) => unreachable!(), // `Timeout` never fails.
                 },
