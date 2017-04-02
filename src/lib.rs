@@ -571,17 +571,6 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
     }
 }
 
-macro_rules! try_status {
-    ($res:expr) => {{
-        let res = $res;
-        match res.status() {
-            StatusCode::Ok => (),
-            err => return Err(From::from(err)),
-        }
-        res
-    }}
-}
-
 impl Future for FutureTwitterStream {
     type Item = TwitterStream;
     type Error = Error;
@@ -602,12 +591,18 @@ impl Future for FutureTwitterJsonStream {
 
         match self.inner.poll()? {
             Async::Ready(res) => {
-                let body = try_status!(res).body();
+                let status = res.status();
+                if StatusCode::Ok != status {
+                    return Err(status.into());
+                }
+
+                let body = match self.timeout.take() {
+                    Some(timeout) => timeout.for_stream(res.body()),
+                    None => TimeoutStream::never(res.body()),
+                };
+
                 Ok(TwitterJsonStream {
-                    inner: Lines::new(match self.timeout.take() {
-                        Some(timeout) => timeout.for_stream(body),
-                        None => TimeoutStream::never(body),
-                    }),
+                    inner: Lines::new(body),
                 }.into())
             },
             Async::NotReady => {
