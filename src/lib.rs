@@ -81,7 +81,6 @@ core.run(future).unwrap();
 
 extern crate bytes;
 extern crate chrono;
-extern crate flate2;
 #[macro_use]
 extern crate futures;
 extern crate hyper;
@@ -127,7 +126,7 @@ use error::HyperError;
 use futures::{Future, Poll, Stream};
 use hyper::Body;
 use hyper::client::{Client, Connect, FutureResponse, Request};
-use hyper::header::{Headers, AcceptEncoding, ContentType, Encoding, UserAgent, qitem};
+use hyper::header::{Headers, ContentType, UserAgent};
 use hyper_tls::HttpsConnector;
 use std::ops::Deref;
 use std::time::Duration;
