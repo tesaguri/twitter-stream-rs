@@ -28,3 +28,6 @@ tokio-core = "= 0.1"
 url = "1.0"
 egg-mode = { version = "0.8", optional = true }
 tweetust = { version = "0.6", optional = true }
+
+[[example]]
+name = "echo_bot"
