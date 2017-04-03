@@ -13,7 +13,7 @@ use types::StatusCode;
 #[derive(Debug)]
 pub enum Error {
     /// The Stream has been disconnected by the server.
-    Disconnect(Disconnect),
+    Disconnect(Box<Disconnect>),
     /// An HTTP error from the Stream.
     Http(StatusCode),
     /// An error from the `hyper` crate.

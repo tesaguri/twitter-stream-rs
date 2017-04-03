@@ -625,7 +625,7 @@ impl Stream for TwitterStream {
     fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
         match try_ready!(self.inner.poll()) {
             Some(line) => match json::from_str(&line)? {
-                StreamMessage::Disconnect(d) => Err(Error::Disconnect(d)),
+                StreamMessage::Disconnect(d) => Err(Error::Disconnect(Box::new(d))),
                 msg => Ok(Some(msg).into()),
             },
             None => Ok(None.into()),
