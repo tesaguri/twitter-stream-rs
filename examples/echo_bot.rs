@@ -8,7 +8,7 @@ extern crate twitter_stream;
 use futures::{Future, Stream};
 use std::fs::File;
 use tokio_core::reactor::Core;
-use twitter_stream::{StreamMessage, Token, TwitterStream};
+use twitter_stream::{Error, StreamMessage, Token, TwitterStream};
 
 #[cfg(feature = "tweetust")]
 fn main() {
@@ -40,7 +40,8 @@ fn main() {
                     rest.statuses()
                         .update(response)
                         .in_reply_to_status_id(tweet.id as _)
-                        .execute().unwrap();
+                        .execute()
+                        .map_err(Error::custom)?;
                 }
             }
 

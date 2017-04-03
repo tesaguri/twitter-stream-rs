@@ -22,6 +22,13 @@ pub enum Error {
     Json(JsonError),
     TimedOut,
     Utf8(Utf8Error),
+    Custom(Box<StdError + Send + Sync>),
+}
+
+impl Error {
+    pub fn custom<E>(error: E) -> Self where Box<StdError + Send + Sync>: From<E> {
+        Error::Custom(From::from(error))
+    }
 }
 
 impl StdError for Error {
@@ -35,6 +42,7 @@ impl StdError for Error {
             Json(ref e) => e.description(),
             TimedOut => "timed out",
             Utf8(ref e) => e.description(),
+            Custom(ref e) => e.description(),
         }
     }
 
@@ -45,6 +53,7 @@ impl StdError for Error {
             Hyper(ref e) => Some(e),
             Json(ref e) => Some(e),
             Utf8(ref e) => Some(e),
+            Custom(ref e) => Some(e.as_ref()),
             Disconnect(_) | Http(_) | TimedOut => None,
         }
     }
@@ -61,6 +70,7 @@ impl Display for Error {
             Json(ref e) => Display::fmt(e, f),
             TimedOut => Display::fmt(self.description(), f),
             Utf8(ref e) => Display::fmt(e, f),
+            Custom(ref e) => Display::fmt(e, f),
         }
     }
 }
