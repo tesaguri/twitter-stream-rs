@@ -256,17 +256,13 @@ impl Deserialize for StreamMessage {
                         .map(StreamMessage::Event)
                         .map_err(|e| V::Error::custom(e.to_string()))
                 } else if let Some(id) = map.remove("for_user") {
-                    if let JsonValue::Number(id) = id {
-                        if let Some(id) = id.as_u64() {
-                            if let Some(msg) = map.remove("message") {
-                                StreamMessage::deserialize(msg)
-                                    .map(|m| StreamMessage::ForUser(id, Box::new(m)))
-                                    .map_err(|e| V::Error::custom(e.to_string()))
-                            } else {
-                                Err(V::Error::missing_field("message"))
-                            }
+                    if let Some(id) = id.as_u64() {
+                        if let Some(msg) = map.remove("message") {
+                            StreamMessage::deserialize(msg)
+                                .map(|m| StreamMessage::ForUser(id, Box::new(m)))
+                                .map_err(|e| V::Error::custom(e.to_string()))
                         } else {
-                            Err(V::Error::custom("expected u64"))
+                            Err(V::Error::missing_field("message"))
                         }
                     } else {
                         Err(V::Error::custom("expected u64"))
