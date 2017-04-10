@@ -652,24 +652,6 @@ impl Stream for TwitterJsonStream {
     }
 }
 
-impl IntoIterator for TwitterStream {
-    type Item = Result<StreamMessage, Error>;
-    type IntoIter = futures::stream::Wait<Self>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.wait()
-    }
-}
-
-impl IntoIterator for TwitterJsonStream {
-    type Item = Result<JsonStr, Error>;
-    type IntoIter = futures::stream::Wait<Self>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.wait()
-    }
-}
-
 fn default_client(h: &Handle) -> Client<HttpsConnector> {
     Client::configure().connector(HttpsConnector::new(1, h)).build(h)
 }
