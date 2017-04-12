@@ -1,6 +1,6 @@
 use bytes::{BufMut, Bytes};
 use chrono::{TimeZone, UTC};
-use error::Error;
+use error::{Error, HyperError};
 use futures::{Async, Future, Poll, Stream};
 use futures::stream::Fuse;
 use serde::de::{Deserialize, Deserializer, Error as SerdeError};
@@ -157,7 +157,7 @@ impl<S> TimeoutStream<S> {
     }
 }
 
-impl<S> Stream for TimeoutStream<S> where S: Stream, S::Error: Into<Error> {
+impl<S> Stream for TimeoutStream<S> where S: Stream<Error=HyperError> {
     type Item = S::Item;
     type Error = Error;
 
@@ -179,10 +179,10 @@ impl<S> Stream for TimeoutStream<S> where S: Stream, S::Error: Into<Error> {
                     Ok(Async::NotReady) => return Ok(Async::NotReady),
                     Err(_) => unreachable!(), // `Timeout` never fails.
                 },
-                v => return v.map_err(Into::into),
+                v => return v.map_err(Error::Hyper),
             }
         } else {
-            return self.stream.poll().map_err(Into::into);
+            return self.stream.poll().map_err(Error::Hyper);
         }
 
         // timeout_new_failed:

@@ -588,11 +588,11 @@ impl Future for FutureTwitterJsonStream {
     fn poll(&mut self) -> Poll<TwitterJsonStream, Error> {
         use futures::Async;
 
-        match self.inner.poll()? {
+        match self.inner.poll().map_err(Error::Hyper)? {
             Async::Ready(res) => {
                 let status = res.status();
                 if StatusCode::Ok != status {
-                    return Err(status.into());
+                    return Err(Error::Http(status));
                 }
 
                 let body = match self.timeout.take() {
@@ -624,7 +624,7 @@ impl Stream for TwitterStream {
 
     fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
         match try_ready!(self.inner.poll()) {
-            Some(line) => match json::from_str(&line)? {
+            Some(line) => match json::from_str(&line).map_err(Error::Json)? {
                 StreamMessage::Disconnect(d) => Err(Error::Disconnect(Box::new(d))),
                 msg => Ok(Some(msg).into()),
             },
@@ -643,7 +643,8 @@ impl Stream for TwitterJsonStream {
                 Some(line) => {
                      // Skip whitespaces (RFC7159 §2)
                     if ! line.iter().all(|&c| c == b' ' || c == b'\t' || c == b'\n' || c == b'\r') {
-                        return Ok(Some(JsonStr::from_utf8(line)?).into());
+                        let line = JsonStr::from_utf8(line).map_err(Error::Utf8)?;
+                        return Ok(Some(line).into());
                     }
                 },
                 None => return Ok(None.into()),

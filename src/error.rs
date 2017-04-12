@@ -74,27 +74,3 @@ impl Display for Error {
         }
     }
 }
-
-impl From<HyperError> for Error {
-    fn from(e: HyperError) -> Self {
-        Error::Hyper(e)
-    }
-}
-
-impl From<JsonError> for Error {
-    fn from(e: JsonError) -> Self {
-        Error::Json(e)
-    }
-}
-
-impl From<StatusCode> for Error {
-    fn from(e: StatusCode) -> Self {
-        Error::Http(e)
-    }
-}
-
-impl From<Utf8Error> for Error {
-    fn from(e: Utf8Error) -> Self {
-        Error::Utf8(e)
-    }
-}
