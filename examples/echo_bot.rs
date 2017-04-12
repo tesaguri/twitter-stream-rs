@@ -7,6 +7,7 @@ extern crate twitter_stream;
 
 use futures::{Future, Stream};
 use std::fs::File;
+use std::path::PathBuf;
 use tokio_core::reactor::Core;
 use twitter_stream::{Error, StreamMessage, Token, TwitterStream};
 
@@ -17,7 +18,11 @@ fn main() {
     // `credential.json` must have the following form:
     // {"consumer_key": "...", "consumer_secret": "...", "access_key": "...", "access_secret": "..."}
 
-    let credential = File::open("examples/credential.json").unwrap();
+    let mut credential_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    credential_path.push("examples");
+    credential_path.push("credential.json");
+
+    let credential = File::open(credential_path).unwrap();
     let token: Token = json::from_reader(credential).unwrap();
 
     let mut core = Core::new().unwrap();
