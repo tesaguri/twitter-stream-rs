@@ -479,7 +479,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
         let mut headers = Headers::new();
         // headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));
         if let Some(ua) = self.user_agent {
-            headers.set(UserAgent(ua.to_owned()));
+            headers.set(UserAgent::new(ua.to_owned()));
         }
 
         if RequestMethod::Post == self.method {
