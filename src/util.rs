@@ -288,9 +288,10 @@ fn extend_from_bytes(dst: &mut Bytes, src: Bytes) {
             buf.freeze()
         },
         Err(buf) => {
-            let mut buf = buf.to_vec();
-            buf.extend_from_slice(dst);
-            buf.into()
+            let mut vec = Vec::with_capacity(buf.len() + dst.len());
+            vec.extend_from_slice(&buf);
+            vec.extend_from_slice(dst);
+            vec.into()
         },
     };
 }
