@@ -80,6 +80,7 @@ extern crate chrono;
 #[macro_use]
 extern crate futures;
 extern crate hyper;
+#[cfg(feature = "tls")]
 extern crate hyper_tls;
 #[macro_use]
 extern crate lazy_static;
@@ -123,7 +124,6 @@ use futures::{Future, Poll, Stream};
 use hyper::Body;
 use hyper::client::{Client, Connect, FutureResponse, Request};
 use hyper::header::{Headers, ContentType, UserAgent};
-use hyper_tls::HttpsConnector;
 use std::ops::Deref;
 use std::time::Duration;
 use tokio_core::reactor::Handle;
@@ -649,6 +649,13 @@ impl Stream for TwitterJsonStream {
     }
 }
 
-fn default_client(h: &Handle) -> Client<HttpsConnector> {
-    Client::configure().connector(HttpsConnector::new(1, h)).build(h)
+#[cfg(feature = "tls")]
+fn default_client(h: &Handle) -> Client<hyper_tls::HttpsConnector> {
+    Client::configure().connector(hyper_tls::HttpsConnector::new(1, h)).build(h)
+}
+
+#[cfg(not(feature = "tls"))]
+#[cold]
+fn default_client(h: &Handle) -> Client<hyper::client::HttpConnector> {
+    Client::new(h)
 }

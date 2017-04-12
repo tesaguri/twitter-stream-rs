@@ -18,7 +18,6 @@ bytes = "0.4"
 chrono = { version = ">= 0.2, < 0.4", features = ["serde"] }
 futures = "0.1.11"
 hyper = { version = "0.11.0-a", git = "https://github.com/hyperium/hyper/" }
-hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/" }
 lazy_static = "0.2"
 oauthcli = "1.0"
 serde = "0.9"
@@ -26,8 +25,13 @@ serde_derive = "0.9"
 serde_json = "0.9"
 tokio-core = "0.1"
 url = "1.0"
+hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/", optional = true }
 egg-mode = { version = "0.8", optional = true }
 tweetust = { version = "0.6", optional = true }
+
+[features]
+default = ["tls"]
+tls = ["hyper-tls"]
 
 [[example]]
 name = "echo_bot"
