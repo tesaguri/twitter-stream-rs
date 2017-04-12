@@ -28,25 +28,23 @@ fn main() {
     // Information of the authenticated user:
     let user = rest.account().verify_credentials().execute().unwrap().object;
 
-    let bot = future_stream.and_then(|stream| {
-        stream.for_each(|message| {
-            if let StreamMessage::Tweet(tweet) = message {
-                if tweet.user.id != user.id as u64
-                    && tweet.entities.user_mentions.iter().any(|mention| mention.id == user.id as u64)
-                {
-                    println!("On {}, @{} tweeted: {:?}", tweet.created_at, tweet.user.screen_name, tweet.text);
+    let bot = future_stream.flatten_stream().for_each(|message| {
+        if let StreamMessage::Tweet(tweet) = message {
+            if tweet.user.id != user.id as u64
+                && tweet.entities.user_mentions.iter().any(|mention| mention.id == user.id as u64)
+            {
+                println!("On {}, @{} tweeted: {:?}", tweet.created_at, tweet.user.screen_name, tweet.text);
 
-                    let response = format!("@{} {}", tweet.user.screen_name, tweet.text);
-                    rest.statuses()
-                        .update(response)
-                        .in_reply_to_status_id(tweet.id as _)
-                        .execute()
-                        .map_err(Error::custom)?;
-                }
+                let response = format!("@{} {}", tweet.user.screen_name, tweet.text);
+                rest.statuses()
+                    .update(response)
+                    .in_reply_to_status_id(tweet.id as _)
+                    .execute()
+                    .map_err(Error::custom)?;
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     });
 
     core.run(bot).unwrap();

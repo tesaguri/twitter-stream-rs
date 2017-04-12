@@ -36,13 +36,11 @@ let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_
 
 let mut core = Core::new().unwrap();
 
-let future = TwitterStream::user(&token, &core.handle()).and_then(|stream| {
-    stream.for_each(|msg| {
-        if let StreamMessage::Tweet(tweet) = msg {
-            println!("{}", tweet.text);
-        }
-        Ok(())
-    })
+let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_each(|msg| {
+    if let StreamMessage::Tweet(tweet) = msg {
+        println!("{}", tweet.text);
+    }
+    Ok(())
 });
 
 core.run(future).unwrap();
@@ -66,13 +64,11 @@ use twitter_stream::TwitterJsonStream;
 # fn main() {
 # let token = Token::new("", "", "", "");
 # let mut core = Core::new().unwrap();
-let future = TwitterJsonStream::user(&token, &core.handle()).and_then(|stream| {
-    stream.for_each(|json| {
-        if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
-            println!("{}", tweet.text);
-        }
-        Ok(())
-    })
+let future = TwitterJsonStream::user(&token, &core.handle()).flatten_stream().for_each(|json| {
+    if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
+        println!("{}", tweet.text);
+    }
+    Ok(())
 });
 
 core.run(future).unwrap();
