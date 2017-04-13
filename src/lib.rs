@@ -125,6 +125,7 @@ use hyper::Body;
 use hyper::client::{Client, Connect, FutureResponse, Request};
 use hyper::header::{Headers, ContentType, UserAgent};
 use std::ops::Deref;
+use std::borrow::Cow;
 use std::time::Duration;
 use tokio_core::reactor::Handle;
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
@@ -149,6 +150,7 @@ macro_rules! def_stream {
                 $(#[$o_attr:meta])*
                 :$option:ident: Option<$o_ty:ty>
             ),*;
+            $(:$custom_setter:ident: $c_ty:ty = $c_default:expr),*;
         }
 
         $(#[$fs_attr:meta])*
@@ -186,6 +188,7 @@ macro_rules! def_stream {
             $($arg: $a_ty,)*
             $($setter: $s_ty,)*
             $($option: Option<$o_ty>,)*
+            $($custom_setter: $c_ty,)*
         }
 
         $(#[$fs_attr])*
@@ -223,6 +226,7 @@ macro_rules! def_stream {
                     $($arg: $arg,)*
                     $($setter: $default,)*
                     $($option: None,)*
+                    $($custom_setter: $c_default,)*
                 }
             }
         }
@@ -236,6 +240,7 @@ macro_rules! def_stream {
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
                     $($option: self.$option,)*
+                    $($custom_setter: self.$custom_setter,)*
                 }
             }
 
@@ -244,6 +249,7 @@ macro_rules! def_stream {
                     $client_or_handle: handle,
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
+                    $($custom_setter: self.$custom_setter,)*
                     $($option: self.$option,)*
                 }
             }
@@ -263,6 +269,14 @@ macro_rules! def_stream {
                     self
                 }
             )*
+
+            /// Set a user agent string to be sent when connectiong to the Stream.
+            pub fn user_agent<T, UA>(&mut self, user_agent: T) -> &mut Self
+                where T: Into<Option<UA>>, UA: Into<Cow<'static, str>>
+            {
+                self.user_agent = user_agent.into().map(Into::into);
+                self
+            }
 
             $(
                 $(#[$o_attr])*
@@ -341,9 +355,6 @@ def_stream! {
         /// Set a timeout for the stream. `None` means infinity.
         :timeout: Option<Duration>,
 
-        /// Set a user agent string to be sent when connectiong to the Stream.
-        :user_agent: Option<&'a str>,
-
         // Optional setters for API parameters:
 
         /// Set a comma-separated language identifiers to receive Tweets written in the specified languages only.
@@ -379,6 +390,10 @@ def_stream! {
 
         /// Set types of messages delivered to User and Site Streams clients.
         :with: Option<With>;
+
+        // Fields whose setters are manually defined elsewhere:
+
+        :user_agent: Option<Cow<'static, str>> = None;
     }
 
     pub struct FutureTwitterStream {
@@ -478,8 +493,8 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
 
         let mut headers = Headers::new();
         // headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));
-        if let Some(ua) = self.user_agent {
-            headers.set(UserAgent::new(ua.to_owned()));
+        if let Some(ref ua) = self.user_agent {
+            headers.set(UserAgent::new(ua.clone()));
         }
 
         if RequestMethod::Post == self.method {
