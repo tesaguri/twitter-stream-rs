@@ -27,13 +27,13 @@ fn main() {
 
     let mut core = Core::new().unwrap();
 
-    let future_stream = TwitterStream::user(&token, &core.handle());
+    let stream = TwitterStream::user(&token, &core.handle()).flatten_stream();
     let rest = tweetust::TwitterClient::new(token, tweetust::DefaultHttpHandler::with_https_connector().unwrap());
 
     // Information of the authenticated user:
     let user = rest.account().verify_credentials().execute().unwrap().object;
 
-    let bot = future_stream.flatten_stream().for_each(|message| {
+    let bot = stream.for_each(|message| {
         if let StreamMessage::Tweet(tweet) = message {
             if tweet.user.id != user.id as u64
                 && tweet.entities.user_mentions.iter().any(|mention| mention.id == user.id as u64)
