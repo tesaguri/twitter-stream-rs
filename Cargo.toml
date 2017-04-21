@@ -20,9 +20,9 @@ futures = "0.1.11"
 hyper = { version = "0.11.0-a", git = "https://github.com/hyperium/hyper/" }
 lazy_static = "0.2"
 oauthcli = "1.0"
-serde = "0.9"
-serde_derive = "0.9"
-serde_json = "0.9"
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
 tokio-core = "0.1"
 url = "1.0"
 hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/", optional = true }

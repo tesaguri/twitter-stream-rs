@@ -1,6 +1,5 @@
 use {List, Tweet, User};
-use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
-use serde::de::impls::IgnoredAny;
+use serde::de::{Deserialize, Deserializer, Error, IgnoredAny, MapAccess, Visitor};
 use std::fmt;
 use types::{DateTime, JsonValue};
 use util;
@@ -51,14 +50,14 @@ macro_rules! impl_event {
             $Custom(String, Option<JsonValue>),
         }
 
-        impl Deserialize for Event {
-            fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
+        impl<'x> Deserialize<'x> for Event {
+            fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
                 struct EventVisitor;
 
-                impl Visitor for EventVisitor {
+                impl<'x> Visitor<'x> for EventVisitor {
                     type Value = Event;
 
-                    fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Event, V::Error> {
+                    fn visit_map<V: MapAccess<'x>>(self, mut v: V) -> Result<Event, V::Error> {
                         #[derive(Default)]
                         struct EventBuffer {
                             created_at: Option<DateTime>,
@@ -75,14 +74,14 @@ macro_rules! impl_event {
                             () => (|e| V::Error::custom(e.to_string()));
                         }
 
-                        while let Some(k) = v.visit_key::<String>()? {
+                        while let Some(k) = v.next_key::<String>()? {
                             match k.as_str() {
                                 "created_at" => {
-                                    let val = v.visit_value::<String>()?;
+                                    let val = v.next_value::<String>()?;
                                     event.created_at = Some(util::parse_datetime(&val).map_err(err_map!())?);
                                 },
                                 "event" => {
-                                    let e = v.visit_value::<String>()?;
+                                    let e = v.next_value::<String>()?;
                                     event.event = if let Some(t) = target_obj.take() {
                                         match e.as_str() {
                                             $($c_tag => {
@@ -99,27 +98,27 @@ macro_rules! impl_event {
                                         }
                                     };
                                 },
-                                "target" => event.target = Some(v.visit_value()?),
-                                "source" => event.source = Some(v.visit_value()?),
+                                "target" => event.target = Some(v.next_value()?),
+                                "source" => event.source = Some(v.next_value()?),
                                 "target_object" => if let Some(e) = event_kind.take() {
                                     event.event = match e.as_str() {
-                                        $($c_tag => $T::$Container(v.visit_value()?),)*
-                                        $($l_tag => { v.visit_value::<IgnoredAny>()?; $T::$Label },)*
-                                        _ => $T::$Custom(e, v.visit_value()?),
+                                        $($c_tag => $T::$Container(v.next_value()?),)*
+                                        $($l_tag => { v.next_value::<IgnoredAny>()?; $T::$Label },)*
+                                        _ => $T::$Custom(e, v.next_value()?),
                                     }.into();
                                 } else if event.event.is_none() {
-                                    target_obj = Some(v.visit_value()?);
+                                    target_obj = Some(v.next_value()?);
                                 } else {
-                                    v.visit_value::<IgnoredAny>()?;
+                                    v.next_value::<IgnoredAny>()?;
                                 },
-                                _ => { v.visit_value::<IgnoredAny>()?; },
+                                _ => { v.next_value::<IgnoredAny>()?; },
                             }
 
                             if let EventBuffer {
                                     created_at: Some(ca), event: Some(e), target: Some(t), source: Some(s),
                                 } = event
                             {
-                                while v.visit::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                                while v.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
                                 return Ok(Event { created_at: ca, event: e, target: t, source: s });
                             }
                         }

@@ -1,7 +1,6 @@
 //! Geometry object
 
-use serde::de::{Deserialize, Deserializer, Error, MapVisitor, SeqVisitor, Unexpected, Visitor};
-use serde::de::impls::IgnoredAny;
+use serde::de::{Deserialize, Deserializer, Error, IgnoredAny, MapAccess, SeqAccess, Unexpected, Visitor};
 use std::fmt;
 
 /// The Geometry object specified in [The GeoJSON Format (RFC7946)](https://tools.ietf.org/html/rfc7946).
@@ -30,14 +29,14 @@ pub type LineString = Vec<Position>;
 pub type Polygon = Vec<LinearRing>;
 pub type LinearRing = LineString;
 
-impl Deserialize for Geometry {
-    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
+impl<'x> Deserialize<'x> for Geometry {
+    fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
         struct GeometryVisitor;
 
-        impl Visitor for GeometryVisitor {
+        impl<'x> Visitor<'x> for GeometryVisitor {
             type Value = Geometry;
 
-            fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Geometry, V::Error> {
+            fn visit_map<V: MapAccess<'x>>(self, mut v: V) -> Result<Geometry, V::Error> {
                 enum Coordinates {
                     F64(f64),
                     Dim0(Position), // Point
@@ -46,11 +45,11 @@ impl Deserialize for Geometry {
                     Dim3(Vec<Vec<Vec<Position>>>), // MultiPolygon
                 }
 
-                impl Deserialize for Coordinates {
-                    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
+                impl<'x> Deserialize<'x> for Coordinates {
+                    fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
                         struct CoordinatesVisitor;
 
-                        impl Visitor for CoordinatesVisitor {
+                        impl<'x> Visitor<'x> for CoordinatesVisitor {
                             type Value = Coordinates;
 
                             fn visit_f64<E>(self, v: f64) -> Result<Coordinates, E> {
@@ -65,25 +64,25 @@ impl Deserialize for Geometry {
                                 Ok(Coordinates::F64(v as _))
                             }
 
-                            fn visit_seq<V: SeqVisitor>(self, mut v: V) -> Result<Coordinates, V::Error> {
+                            fn visit_seq<V: SeqAccess<'x>>(self, mut v: V) -> Result<Coordinates, V::Error> {
                                 macro_rules! match_val {
                                     (
                                         $C:ident,
                                         $($V:ident => $R:ident,)*
                                     ) => {
-                                        match v.visit()? {
+                                        match v.next_element()? {
                                             Some($C::F64(v1)) => {
-                                                let v2 = match v.visit()? {
+                                                let v2 = match v.next_element()? {
                                                     Some(val) => val,
                                                     None => return Err(V::Error::invalid_length(1, &self)),
                                                 };
-                                                while v.visit::<IgnoredAny>()?.is_some() {}
+                                                while v.next_element::<IgnoredAny>()?.is_some() {}
                                                 Ok($C::Dim0(Position(v1, v2)))
                                             },
                                             $(Some($C::$V(val)) => {
-                                                let mut ret = Vec::with_capacity(v.size_hint().0 + 1);
+                                                let mut ret = v.size_hint().map_or_else(Vec::new, Vec::with_capacity);
                                                 ret.push(val);
-                                                while let Some(val) = v.visit()? {
+                                                while let Some(val) = v.next_element()? {
                                                     ret.push(val);
                                                 }
                                                 Ok($C::$R(ret))
@@ -120,14 +119,14 @@ impl Deserialize for Geometry {
 
                 macro_rules! end {
                     () => {{
-                        while v.visit::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                        while v.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
                     }};
                 }
 
-                while let Some(k) = v.visit_key::<String>()? {
+                while let Some(k) = v.next_key::<String>()? {
                     match k.as_str() {
                         "type" => {
-                            let t = v.visit_value::<String>()?;
+                            let t = v.next_value::<String>()?;
                             macro_rules! match_type {
                                 ($C:ident, $($($V:ident($typ:expr))|* => $D:ident,)*) => {{
                                     const EXPECTED: &'static [&'static str] = &[$($($typ),*),*];
@@ -138,12 +137,12 @@ impl Deserialize for Geometry {
                                                 return Ok($V(val));
                                             },
                                             None => {
-                                                while let Some(k) = v.visit_key::<String>()? {
+                                                while let Some(k) = v.next_key::<String>()? {
                                                     if "coordinates" == k.as_str() {
                                                         end!();
-                                                        return Ok($V(v.visit_value()?));
+                                                        return Ok($V(v.next_value()?));
                                                     } else {
-                                                        v.visit_value::<IgnoredAny>()?;
+                                                        v.next_value::<IgnoredAny>()?;
                                                     }
                                                 }
                                                 return Err(V::Error::missing_field("coordinates"));
@@ -162,8 +161,8 @@ impl Deserialize for Geometry {
                                 MultiPolygon("MultiPolygon") => Dim3,
                             }
                         },
-                        "coordinates" => c = Some(v.visit_value()?),
-                        _ => { v.visit_value::<IgnoredAny>()?; },
+                        "coordinates" => c = Some(v.next_value()?),
+                        _ => { v.next_value::<IgnoredAny>()?; },
                     }
                 }
 

@@ -175,10 +175,10 @@ pub struct Symbol {
     pub indices: (u64, u64),
 }
 
-fn nullable_string<D: Deserializer>(d: D) -> Result<String, D::Error> {
+fn nullable_string<'x, D: Deserializer<'x>>(d: D) -> Result<String, D::Error> {
     struct NSVisitor;
 
-    impl Visitor for NSVisitor {
+    impl<'x> Visitor<'x> for NSVisitor {
         type Value = String;
 
         fn visit_str<E>(self, v: &str) -> Result<String, E> {

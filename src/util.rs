@@ -33,11 +33,11 @@ macro_rules! string_enums {
                 $U(String),
             }
 
-            impl ::serde::Deserialize for $E {
-                fn deserialize<D: ::serde::Deserializer>(d: D) -> ::std::result::Result<Self, D::Error> {
+            impl<'x> ::serde::Deserialize<'x> for $E {
+                fn deserialize<D: ::serde::Deserializer<'x>>(d: D) -> ::std::result::Result<Self, D::Error> {
                     struct V;
 
-                    impl ::serde::de::Visitor for V {
+                    impl<'x> ::serde::de::Visitor<'x> for V {
                         type Value = $E;
 
                         fn visit_str<E>(self, s: &str) -> ::std::result::Result<$E, E> {
@@ -268,7 +268,7 @@ pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
     UTC.datetime_from_str(s, "%a %b %e %H:%M:%S %z %Y")
 }
 
-pub fn deserialize_datetime<D: Deserializer>(d: D) -> Result<DateTime, D::Error> {
+pub fn deserialize_datetime<'x, D: Deserializer<'x>>(d: D) -> Result<DateTime, D::Error> {
     parse_datetime(&String::deserialize(d)?).map_err(|e| D::Error::custom(e.to_string()))
 }
 
