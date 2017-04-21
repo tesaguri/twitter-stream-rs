@@ -1,5 +1,4 @@
-use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Visitor};
-use serde::de::impls::IgnoredAny;
+use serde::de::{Deserialize, Deserializer, Error, IgnoredAny, MapAccess, Visitor};
 use std::fmt;
 use user::UserId;
 
@@ -16,14 +15,14 @@ pub enum WarningCode {
     Custom(String),
 }
 
-impl Deserialize for Warning {
-    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
+impl<'x> Deserialize<'x> for Warning {
+    fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
         struct WarningVisitor;
 
-        impl Visitor for WarningVisitor {
+        impl<'x> Visitor<'x> for WarningVisitor {
             type Value = Warning;
 
-            fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Warning, V::Error> {
+            fn visit_map<V: MapAccess<'x>>(self, mut v: V) -> Result<Warning, V::Error> {
                 string_enums! {
                     pub enum Code {
                         :FallingBehind("FALLING_BEHIND"),
@@ -37,18 +36,18 @@ impl Deserialize for Warning {
                 let mut percent_full: Option<u64> = None;
                 let mut user_id: Option<UserId> = None;
 
-                while let Some(k) = v.visit_key::<String>()? {
+                while let Some(k) = v.next_key::<String>()? {
                     match k.as_str() {
-                        "code" => code = Some(v.visit_value::<Code>()?),
-                        "message" => message = Some(v.visit_value()?),
-                        "percent_full" => percent_full = Some(v.visit_value()?),
-                        "user_id" => user_id = Some(v.visit_value()?),
-                        _ => { v.visit_value::<IgnoredAny>()?; },
+                        "code" => code = Some(v.next_value::<Code>()?),
+                        "message" => message = Some(v.next_value()?),
+                        "percent_full" => percent_full = Some(v.next_value()?),
+                        "user_id" => user_id = Some(v.next_value()?),
+                        _ => { v.next_value::<IgnoredAny>()?; },
                     }
 
                     macro_rules! end {
                         () => {{
-                            while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
+                            while v.next_entry::<IgnoredAny,IgnoredAny>()?.is_some() {}
                         }};
                     }
 

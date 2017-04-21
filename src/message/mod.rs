@@ -7,8 +7,7 @@ pub use self::event::{Event, EventKind};
 pub use self::warning::{Warning, WarningCode};
 
 use {DirectMessage};
-use serde::de::{Deserialize, Deserializer, Error, MapVisitor, Unexpected, Visitor};
-use serde::de::impls::IgnoredAny;
+use serde::de::{Deserialize, Deserializer, Error, IgnoredAny, MapAccess, Unexpected, Visitor};
 use std::fmt;
 use tweet::{StatusId, Tweet};
 use types::{JsonMap, JsonValue};
@@ -129,11 +128,11 @@ macro_rules! number_enum {
             )*
         }
 
-        impl Deserialize for $E {
-            fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
+        impl<'x> Deserialize<'x> for $E {
+            fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
                 struct NEVisitor;
 
-                impl Visitor for NEVisitor {
+                impl<'x> Visitor<'x> for NEVisitor {
                     type Value = $E;
 
                     fn visit_u64<E: Error>(self, v: u64) -> Result<$E, E> {
@@ -202,37 +201,37 @@ pub struct Control {
 
 pub type Friends = Vec<UserId>;
 
-impl Deserialize for StreamMessage {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer {
+impl<'x> Deserialize<'x> for StreamMessage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'x> {
         struct SMVisitor;
 
-        impl Visitor for SMVisitor {
+        impl<'x> Visitor<'x> for SMVisitor {
             type Value = StreamMessage;
 
-            fn visit_map<V>(self, mut v: V) -> Result<StreamMessage, V::Error> where V: MapVisitor {
-                let key = match v.visit_key::<String>()? {
+            fn visit_map<V>(self, mut v: V) -> Result<StreamMessage, V::Error> where V: MapAccess<'x> {
+                let key = match v.next_key::<String>()? {
                     Some(k) => k,
                     None => return Ok(StreamMessage::Custom(JsonMap::new())),
                 };
 
                 let ret = match key.as_str() {
-                    "delete"          => Some(v.visit_value().map(StreamMessage::Delete)),
-                    "scrub_geo"       => Some(v.visit_value().map(StreamMessage::ScrubGeo)),
-                    "limit"           => Some(v.visit_value().map(StreamMessage::Limit)),
-                    "status_withheld" => Some(v.visit_value().map(StreamMessage::StatusWithheld)),
-                    "user_withheld"   => Some(v.visit_value().map(StreamMessage::UserWithheld)),
-                    "disconnect"      => Some(v.visit_value().map(StreamMessage::Disconnect)),
-                    "warning"         => Some(v.visit_value().map(StreamMessage::Warning)),
-                    "friends"         => Some(v.visit_value().map(StreamMessage::Friends)),
-                    // "friends_str"     => Some(v.visit_value().map(StreamMessage::Friends)),
-                    "direct_message"  => Some(v.visit_value().map(StreamMessage::DirectMessage)),
-                    "control"         => Some(v.visit_value().map(StreamMessage::Control)),
+                    "delete"          => Some(v.next_value().map(StreamMessage::Delete)),
+                    "scrub_geo"       => Some(v.next_value().map(StreamMessage::ScrubGeo)),
+                    "limit"           => Some(v.next_value().map(StreamMessage::Limit)),
+                    "status_withheld" => Some(v.next_value().map(StreamMessage::StatusWithheld)),
+                    "user_withheld"   => Some(v.next_value().map(StreamMessage::UserWithheld)),
+                    "disconnect"      => Some(v.next_value().map(StreamMessage::Disconnect)),
+                    "warning"         => Some(v.next_value().map(StreamMessage::Warning)),
+                    "friends"         => Some(v.next_value().map(StreamMessage::Friends)),
+                    // "friends_str"     => Some(v.next_value().map(StreamMessage::Friends)),
+                    "direct_message"  => Some(v.next_value().map(StreamMessage::DirectMessage)),
+                    "control"         => Some(v.next_value().map(StreamMessage::Control)),
                     _ => None,
                 };
 
                 if let Some(ret) = ret {
                     if ret.is_ok() {
-                        while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
+                        while v.next_entry::<IgnoredAny,IgnoredAny>()?.is_some() {}
                     }
                     return ret;
                 }
@@ -240,8 +239,8 @@ impl Deserialize for StreamMessage {
                 // Tweet, Event or for_user envelope:
 
                 let mut map = JsonMap::new();
-                map.insert(key, v.visit_value()?);
-                while let Some((k, v)) = v.visit()? {
+                map.insert(key, v.next_value()?);
+                while let Some((k, v)) = v.next_entry()? {
                     map.insert(k, v);
                 }
 
@@ -285,29 +284,29 @@ impl Deserialize for StreamMessage {
     }
 }
 
-impl Deserialize for Delete {
-    fn deserialize<D: Deserializer>(d: D) -> Result<Self, D::Error> {
+impl<'x> Deserialize<'x> for Delete {
+    fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
         struct DeleteVisitor;
 
-        impl Visitor for DeleteVisitor {
+        impl<'x> Visitor<'x> for DeleteVisitor {
             type Value = Delete;
 
-            fn visit_map<V: MapVisitor>(self, mut v: V) -> Result<Delete, V::Error> {
+            fn visit_map<V: MapAccess<'x>>(self, mut v: V) -> Result<Delete, V::Error> {
                 use std::mem;
 
                 #[allow(dead_code)]
                 #[derive(Deserialize)]
                 struct Status { id: StatusId, user_id: UserId };
 
-                while let Some(k) = v.visit_key::<String>()? {
+                while let Some(k) = v.next_key::<String>()? {
                     if "status" == k.as_str() {
-                        let ret = v.visit_value::<Status>()?;
-                        while v.visit::<IgnoredAny,IgnoredAny>()?.is_some() {}
+                        let ret = v.next_value::<Status>()?;
+                        while v.next_entry::<IgnoredAny,IgnoredAny>()?.is_some() {}
                         unsafe {
                             return Ok(mem::transmute(ret));
                         }
                     } else {
-                        v.visit_value::<IgnoredAny>()?;
+                        v.next_value::<IgnoredAny>()?;
                     }
                 }
 
