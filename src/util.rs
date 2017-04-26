@@ -221,15 +221,14 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
             self.buf = try_ready_some!(self.inner.poll()).into();
         }
 
-        fn remove_next_line(buf: &mut Bytes) -> Option<Bytes> {
+        fn remove_first_line(buf: &mut Bytes) -> Option<Bytes> {
             (buf as &Bytes).into_iter().enumerate()
                 .find(|&(i, b)| b'\r' == b && Some(&b'\n') == buf.get(i + 1))
-                .map(|(i, _)| buf.split_off(i + 2))
+                .map(|(i, _)| buf.split_to(i + 2))
         }
 
-        if let Some(buf) = remove_next_line(&mut self.buf) {
-            let ret = mem::replace(&mut self.buf, buf);
-            return Ok(Some(ret).into());
+        if let Some(buf) = remove_first_line(&mut self.buf) {
+            return Ok(Some(buf).into());
         }
 
         if self.buf.is_empty() {
@@ -247,9 +246,9 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
                         let next = self.buf.split_off(i);
                         let ret = mem::replace(&mut self.buf, next);
                         return Ok(Some(ret).into());
-                    } else if let Some(next) = remove_next_line(&mut chunk) {
-                        extend_from_bytes(&mut self.buf, chunk);
-                        let ret = mem::replace(&mut self.buf, next);
+                    } else if let Some(tail) = remove_first_line(&mut chunk) {
+                        extend_from_bytes(&mut self.buf, tail);
+                        let ret = mem::replace(&mut self.buf, chunk);
                         return Ok(Some(ret).into());
                     } else {
                         extend_from_bytes(&mut self.buf, chunk);
