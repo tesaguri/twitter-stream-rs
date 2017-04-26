@@ -9,6 +9,7 @@ pub use url::Url;
 
 use bytes::Bytes;
 use chrono::{DateTime as ChronoDateTime, UTC};
+use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
 use std::str::{self, Utf8Error};
 
@@ -90,6 +91,12 @@ impl Deref for JsonStr {
 
     fn deref(&self) -> &str {
         self.as_str()
+    }
+}
+
+impl Display for JsonStr {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.as_str().fmt(f)
     }
 }
 
