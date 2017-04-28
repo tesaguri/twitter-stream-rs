@@ -146,10 +146,6 @@ macro_rules! def_stream {
                 $(#[$setter_attr:meta])*
                 :$setter:ident: $s_ty:ty = $default:expr
             ),*;
-            $(
-                $(#[$o_attr:meta])*
-                :$option:ident: Option<$o_ty:ty>
-            ),*;
             $(:$custom_setter:ident: $c_ty:ty = $c_default:expr),*;
         }
 
@@ -187,7 +183,6 @@ macro_rules! def_stream {
             $client_or_handle: $ch_ty,
             $($arg: $a_ty,)*
             $($setter: $s_ty,)*
-            $($option: Option<$o_ty>,)*
             $($custom_setter: $c_ty,)*
         }
 
@@ -225,7 +220,6 @@ macro_rules! def_stream {
                     $client_or_handle: $ch_default,
                     $($arg: $arg,)*
                     $($setter: $default,)*
-                    $($option: None,)*
                     $($custom_setter: $c_default,)*
                 }
             }
@@ -239,7 +233,6 @@ macro_rules! def_stream {
                     $client_or_handle: client,
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
-                    $($option: self.$option,)*
                     $($custom_setter: self.$custom_setter,)*
                 }
             }
@@ -250,7 +243,6 @@ macro_rules! def_stream {
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
                     $($custom_setter: self.$custom_setter,)*
-                    $($option: self.$option,)*
                 }
             }
 
@@ -271,20 +263,10 @@ macro_rules! def_stream {
             )*
 
             /// Set a user agent string to be sent when connectiong to the Stream.
-            pub fn user_agent<T, UA>(&mut self, user_agent: T) -> &mut Self
-                where T: Into<Option<UA>>, UA: Into<Cow<'static, str>>
-            {
-                self.user_agent = user_agent.into().map(Into::into);
+            pub fn user_agent<T>(&mut self, user_agent: Option<T>) -> &mut Self where T: Into<Cow<'static, str>> {
+                self.user_agent = user_agent.map(Into::into);
                 self
             }
-
-            $(
-                $(#[$o_attr])*
-                pub fn $option<T: Into<Option<$o_ty>>>(&mut self, $option: T) -> &mut Self {
-                    self.$option = $option.into();
-                    self
-                }
-            )*
         }
 
         impl $S {
@@ -328,6 +310,9 @@ def_stream! {
 
         // Setters:
 
+        /// Set a timeout for the stream. `None` means infinity.
+        :timeout: Option<Duration> = None,
+
         // delimited: bool,
 
         /// Set whether to receive messages when in danger of being disconnected.
@@ -342,54 +327,47 @@ def_stream! {
         /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#filter_level
         :filter_level: FilterLevel = FilterLevel::None,
 
-        /// Set whether to receive all @replies.
-        ///
-        /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#replies
-        :replies: bool = false;
-
-        // stringify_friend_ids: bool,
-
-        // Optional setters:
-
-        /// Set a timeout for the stream. `None` means infinity.
-        :timeout: Option<Duration>,
-
-        // Optional setters for API parameters:
-
         /// Set a comma-separated language identifiers to receive Tweets written in the specified languages only.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#language
-        :language: Option<&'a str>,
+        :language: Option<&'a str> = None,
 
         /// Set a list of user IDs to receive Tweets only from the specified users.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1] https://dev.twitter.com/streaming/overview/request-parameters#follow
-        :follow: Option<&'a [UserId]>,
+        :follow: Option<&'a [UserId]> = None,
 
         /// A comma separated list of phrases to filter Tweets by.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#track
-        :track: Option<&'a str>,
+        :track: Option<&'a str> = None,
 
         /// Set a list of bounding boxes to filter Tweets by, specified by a pair of coordinates in
         /// the form of ((longitude, latitude), (longitude, latitude)) tuple.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#locations
-        :locations: Option<&'a [((f64, f64), (f64, f64))]>,
+        :locations: Option<&'a [((f64, f64), (f64, f64))]> = None,
 
         /// The `count` parameter. This parameter requires elevated access to use.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#count
-        :count: Option<i32>,
+        :count: Option<i32> = None,
 
         /// Set types of messages delivered to User and Site Streams clients.
-        :with: Option<With>;
+        :with: Option<With> = None,
+
+        /// Set whether to receive all @replies.
+        ///
+        /// See the [Twitter Developer Documentation][1] for more information.
+        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#replies
+        :replies: bool = false;
+
+        // stringify_friend_ids: bool;
 
         // Fields whose setters are manually defined elsewhere:
 
