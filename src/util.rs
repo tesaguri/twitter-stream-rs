@@ -263,6 +263,12 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
     }
 }
 
+pub fn deserialize_default<'de, D, T>(d: D) -> Result<T, D::Error>
+    where D: Deserializer<'de>, T: Default + Deserialize<'de>
+{
+    Option::deserialize(d).map(|o| o.unwrap_or_else(T::default))
+}
+
 pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
     UTC.datetime_from_str(s, "%a %b %e %H:%M:%S %z %Y")
 }
@@ -337,5 +343,34 @@ mod test {
                 iter2.next().as_ref().map(String::as_str)
             );
         }
+    }
+
+    #[test]
+    fn test_deserialize_default() {
+        use json;
+
+        #[derive(Debug, Default, Deserialize, PartialEq)]
+        struct S {
+            #[serde(deserialize_with = "deserialize_default")]
+            #[serde(default)]
+            n: u32,
+            #[serde(deserialize_with = "deserialize_default")]
+            #[serde(default)]
+            o: Option<bool>,
+            #[serde(deserialize_with = "deserialize_default")]
+            #[serde(default)]
+            s: String,
+            #[serde(deserialize_with = "deserialize_default")]
+            #[serde(default)]
+            v: Vec<u8>,
+        }
+
+        assert_eq!(
+            json::from_str::<S>(r#"{"n":null,"s":null}"#).unwrap(),
+            json::from_str(r#"{"o":null,"v":null}"#).unwrap());
+        assert_eq!(
+            S { n: 1, o: Some(true), s: "s".to_owned(), v: vec![255] },
+            json::from_str(r#"{"n":1,"o":true,"s":"s","v":[255]}"#).unwrap()
+        )
     }
 }

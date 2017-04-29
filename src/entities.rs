@@ -1,7 +1,5 @@
 //! Entities
 
-use serde::de::{Deserializer, Visitor};
-use std::fmt;
 use tweet::StatusId;
 use user::UserId;
 
@@ -129,12 +127,12 @@ string_enums! {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Url {
     /// Version of the URL to display to clients.
-    #[serde(deserialize_with = "nullable_string")] // nullable in Retweets.
+    #[serde(deserialize_with = "::util::deserialize_default")] // nullable in Retweets.
     #[serde(default)]
     pub display_url: String,
 
     /// Expanded version of `display_url`.
-    #[serde(deserialize_with = "nullable_string")] // nullable in Retweets.
+    #[serde(deserialize_with = "::util::deserialize_default")] // nullable in Retweets.
     #[serde(default)]
     pub expanded_url: String,
 
@@ -173,30 +171,4 @@ pub struct UserMention {
 pub struct Symbol {
     pub text: String,
     pub indices: (u64, u64),
-}
-
-fn nullable_string<'x, D: Deserializer<'x>>(d: D) -> Result<String, D::Error> {
-    struct NSVisitor;
-
-    impl<'x> Visitor<'x> for NSVisitor {
-        type Value = String;
-
-        fn visit_str<E>(self, v: &str) -> Result<String, E> {
-            Ok(v.to_owned())
-        }
-
-        fn visit_string<E>(self, v: String) -> Result<String, E> {
-            Ok(v)
-        }
-
-        fn visit_unit<E>(self) -> Result<String, E> {
-            Ok(String::new())
-        }
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "a string")
-        }
-    }
-
-    d.deserialize_string(NSVisitor)
 }
