@@ -35,3 +35,4 @@ tls = ["hyper-tls"]
 
 [[example]]
 name = "echo_bot"
+required-features = ["tweetust"]

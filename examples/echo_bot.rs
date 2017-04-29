@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "tweetust"), allow(unused_imports))]
-
 extern crate futures;
 extern crate serde_json as json;
 extern crate tokio_core;
@@ -11,7 +9,6 @@ use std::path::PathBuf;
 use tokio_core::reactor::Core;
 use twitter_stream::{Error, StreamMessage, Token, TwitterStream};
 
-#[cfg(feature = "tweetust")]
 fn main() {
     extern crate tweetust;
 
@@ -53,9 +50,4 @@ fn main() {
     });
 
     core.run(bot).unwrap();
-}
-
-#[cfg(not(feature = "tweetust"))]
-fn main() {
-    println!("This example needs `tweetust` feature");
 }
