@@ -254,6 +254,12 @@ macro_rules! def_stream {
                 }
             )*
 
+            /// Set a user agent string to be sent when connectiong to the Stream.
+            pub fn user_agent<T>(&mut self, user_agent: Option<T>) -> &mut Self where T: Into<Cow<'static, str>> {
+                self.user_agent = user_agent.map(Into::into);
+                self
+            }
+
             $(
                 $(#[$setter_attr])*
                 pub fn $setter(&mut self, $setter: $s_ty) -> &mut Self {
@@ -261,12 +267,6 @@ macro_rules! def_stream {
                     self
                 }
             )*
-
-            /// Set a user agent string to be sent when connectiong to the Stream.
-            pub fn user_agent<T>(&mut self, user_agent: Option<T>) -> &mut Self where T: Into<Cow<'static, str>> {
-                self.user_agent = user_agent.map(Into::into);
-                self
-            }
         }
 
         impl $S {
