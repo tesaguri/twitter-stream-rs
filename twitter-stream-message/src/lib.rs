@@ -26,3 +26,9 @@ pub use message::StreamMessage;
 pub use place::Place;
 pub use tweet::Tweet;
 pub use user::User;
+
+pub fn parse(json: &str) -> Result<StreamMessage, Error> {
+    use std::str::FromStr;
+
+    StreamMessage::from_str(json)
+}

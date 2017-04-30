@@ -6,9 +6,10 @@ mod warning;
 pub use self::event::{Event, EventKind};
 pub use self::warning::{Warning, WarningCode};
 
-use {DirectMessage};
-use serde::de::{Deserialize, Deserializer, Error, IgnoredAny, MapAccess, Unexpected, Visitor};
+use {DirectMessage, Error};
+use serde::de::{Deserialize, Deserializer, Error as SerdeError, IgnoredAny, MapAccess, Unexpected, Visitor};
 use std::fmt;
+use std::str::FromStr;
 use tweet::{StatusId, Tweet};
 use types::{JsonMap, JsonValue};
 use user::UserId;
@@ -135,7 +136,7 @@ macro_rules! number_enum {
                 impl<'x> Visitor<'x> for NEVisitor {
                     type Value = $E;
 
-                    fn visit_u64<E: Error>(self, v: u64) -> Result<$E, E> {
+                    fn visit_u64<E: SerdeError>(self, v: u64) -> Result<$E, E> {
                         match v {
                             $($n => Ok($E::$V),)*
                             _ => Err(E::invalid_value(Unexpected::Unsigned(v), &self)),
@@ -277,6 +278,14 @@ impl<'x> Deserialize<'x> for StreamMessage {
         }
 
         deserializer.deserialize_map(SMVisitor)
+    }
+}
+
+impl FromStr for StreamMessage {
+    type Err = Error;
+
+    fn from_str(json: &str) -> Result<Self, Error> {
+        ::json::from_str(json)
     }
 }
 
