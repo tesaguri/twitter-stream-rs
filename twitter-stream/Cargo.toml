@@ -15,19 +15,18 @@ A library for listening on Twitter Streaming API.
 
 [dependencies]
 bytes = "0.4"
-chrono = { version = "0.3", features = ["serde"] }
 futures = "0.1.11"
 hyper = { version = "0.11.0-a", git = "https://github.com/hyperium/hyper/" }
 lazy_static = "0.2"
 oauthcli = "1.0"
-serde = { version = "1", optional = true }
-serde_derive = { version = "1", optional = true }
-twitter-stream-message = { path = "../twitter-stream-message", optional = true }
 tokio-core = "0.1"
 url = "1.0"
-hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/", optional = true }
 egg-mode = { version = "0.8", optional = true }
+hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/", optional = true }
+serde = { version = "1", optional = true }
+serde_derive = { version = "1", optional = true }
 tweetust = { version = "0.6", optional = true }
+twitter-stream-message = { path = "../twitter-stream-message", optional = true }
 
 [features]
 default = ["parse", "tls", "use-serde"]
