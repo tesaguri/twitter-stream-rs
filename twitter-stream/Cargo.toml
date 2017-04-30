@@ -1,0 +1,38 @@
+[package]
+name = "twitter-stream"
+version = "0.2.0"
+authors = ["Daiki Mizukami <mizukami1113@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["twitter"]
+categories = ["api-bindings"]
+homepage = "https://github.com/dmizuk/twitter-stream-rs"
+repository = "https://github.com/dmizuk/twitter-stream-rs"
+documentation = "https://docs.rs/twitter-stream/0.2.0/twitter_stream/"
+description = """
+A library for listening on Twitter Streaming API.
+"""
+
+[dependencies]
+bytes = "0.4"
+chrono = { version = "0.3", features = ["serde"] }
+futures = "0.1.11"
+hyper = { version = "0.11.0-a", git = "https://github.com/hyperium/hyper/" }
+lazy_static = "0.2"
+oauthcli = "1.0"
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
+tokio-core = "0.1"
+url = "1.0"
+hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/", optional = true }
+egg-mode = { version = "0.8", optional = true }
+tweetust = { version = "0.6", optional = true }
+
+[features]
+default = ["tls"]
+tls = ["hyper-tls"]
+
+[[example]]
+name = "echo_bot"
+required-features = ["tweetust"]

@@ -1,0 +1,20 @@
+[package]
+name = "twitter-stream-message"
+version = "0.0.0"
+authors = ["Daiki Mizukami <mizukami1113@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["twitter"]
+categories = ["api-bindings"]
+homepage = "https://github.com/dmizuk/twitter-stream-rs"
+repository = "https://github.com/dmizuk/twitter-stream-rs"
+documentation = "https://docs.rs/twitter-stream/0.0.0/twitter_stream-message/"
+description = """
+Types for Twitter Streaming API's messages.
+"""
+
+[dependencies]
+chrono = { version = "0.3", features = ["serde"] }
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
