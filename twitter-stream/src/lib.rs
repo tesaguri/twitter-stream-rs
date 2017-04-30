@@ -149,14 +149,9 @@ macro_rules! def_stream {
             $(:$custom_setter:ident: $c_ty:ty = $c_default:expr),*;
         }
 
-        $(#[$fs_attr:meta])*
+        $(#[$future_stream_attr:meta])*
         pub struct $FS:ident {
             $($fs_field:ident: $fsf_ty:ty,)*
-        }
-
-        $(#[$fjs_attr:meta])*
-        pub struct $FJS:ident {
-            $($fjs_field:ident: $fjsf_ty:ty,)*
         }
 
         $(#[$stream_attr:meta])*
@@ -164,17 +159,10 @@ macro_rules! def_stream {
             $($s_field:ident: $sf_ty:ty,)*
         }
 
-        $(#[$json_stream_attr:meta])*
-        pub struct $JS:ident {
-            $($js_field:ident: $jsf_ty:ty,)*
-        }
-
         $(
             $(#[$constructor_attr:meta])*
             -
             $(#[$s_constructor_attr:meta])*
-            -
-            $(#[$js_constructor_attr:meta])*
             pub fn $constructor:ident($Method:ident, $end_point:expr);
         )*
     ) => {
@@ -186,24 +174,14 @@ macro_rules! def_stream {
             $($custom_setter: $c_ty,)*
         }
 
-        $(#[$fs_attr])*
+        $(#[$future_stream_attr])*
         pub struct $FS {
             $($fs_field: $fsf_ty,)*
-        }
-
-        $(#[$fjs_attr])*
-        pub struct $FJS {
-            $($fjs_field: $fjsf_ty,)*
         }
 
         $(#[$stream_attr])*
         pub struct $S {
             $($s_field: $sf_ty,)*
-        }
-
-        $(#[$json_stream_attr])*
-        pub struct $JS {
-            $($js_field: $jsf_ty,)*
         }
 
         impl<$lifetime> $B<$lifetime, ()> {
@@ -274,16 +252,6 @@ macro_rules! def_stream {
                 $(#[$s_constructor_attr])*
                 pub fn $constructor(token: &Token, handle: &Handle) -> $FS {
                     $B::$constructor(token).handle(handle).listen()
-                }
-            )*
-        }
-
-        impl $JS {
-            $(
-                $(#[$js_constructor_attr])*
-                pub fn $constructor(token: &Token, handle: &Handle) -> $FJS
-                {
-                    $B::$constructor(token).handle(handle).listen_json()
                 }
             )*
         }
@@ -375,21 +343,12 @@ def_stream! {
     }
 
     pub struct FutureTwitterStream {
-        inner: FutureTwitterJsonStream,
-    }
-
-    pub struct FutureTwitterJsonStream {
         inner: FutureResponse,
         timeout: Option<BaseTimeout>,
     }
 
     /// A listener for Twitter Streaming API.
     pub struct TwitterStream {
-        inner: TwitterJsonStream,
-    }
-
-    /// Same as `TwitterStream` except that it yields raw JSON string messages.
-    pub struct TwitterJsonStream {
         inner: Lines<TimeoutStream<Body>>,
     }
 
@@ -401,8 +360,6 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
     -
     /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen_json()`.
     pub fn filter(Post, EP_FILTER);
 
     /// Create a builder for `GET statuses/sample` endpoint.
@@ -411,8 +368,6 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
     -
     /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
     pub fn sample(Get, EP_SAMPLE);
 
     /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
@@ -421,8 +376,6 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
     -
     /// A shorthand for `TwitterStreamBuilder::user().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
     pub fn user(Get, EP_USER);
 }
 
@@ -432,13 +385,6 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.listen_json(),
-        }
-    }
-
-    /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self) -> FutureTwitterJsonStream {
-        FutureTwitterJsonStream {
             inner: self.connect(self.client_or_handle),
             timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.handle().clone())),
         }
@@ -446,16 +392,9 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
 }
 
 impl<'a> TwitterStreamBuilder<'a, Handle> {
-     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
+     /// Attempt to start listening on a Stream and returns a `Stream` object which yields JSON messages from the API.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.listen_json(),
-        }
-    }
-
-    /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self) -> FutureTwitterJsonStream {
-        FutureTwitterJsonStream {
             inner: self.connect(&default_client(self.client_or_handle)),
             timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.clone())),
         }
@@ -564,17 +503,6 @@ impl Future for FutureTwitterStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
-        Ok(TwitterStream {
-            inner: try_ready!(self.inner.poll()),
-        }.into())
-    }
-}
-
-impl Future for FutureTwitterJsonStream {
-    type Item = TwitterJsonStream;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<TwitterJsonStream, Error> {
         use futures::Async;
 
         match self.inner.poll().map_err(Error::Hyper)? {
@@ -589,7 +517,7 @@ impl Future for FutureTwitterJsonStream {
                     None => TimeoutStream::never(res.body()),
                 };
 
-                Ok(TwitterJsonStream {
+                Ok(TwitterStream {
                     inner: Lines::new(body),
                 }.into())
             },
@@ -608,21 +536,6 @@ impl Future for FutureTwitterJsonStream {
 }
 
 impl Stream for TwitterStream {
-    type Item = StreamMessage;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
-        match try_ready!(self.inner.poll()) {
-            Some(line) => match json::from_str(&line).map_err(Error::Json)? {
-                StreamMessage::Disconnect(d) => Err(Error::Disconnect(Box::new(d))),
-                msg => Ok(Some(msg).into()),
-            },
-            None => Ok(None.into()),
-        }
-    }
-}
-
-impl Stream for TwitterJsonStream {
     type Item = JsonStr;
     type Error = Error;
 
