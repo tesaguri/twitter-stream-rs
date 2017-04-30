@@ -29,15 +29,16 @@ extern crate twitter_stream;
 
 use futures::{Future, Stream};
 use tokio_core::reactor::Core;
-use twitter_stream::{StreamMessage, Token, TwitterStream};
+use twitter_stream::{Token, TwitterStream};
+use twitter_stream::message::StreamMessage;
 
 # fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
 let mut core = Core::new().unwrap();
 
-let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_each(|msg| {
-    if let StreamMessage::Tweet(tweet) = msg {
+let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_each(|json| {
+    if let Ok(StreamMessage::Tweet(tweet)) = twitter_stream::message::parse(&json) {
         println!("{}", tweet.text);
     }
     Ok(())
@@ -46,33 +47,6 @@ let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_ea
 core.run(future).unwrap();
 # }
 ```
-
-In the example above, `stream` disconnects and returns an error when a JSON message from Stream has failed to parse.
-If you don't want this behavior, you can opt to parse the messages manually:
-
-```rust,no_run
-# extern crate futures;
-# extern crate tokio_core;
-# extern crate twitter_stream;
-extern crate serde_json;
-
-# use futures::{Future, Stream};
-# use tokio_core::reactor::Core;
-# use twitter_stream::{StreamMessage, Token};
-use twitter_stream::TwitterJsonStream;
-
-# fn main() {
-# let token = Token::new("", "", "", "");
-# let mut core = Core::new().unwrap();
-let future = TwitterJsonStream::user(&token, &core.handle()).flatten_stream().for_each(|json| {
-    if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
-        println!("{}", tweet.text);
-    }
-    Ok(())
-});
-
-core.run(future).unwrap();
-# }
 */
 
 extern crate bytes;
