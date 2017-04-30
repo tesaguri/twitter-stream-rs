@@ -76,7 +76,6 @@ core.run(future).unwrap();
 */
 
 extern crate bytes;
-extern crate chrono;
 #[macro_use]
 extern crate futures;
 extern crate hyper;
@@ -85,39 +84,24 @@ extern crate hyper_tls;
 #[macro_use]
 extern crate lazy_static;
 extern crate oauthcli;
+#[cfg(feature = "use-serde")]
 extern crate serde;
+#[cfg(feature = "use-serde")]
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json as json;
 extern crate tokio_core;
 extern crate url;
 
 #[macro_use]
 mod util;
 
-pub mod direct_message;
-pub mod entities;
 pub mod error;
-pub mod geometry;
-pub mod list;
-pub mod message;
-pub mod place;
-pub mod tweet;
 pub mod types;
-pub mod user;
 
 mod auth;
 
 pub use auth::Token;
-pub use direct_message::DirectMessage;
-pub use entities::Entities;
 pub use error::Error;
-pub use geometry::Geometry;
-pub use list::List;
-pub use message::StreamMessage;
-pub use place::Place;
-pub use tweet::Tweet;
-pub use user::User;
 
 use error::HyperError;
 use futures::{Future, Poll, Stream};
@@ -130,7 +114,6 @@ use std::time::Duration;
 use tokio_core::reactor::Handle;
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
 use url::form_urlencoded::{Serializer, Target};
-use user::UserId;
 use util::{BaseTimeout, Lines, TimeoutStream};
 
 macro_rules! def_stream {
@@ -305,7 +288,7 @@ def_stream! {
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1] https://dev.twitter.com/streaming/overview/request-parameters#follow
-        :follow: Option<&'a [UserId]> = None,
+        :follow: Option<&'a [u64]> = None,
 
         /// A comma separated list of phrases to filter Tweets by.
         ///

@@ -2,19 +2,15 @@
 
 pub use hyper::Method as RequestMethod;
 pub use hyper::status::StatusCode;
-pub use json::Map as JsonMap;
-pub use json::Number as JsonNumber;
-pub use json::Value as JsonValue;
 pub use url::Url;
 
 use bytes::Bytes;
-use chrono::{DateTime as ChronoDateTime, UTC};
 use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
 use std::str::{self, Utf8Error};
 
 string_enums! {
-    /// Represents the `filter_level` field in Tweets or `filter_level` parameter in API request.
+    /// Represents the `filter_level` parameter in API requests.
     #[derive(Clone, Debug)]
     pub enum FilterLevel {
         :None("none"),
@@ -35,17 +31,7 @@ string_enums! {
         /// Custom value.
         :Custom(_),
     }
-
-    /// Represents the `withheld_scope` field in `Tweet` and `User`.
-    #[derive(Clone, Debug)]
-    pub enum WithheldScope {
-        :Status("status"),
-        :User("user");
-        :Custom(_),
-    }
 }
-
-pub type DateTime = ChronoDateTime<UTC>;
 
 /// A string type returned by `TwitterJsonStream`.
 // It is basically a wrapper type over `Bytes` that gurantees the contained bytes are valid UTF8 string.
