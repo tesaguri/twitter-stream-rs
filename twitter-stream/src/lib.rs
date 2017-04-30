@@ -90,12 +90,16 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate tokio_core;
+#[cfg(feature = "parse")]
+extern crate twitter_stream_message;
 extern crate url;
 
 #[macro_use]
 mod util;
 
 pub mod error;
+#[cfg(feature = "parse")]
+pub mod message;
 pub mod types;
 
 mod auth;
