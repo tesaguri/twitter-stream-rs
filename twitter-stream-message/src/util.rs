@@ -1,4 +1,3 @@
-use chrono::{TimeZone, UTC};
 use serde::de::{Deserialize, Deserializer, Error as SerdeError};
 use types::DateTime;
 
@@ -103,7 +102,31 @@ pub fn deserialize_default<'de, D, T>(d: D) -> Result<T, D::Error>
 }
 
 pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
-    UTC.datetime_from_str(s, "%a %b %e %H:%M:%S %z %Y")
+    use chrono::UTC;
+    use chrono::format::{self, Fixed, Item, Numeric, Pad, Parsed};
+
+    // "%a %b %e %H:%M:%S %z %Y"
+    const ITEMS: &'static [Item<'static>] = &[
+        Item::Fixed(Fixed::ShortWeekdayName),
+        Item::Space(" "),
+        Item::Fixed(Fixed::ShortMonthName),
+        Item::Space(" "),
+        Item::Numeric(Numeric::Day, Pad::Space),
+        Item::Space(" "),
+        Item::Numeric(Numeric::Hour, Pad::Zero),
+        Item::Literal(":"),
+        Item::Numeric(Numeric::Minute, Pad::Zero),
+        Item::Literal(":"),
+        Item::Numeric(Numeric::Second, Pad::Zero),
+        Item::Space(" "),
+        Item::Fixed(Fixed::TimezoneOffset),
+        Item::Space(" "),
+        Item::Numeric(Numeric::Year, Pad::Zero),
+    ];
+
+    let mut parsed = Parsed::new();
+    format::parse(&mut parsed, s, ITEMS.iter().cloned())?;
+    parsed.to_datetime_with_timezone(&UTC)
 }
 
 pub fn deserialize_datetime<'x, D: Deserializer<'x>>(d: D) -> Result<DateTime, D::Error> {
@@ -112,6 +135,8 @@ pub fn deserialize_datetime<'x, D: Deserializer<'x>>(d: D) -> Result<DateTime, D
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_deserialize_default() {
         use json;
@@ -139,5 +164,17 @@ mod tests {
             S { n: 1, o: Some(true), s: "s".to_owned(), v: vec![255] },
             json::from_str(r#"{"n":1,"o":true,"s":"s","v":[255]}"#).unwrap()
         )
+    }
+
+    #[test]
+    fn test_parse_datetime() {
+        use chrono::{NaiveDate, UTC};
+        use types::DateTime;
+
+        assert_eq!(
+            DateTime::from_utc(NaiveDate::from_ymd(2017, 5, 1).and_hms(0, 1, 2), UTC),
+            parse_datetime("Mon May 01 00:01:02 +0000 2017").unwrap()
+        );
+        assert!(parse_datetime("2017-05-01T00:01:02Z").is_err());
     }
 }
