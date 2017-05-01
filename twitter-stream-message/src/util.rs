@@ -159,11 +159,12 @@ mod tests {
 
         assert_eq!(
             json::from_str::<S>(r#"{"n":null,"s":null}"#).unwrap(),
-            json::from_str(r#"{"o":null,"v":null}"#).unwrap());
+            json::from_str(r#"{"o":null,"v":null}"#).unwrap()
+        );
         assert_eq!(
             S { n: 1, o: Some(true), s: "s".to_owned(), v: vec![255] },
             json::from_str(r#"{"n":1,"o":true,"s":"s","v":[255]}"#).unwrap()
-        )
+        );
     }
 
     #[test]
