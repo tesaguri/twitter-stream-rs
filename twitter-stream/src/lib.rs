@@ -29,15 +29,16 @@ extern crate twitter_stream;
 
 use futures::{Future, Stream};
 use tokio_core::reactor::Core;
-use twitter_stream::{StreamMessage, Token, TwitterStream};
+use twitter_stream::{Token, TwitterStream};
+use twitter_stream::message::StreamMessage;
 
 # fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
 let mut core = Core::new().unwrap();
 
-let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_each(|msg| {
-    if let StreamMessage::Tweet(tweet) = msg {
+let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_each(|json| {
+    if let Ok(StreamMessage::Tweet(tweet)) = twitter_stream::message::parse(&json) {
         println!("{}", tweet.text);
     }
     Ok(())
@@ -46,37 +47,9 @@ let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_ea
 core.run(future).unwrap();
 # }
 ```
-
-In the example above, `stream` disconnects and returns an error when a JSON message from Stream has failed to parse.
-If you don't want this behavior, you can opt to parse the messages manually:
-
-```rust,no_run
-# extern crate futures;
-# extern crate tokio_core;
-# extern crate twitter_stream;
-extern crate serde_json;
-
-# use futures::{Future, Stream};
-# use tokio_core::reactor::Core;
-# use twitter_stream::{StreamMessage, Token};
-use twitter_stream::TwitterJsonStream;
-
-# fn main() {
-# let token = Token::new("", "", "", "");
-# let mut core = Core::new().unwrap();
-let future = TwitterJsonStream::user(&token, &core.handle()).flatten_stream().for_each(|json| {
-    if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json) {
-        println!("{}", tweet.text);
-    }
-    Ok(())
-});
-
-core.run(future).unwrap();
-# }
 */
 
 extern crate bytes;
-extern crate chrono;
 #[macro_use]
 extern crate futures;
 extern crate hyper;
@@ -85,39 +58,28 @@ extern crate hyper_tls;
 #[macro_use]
 extern crate lazy_static;
 extern crate oauthcli;
+#[cfg(feature = "use-serde")]
 extern crate serde;
+#[cfg(feature = "use-serde")]
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json as json;
 extern crate tokio_core;
+#[cfg(feature = "parse")]
+extern crate twitter_stream_message;
 extern crate url;
 
 #[macro_use]
 mod util;
 
-pub mod direct_message;
-pub mod entities;
 pub mod error;
-pub mod geometry;
-pub mod list;
+#[cfg(feature = "parse")]
 pub mod message;
-pub mod place;
-pub mod tweet;
 pub mod types;
-pub mod user;
 
 mod auth;
 
 pub use auth::Token;
-pub use direct_message::DirectMessage;
-pub use entities::Entities;
 pub use error::Error;
-pub use geometry::Geometry;
-pub use list::List;
-pub use message::StreamMessage;
-pub use place::Place;
-pub use tweet::Tweet;
-pub use user::User;
 
 use error::HyperError;
 use futures::{Future, Poll, Stream};
@@ -130,7 +92,6 @@ use std::time::Duration;
 use tokio_core::reactor::Handle;
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
 use url::form_urlencoded::{Serializer, Target};
-use user::UserId;
 use util::{BaseTimeout, Lines, TimeoutStream};
 
 macro_rules! def_stream {
@@ -149,14 +110,9 @@ macro_rules! def_stream {
             $(:$custom_setter:ident: $c_ty:ty = $c_default:expr),*;
         }
 
-        $(#[$fs_attr:meta])*
+        $(#[$future_stream_attr:meta])*
         pub struct $FS:ident {
             $($fs_field:ident: $fsf_ty:ty,)*
-        }
-
-        $(#[$fjs_attr:meta])*
-        pub struct $FJS:ident {
-            $($fjs_field:ident: $fjsf_ty:ty,)*
         }
 
         $(#[$stream_attr:meta])*
@@ -164,17 +120,10 @@ macro_rules! def_stream {
             $($s_field:ident: $sf_ty:ty,)*
         }
 
-        $(#[$json_stream_attr:meta])*
-        pub struct $JS:ident {
-            $($js_field:ident: $jsf_ty:ty,)*
-        }
-
         $(
             $(#[$constructor_attr:meta])*
             -
             $(#[$s_constructor_attr:meta])*
-            -
-            $(#[$js_constructor_attr:meta])*
             pub fn $constructor:ident($Method:ident, $end_point:expr);
         )*
     ) => {
@@ -186,24 +135,14 @@ macro_rules! def_stream {
             $($custom_setter: $c_ty,)*
         }
 
-        $(#[$fs_attr])*
+        $(#[$future_stream_attr])*
         pub struct $FS {
             $($fs_field: $fsf_ty,)*
-        }
-
-        $(#[$fjs_attr])*
-        pub struct $FJS {
-            $($fjs_field: $fjsf_ty,)*
         }
 
         $(#[$stream_attr])*
         pub struct $S {
             $($s_field: $sf_ty,)*
-        }
-
-        $(#[$json_stream_attr])*
-        pub struct $JS {
-            $($js_field: $jsf_ty,)*
         }
 
         impl<$lifetime> $B<$lifetime, ()> {
@@ -277,16 +216,6 @@ macro_rules! def_stream {
                 }
             )*
         }
-
-        impl $JS {
-            $(
-                $(#[$js_constructor_attr])*
-                pub fn $constructor(token: &Token, handle: &Handle) -> $FJS
-                {
-                    $B::$constructor(token).handle(handle).listen_json()
-                }
-            )*
-        }
     };
 }
 
@@ -337,7 +266,7 @@ def_stream! {
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
         /// [1] https://dev.twitter.com/streaming/overview/request-parameters#follow
-        :follow: Option<&'a [UserId]> = None,
+        :follow: Option<&'a [u64]> = None,
 
         /// A comma separated list of phrases to filter Tweets by.
         ///
@@ -375,21 +304,12 @@ def_stream! {
     }
 
     pub struct FutureTwitterStream {
-        inner: FutureTwitterJsonStream,
-    }
-
-    pub struct FutureTwitterJsonStream {
         inner: FutureResponse,
         timeout: Option<BaseTimeout>,
     }
 
     /// A listener for Twitter Streaming API.
     pub struct TwitterStream {
-        inner: TwitterJsonStream,
-    }
-
-    /// Same as `TwitterStream` except that it yields raw JSON string messages.
-    pub struct TwitterJsonStream {
         inner: Lines<TimeoutStream<Body>>,
     }
 
@@ -401,8 +321,6 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
     -
     /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen_json()`.
     pub fn filter(Post, EP_FILTER);
 
     /// Create a builder for `GET statuses/sample` endpoint.
@@ -411,8 +329,6 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
     -
     /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen_json()`.
     pub fn sample(Get, EP_SAMPLE);
 
     /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
@@ -421,8 +337,6 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
     -
     /// A shorthand for `TwitterStreamBuilder::user().listen()`.
-    -
-    /// A shorthand for `TwitterStreamBuilder::user().listen_json()`.
     pub fn user(Get, EP_USER);
 }
 
@@ -432,13 +346,6 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.listen_json(),
-        }
-    }
-
-    /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self) -> FutureTwitterJsonStream {
-        FutureTwitterJsonStream {
             inner: self.connect(self.client_or_handle),
             timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.handle().clone())),
         }
@@ -446,16 +353,9 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
 }
 
 impl<'a> TwitterStreamBuilder<'a, Handle> {
-     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
+     /// Attempt to start listening on a Stream and returns a `Stream` object which yields JSON messages from the API.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.listen_json(),
-        }
-    }
-
-    /// Attempt to start listening on a Stream and returns a `Stream` which yields JSON messages from the API.
-    pub fn listen_json(&self) -> FutureTwitterJsonStream {
-        FutureTwitterJsonStream {
             inner: self.connect(&default_client(self.client_or_handle)),
             timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.clone())),
         }
@@ -564,17 +464,6 @@ impl Future for FutureTwitterStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
-        Ok(TwitterStream {
-            inner: try_ready!(self.inner.poll()),
-        }.into())
-    }
-}
-
-impl Future for FutureTwitterJsonStream {
-    type Item = TwitterJsonStream;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<TwitterJsonStream, Error> {
         use futures::Async;
 
         match self.inner.poll().map_err(Error::Hyper)? {
@@ -589,7 +478,7 @@ impl Future for FutureTwitterJsonStream {
                     None => TimeoutStream::never(res.body()),
                 };
 
-                Ok(TwitterJsonStream {
+                Ok(TwitterStream {
                     inner: Lines::new(body),
                 }.into())
             },
@@ -608,21 +497,6 @@ impl Future for FutureTwitterJsonStream {
 }
 
 impl Stream for TwitterStream {
-    type Item = StreamMessage;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Option<StreamMessage>, Error> {
-        match try_ready!(self.inner.poll()) {
-            Some(line) => match json::from_str(&line).map_err(Error::Json)? {
-                StreamMessage::Disconnect(d) => Err(Error::Disconnect(Box::new(d))),
-                msg => Ok(Some(msg).into()),
-            },
-            None => Ok(None.into()),
-        }
-    }
-}
-
-impl Stream for TwitterJsonStream {
     type Item = JsonStr;
     type Error = Error;
 

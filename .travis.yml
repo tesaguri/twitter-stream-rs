@@ -11,10 +11,17 @@ matrix:
   allow_failures:
     - rust: nightly
 script:
-  - cargo build --verbose --no-default-features --features=$FEATURES
-  - cargo test --verbose --no-default-features --features=$FEATURES
-  - cargo doc --verbose --no-deps --no-default-features --features=$FEATURES
+  - |
+    cd $CRATE
+    if [ -z "$FEATURES" ]; then
+      cargo build --verbose --no-default-features
+      cargo test --verbose --no-default-features
+    else
+      cargo check --verbose --no-default-features --features=$FEATURES
+    fi
+    cargo doc --verbose --no-deps --no-default-features --features=$FEATURES
 env:
-  - FEATURES=
-  - FEATURES=egg-mode
-  - FEATURES=tweetust
+  - CRATE=twitter-stream
+  - CRATE=twitter-stream FEATURES=egg-mode
+  - CRATE=twitter-stream FEATURES=tweetust
+  - CRATE=twitter-stream-message
