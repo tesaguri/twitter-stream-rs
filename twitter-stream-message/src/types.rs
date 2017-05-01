@@ -7,7 +7,7 @@ use chrono::{DateTime as ChronoDateTime, UTC};
 string_enums! {
     /// Represents the `filter_level` field in Tweets.
     #[derive(Clone, Debug)]
-    pub enum FilterLevel {
+    pub enum FilterLevel<'a> {
         :None("none"),
         :Low("low"),
         :Medium("medium");
@@ -16,7 +16,7 @@ string_enums! {
 
     /// Represents the `withheld_scope` field in `Tweet` and `User`.
     #[derive(Clone, Debug)]
-    pub enum WithheldScope {
+    pub enum WithheldScope<'a> {
         :Status("status"),
         :User("user");
         :Custom(_),

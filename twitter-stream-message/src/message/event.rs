@@ -11,19 +11,22 @@ use util;
 /// 1. [Streaming message types — Twitter Developers]
 ///    (https://dev.twitter.com/streaming/overview/messages-types#Events_event)
 #[derive(Clone, Debug, PartialEq)]
-pub struct Event {
+pub struct Event<'a> {
     pub created_at: DateTime,
+
     /// An object which indicates the name of the event and contains an optional object which
     /// represents the target of the event.
-    pub event: EventKind,
-    pub target: User,
-    pub source: User,
+    pub event: EventKind<'a>,
+
+    pub target: User<'a>,
+
+    pub source: User<'a>,
 }
 
 macro_rules! impl_event {
     (
         $(#[$attr:meta])*
-        pub enum $T:ident {
+        pub enum $T:ident<$lifetime:tt> {
             $(
                 $(#[$c_attr:meta])*
                 :$Container:ident($c_tag:expr, $Content:ty)
@@ -37,7 +40,7 @@ macro_rules! impl_event {
         }
     ) => {
         $(#[$attr])*
-        pub enum $T {
+        pub enum $T<$lifetime> {
             $(
                 $(#[$c_attr])*
                 $Container($Content),
@@ -47,83 +50,83 @@ macro_rules! impl_event {
                 $Label,
             )*
             $(#[$cu_attr])*
-            $Custom(String, Option<JsonValue>),
+            $Custom(::std::borrow::Cow<$lifetime, str>, Option<JsonValue>),
         }
 
-        impl<'x> Deserialize<'x> for Event {
-            fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
+        impl<'de: 'a, 'a> Deserialize<'de> for Event<'a> {
+            fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 struct EventVisitor;
 
-                impl<'x> Visitor<'x> for EventVisitor {
-                    type Value = Event;
+                impl<'a> Visitor<'a> for EventVisitor {
+                    type Value = Event<'a>;
 
-                    fn visit_map<V: MapAccess<'x>>(self, mut v: V) -> Result<Event, V::Error> {
+                    fn visit_map<A: MapAccess<'a>>(self, mut a: A) -> Result<Event<'a>, A::Error> {
+                        use util::CowStr;
+
                         #[derive(Default)]
-                        struct EventBuffer {
+                        struct EventBuffer<'a> {
                             created_at: Option<DateTime>,
-                            event: Option<EventKind>,
-                            target: Option<User>,
-                            source: Option<User>,
+                            event: Option<EventKind<'a>>,
+                            target: Option<User<'a>>,
+                            source: Option<User<'a>>,
                         }
 
                         let mut event = EventBuffer::default();
-                        let mut event_kind: Option<String> = None;
+                        let mut event_kind: Option<CowStr> = None;
                         let mut target_obj: Option<JsonValue> = None;
 
-                        macro_rules! err_map {
-                            () => (|e| V::Error::custom(e.to_string()));
-                        }
-
-                        while let Some(k) = v.next_key::<String>()? {
-                            match k.as_str() {
+                        while let Some(k) = a.next_key::<CowStr>()? {
+                            match k.as_ref() {
                                 "created_at" => {
-                                    let val = v.next_value::<String>()?;
-                                    event.created_at = Some(util::parse_datetime(&val).map_err(err_map!())?);
+                                    let val = a.next_value::<CowStr>()?;
+                                    event.created_at = Some(
+                                        util::parse_datetime(val.as_ref()).map_err(A::Error::custom)?
+                                    );
                                 },
                                 "event" => {
-                                    let e = v.next_value::<String>()?;
+                                    let e = a.next_value::<CowStr>()?;
                                     event.event = if let Some(t) = target_obj.take() {
-                                        match e.as_str() {
+                                        match e.as_ref() {
                                             $($c_tag => {
-                                                $T::$Container(<$Content>::deserialize(t).map_err(err_map!())?)
+                                                $T::$Container(<$Content>::deserialize(t).map_err(A::Error::custom)?)
                                             },)*
                                             $($l_tag => $T::$Label,)*
-                                            _ => $T::$Custom(e, Some(t)),
+                                            _ => $T::$Custom(e.0, Some(t)),
                                         }.into()
                                     } else {
-                                        match e.as_str() {
+                                        match e.as_ref() {
                                             $($l_tag => Some($T::$Label),)*
                                             $($c_tag)|* => { event_kind = Some(e); None },
-                                            _ => Some($T::Custom(e, None)),
+                                            _ => Some($T::Custom(e.0, None)),
                                         }
                                     };
                                 },
-                                "target" => event.target = Some(v.next_value()?),
-                                "source" => event.source = Some(v.next_value()?),
+                                "target" => event.target = Some(a.next_value()?),
+                                "source" => event.source = Some(a.next_value()?),
                                 "target_object" => if let Some(e) = event_kind.take() {
-                                    event.event = match e.as_str() {
-                                        $($c_tag => $T::$Container(v.next_value()?),)*
-                                        $($l_tag => { v.next_value::<IgnoredAny>()?; $T::$Label },)*
-                                        _ => $T::$Custom(e, v.next_value()?),
+                                    event.event = match e.as_ref() {
+                                        $($c_tag => $T::$Container(a.next_value()?),)*
+                                        $($l_tag => { a.next_value::<IgnoredAny>()?; $T::$Label },)*
+                                        _ => $T::$Custom(e.0, a.next_value()?),
                                     }.into();
                                 } else if event.event.is_none() {
-                                    target_obj = Some(v.next_value()?);
+                                    target_obj = Some(a.next_value()?);
                                 } else {
-                                    v.next_value::<IgnoredAny>()?;
+                                    a.next_value::<IgnoredAny>()?;
                                 },
-                                _ => { v.next_value::<IgnoredAny>()?; },
+                                _ => { a.next_value::<IgnoredAny>()?; },
                             }
 
                             if let EventBuffer {
                                     created_at: Some(ca), event: Some(e), target: Some(t), source: Some(s),
                                 } = event
                             {
-                                while v.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                                while a.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
                                 return Ok(Event { created_at: ca, event: e, target: t, source: s });
                             }
                         }
 
-                        Err(V::Error::missing_field(if event.created_at.is_none() {
+                        Err(A::Error::missing_field(if event.created_at.is_none() {
                             "created_at"
                         } else if event.target.is_none() {
                             "target"
@@ -185,17 +188,17 @@ impl_event! {
     /// | User updates their profile          | `UserUpdate`           | Current user       | Current user   |
     /// | User updates their protected status | `UserUpdate`           | Current user       | Current user   |
     #[derive(Clone, Debug, PartialEq)]
-    pub enum EventKind {
-        :Favorite("favorite", Box<Tweet>),
-        :Unfavorite("unfavorite", Box<Tweet>),
-        :ListCreated("list_created", Box<List>),
-        :ListDestroyed("list_destroyed", Box<List>),
-        :ListUpdated("list_updated", Box<List>),
-        :ListMemberAdded("list_member_added", Box<List>),
-        :ListMemberRemoved("list_member_removed", Box<List>),
-        :ListUserSubscribed("list_user_subscribed", Box<List>),
-        :ListUserUnsubscribed("list_user_unsubscribed", Box<List>),
-        :QuotedTweet("quoted_tweet", Box<Tweet>);
+    pub enum EventKind<'a> {
+        :Favorite("favorite", Box<Tweet<'a>>),
+        :Unfavorite("unfavorite", Box<Tweet<'a>>),
+        :ListCreated("list_created", Box<List<'a>>),
+        :ListDestroyed("list_destroyed", Box<List<'a>>),
+        :ListUpdated("list_updated", Box<List<'a>>),
+        :ListMemberAdded("list_member_added", Box<List<'a>>),
+        :ListMemberRemoved("list_member_removed", Box<List<'a>>),
+        :ListUserSubscribed("list_user_subscribed", Box<List<'a>>),
+        :ListUserUnsubscribed("list_user_unsubscribed", Box<List<'a>>),
+        :QuotedTweet("quoted_tweet", Box<Tweet<'a>>);
         :AccessRevoked("access_revoked"),
         :Block("block"),
         :Unblock("unblock"),

@@ -1,6 +1,7 @@
 //! Place
 
 use geometry::Geometry;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// Represents `place` field in `Tweet`.
@@ -9,37 +10,46 @@ use std::collections::HashMap;
 ///
 /// 1. [Places — Twitter Developers](https://dev.twitter.com/overview/api/places)
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct Place {
+pub struct Place<'a> {
     /// Contains a hash of variant information about the place. See [Place Attributes][1] for more detail.
     /// [1]: https://dev.twitter.com/overview/api/places#place_attributes
-    pub attributes: Attributes,
+    #[serde(borrow)]
+    #[serde(deserialize_with = "::util::deserialize_map_cow_str")]
+    pub attributes: Attributes<'a>,
 
     /// A bounding box of coordinates which encloses this place.
     pub bounding_box: Geometry,
 
     /// Name of the country containing this place.
-    pub country: String,
+    #[serde(borrow)]
+    pub country: Cow<'a, str>,
 
     /// Shortened country code representing the country containing this place.
-    pub country_code: String,
+    #[serde(borrow)]
+    pub country_code: Cow<'a, str>,
 
     /// Full human-readable representation of the place’s name.
-    pub full_name: String,
+    #[serde(borrow)]
+    pub full_name: Cow<'a, str>,
 
     /// ID representing this place. Note that this is represented as a string, not an integer.
-    pub id: PlaceId,
+    #[serde(borrow)]
+    pub id: PlaceId<'a>,
 
     /// Short human-readable representation of the place’s name.
-    pub name: String,
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
 
     /// The type of location represented by this place.
-    pub place_type: String,
+    #[serde(borrow)]
+    pub place_type: Cow<'a, str>,
 
     /// URL representing the location of additional place metadata for this place.
-    pub url: String,
+    #[serde(borrow)]
+    pub url: Cow<'a, str>,
 }
 
-pub type Attributes = HashMap<String, String>;
+pub type Attributes<'a> = HashMap<Cow<'a, str>, Cow<'a, str>>;
 
 /// ID of a place.
-pub type PlaceId = String;
+pub type PlaceId<'a> = Cow<'a, str>;

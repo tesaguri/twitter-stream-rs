@@ -1,10 +1,10 @@
 //! Tweets
 
 use {Entities, Geometry, Place};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use types::{DateTime, FilterLevel, JsonValue, WithheldScope};
 use user::{User, UserId};
-use util;
 
 /// Represents a Tweet.
 ///
@@ -12,20 +12,21 @@ use util;
 ///
 /// [Tweets — Twitter Developers](https://dev.twitter.com/overview/api/tweets)
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct Tweet {
+pub struct Tweet<'a> {
     // pub contributors: Option<_>, // deprecated
 
     /// Represents the geographic location of this Tweet as reported by the user or client application.
     pub coordinates: Option<Geometry>,
 
     /// UTC time when this Tweet was created.
-    #[serde(deserialize_with = "util::deserialize_datetime")]
+    #[serde(deserialize_with = "::util::deserialize_datetime")]
     pub created_at: DateTime,
 
     // pub current_user_retweet: Option<StatusId>,
 
     /// Entities which have been parsed out of the text of the Tweet.
-    pub entities: Entities,
+    #[serde(borrow)]
+    pub entities: Entities<'a>,
 
     /// Indicates approximately how many times this Tweet has been liked by Twitter users.
     pub favorite_count: Option<u64>,
@@ -35,7 +36,8 @@ pub struct Tweet {
 
     /// Indicates the maximum value of the `filter_level` parameter which may be used and still stream this Tweet.
     /// So a value of `Medium` will be streamed on `None`, `Low`, and `Medium` streams.
-    pub filter_level: Option<FilterLevel>,
+    #[serde(borrow)]
+    pub filter_level: Option<FilterLevel<'a>>,
 
     // pub geo: _, // deprecated in favor of `coordinates` field.
 
@@ -45,7 +47,10 @@ pub struct Tweet {
     // pub id_str: String,
 
     /// If the represented Tweet is a reply, this field will contain the screen name of the original Tweet’s author.
-    pub in_reply_to_screen_name: Option<String>,
+    #[serde(borrow)]
+    #[serde(default)]
+    #[serde(deserialize_with = "::util::deserialize_opt_cow_str")]
+    pub in_reply_to_screen_name: Option<Cow<'a, str>>,
 
     /// If the represented Tweet is a reply, this field will contain the integer representation of
     /// the original Tweet’s ID.
@@ -64,11 +69,15 @@ pub struct Tweet {
     /// When present, indicates a [BCP 47][1] language identifier corresponding to the machine-detected language of
     /// the Tweet text, or `und` if no language could be detected.
     /// [1]: http://tools.ietf.org/html/bcp47
-    pub lang: Option<String>,
+    #[serde(borrow)]
+    #[serde(default)]
+    #[serde(deserialize_with = "::util::deserialize_opt_cow_str")]
+    pub lang: Option<Cow<'a, str>>,
 
     /// When present, indicates that the tweet is associated (but not necessarily originating from) a [Place][1].
     /// [1]: struct.Place.html
-    pub place: Option<Place>,
+    #[serde(borrow)]
+    pub place: Option<Place<'a>>,
 
     /// This field only surfaces when a Tweet contains a link. The meaning of the field doesn’t pertain to
     /// the Tweet content itself, but instead it is an indicator that the URL contained in the Tweet may contain
@@ -83,7 +92,8 @@ pub struct Tweet {
 
     /// This field only surfaces when the Tweet is a quote Tweet. This attribute contains the `Tweet` object of
     /// the original Tweet that was quoted.
-    pub quoted_status: Option<Box<Tweet>>,
+    #[serde(borrow)]
+    pub quoted_status: Option<Box<Tweet<'a>>>,
 
     /// A set of key-value pairs indicating the intended contextual delivery of the containing Tweet.
     /// Currently used by Twitter’s Promoted Products.
@@ -103,16 +113,19 @@ pub struct Tweet {
     /// Note that retweets of retweets do not show representations of the intermediary retweet,
     /// but only the original Tweet. (Users can also [unretweet][2] a retweet they created by deleting their retweet.)
     /// [2]: https://dev.twitter.com/rest/reference/post/statuses/destroy/%3Aid
-    pub retweeted_status: Option<Box<Tweet>>,
+    #[serde(borrow)]
+    pub retweeted_status: Option<Box<Tweet<'a>>>,
 
     /// Utility used to post the Tweet, as an HTML-formatted string.
     /// Tweets from the Twitter website have a source value of `web`.
-    pub source: String,
+    #[serde(borrow)]
+    pub source: Cow<'a, str>,
 
     /// The actual UTF-8 text of the status update.
     /// See [twitter-text][1] for details on what is currently considered valid characters.
     /// [1]: https://github.com/twitter/twitter-text/blob/master/rb/lib/twitter-text/regex.rb
-    pub text: String,
+    #[serde(borrow)]
+    pub text: Cow<'a, str>,
 
     /// Indicates whether the value of the `text` parameter was truncated, for example, as a result of a retweet
     /// exceeding the 140 character Tweet length. Truncated text will end in ellipsis, like this `...`
@@ -126,7 +139,8 @@ pub struct Tweet {
     pub truncated: bool,
 
     /// The user who posted this Tweet. Perspectival attributes embedded within this object are unreliable.
-    pub user: User,
+    #[serde(borrow)]
+    pub user: User<'a>,
 
     /// When set to `true`, it indicates that this piece of content has been withheld due to a [DMCA complaint][1].
     /// [1]: http://en.wikipedia.org/wiki/Digital_Millennium_Copyright_Act
@@ -139,11 +153,13 @@ pub struct Tweet {
     ///
     /// - `XX` - Content is withheld in all countries
     /// - `XY` - Content is withheld due to a DMCA request.
+    #[serde(borrow)]
     #[serde(default)]
-    pub withheld_in_countries: Vec<String>,
+    pub withheld_in_countries: Vec<Cow<'a, str>>,
 
     /// When present, indicates whether the content being withheld is the `Status` or a `User`.
-    pub withheld_scope: Option<WithheldScope>,
+    #[serde(borrow)]
+    pub withheld_scope: Option<WithheldScope<'a>>,
 }
 
 /// ID of a Tweet.

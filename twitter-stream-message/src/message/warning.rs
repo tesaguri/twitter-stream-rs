@@ -1,30 +1,33 @@
 use serde::de::{Deserialize, Deserializer, Error, IgnoredAny, MapAccess, Visitor};
+use std::borrow::Cow;
 use std::fmt;
 use user::UserId;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Warning {
-    pub message: String,
-    pub code: WarningCode,
+pub struct Warning<'a> {
+    pub message: Cow<'a, str>,
+    pub code: WarningCode<'a>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum WarningCode {
+pub enum WarningCode<'a> {
     FallingBehind(u64),
     FollowsOverLimit(UserId),
-    Custom(String),
+    Custom(Cow<'a, str>),
 }
 
-impl<'x> Deserialize<'x> for Warning {
-    fn deserialize<D: Deserializer<'x>>(d: D) -> Result<Self, D::Error> {
+impl<'de: 'a, 'a> Deserialize<'de> for Warning<'a> {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         struct WarningVisitor;
 
-        impl<'x> Visitor<'x> for WarningVisitor {
-            type Value = Warning;
+        impl<'a> Visitor<'a> for WarningVisitor {
+            type Value = Warning<'a>;
 
-            fn visit_map<V: MapAccess<'x>>(self, mut v: V) -> Result<Warning, V::Error> {
+            fn visit_map<A: MapAccess<'a>>(self, mut a: A) -> Result<Warning<'a>, A::Error> {
+                use util::CowStr;
+
                 string_enums! {
-                    pub enum Code {
+                    pub enum Code<'a> {
                         :FallingBehind("FALLING_BEHIND"),
                         :FollowsOverLimit("FOLLOWS_OVER_LIMIT");
                         :Custom(_),
@@ -32,22 +35,22 @@ impl<'x> Deserialize<'x> for Warning {
                 }
 
                 let mut code = None;
-                let mut message: Option<String> = None;
+                let mut message: Option<CowStr> = None;
                 let mut percent_full: Option<u64> = None;
                 let mut user_id: Option<UserId> = None;
 
-                while let Some(k) = v.next_key::<String>()? {
-                    match k.as_str() {
-                        "code" => code = Some(v.next_value::<Code>()?),
-                        "message" => message = Some(v.next_value()?),
-                        "percent_full" => percent_full = Some(v.next_value()?),
-                        "user_id" => user_id = Some(v.next_value()?),
-                        _ => { v.next_value::<IgnoredAny>()?; },
+                while let Some(k) = a.next_key::<CowStr>()? {
+                    match k.as_ref() {
+                        "code" => code = Some(a.next_value::<Code>()?),
+                        "message" => message = Some(a.next_value()?),
+                        "percent_full" => percent_full = Some(a.next_value()?),
+                        "user_id" => user_id = Some(a.next_value()?),
+                        _ => { a.next_value::<IgnoredAny>()?; },
                     }
 
                     macro_rules! end {
                         () => {{
-                            while v.next_entry::<IgnoredAny,IgnoredAny>()?.is_some() {}
+                            while a.next_entry::<IgnoredAny,IgnoredAny>()?.is_some() {}
                         }};
                     }
 
@@ -55,14 +58,14 @@ impl<'x> Deserialize<'x> for Warning {
                         (Some(&Code::FallingBehind), Some(_), Some(percent_full), _) => {
                             end!();
                             return Ok(Warning {
-                                message: message.unwrap(),
+                                message: message.unwrap().0,
                                 code: WarningCode::FallingBehind(percent_full),
                             });
                         },
                         (Some(&Code::FollowsOverLimit), Some(_), _, Some(user_id)) => {
                             end!();
                             return Ok(Warning {
-                                message: message.unwrap(),
+                                message: message.unwrap().0,
                                 code: WarningCode::FollowsOverLimit(user_id),
                             });
                         },
@@ -70,7 +73,7 @@ impl<'x> Deserialize<'x> for Warning {
                             end!();
                             if let Some(Code::Custom(code)) = code {
                                 return Ok(Warning {
-                                    message: message.unwrap(),
+                                    message: message.unwrap().0,
                                     code: WarningCode::Custom(code),
                                 });
                             } else {
@@ -82,13 +85,13 @@ impl<'x> Deserialize<'x> for Warning {
                 }
 
                 if code.is_none() {
-                    Err(V::Error::missing_field("code"))
+                    Err(A::Error::missing_field("code"))
                 } else if message.is_none() {
-                    Err(V::Error::missing_field("message"))
+                    Err(A::Error::missing_field("message"))
                 } else if code == Some(Code::FallingBehind) {
-                    Err(V::Error::missing_field("percent_full"))
+                    Err(A::Error::missing_field("percent_full"))
                 } else {
-                    Err(V::Error::missing_field("user_id"))
+                    Err(A::Error::missing_field("user_id"))
                 }
             }
 

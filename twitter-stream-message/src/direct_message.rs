@@ -1,23 +1,39 @@
 //! Direct messages
 
 use Entities;
+use std::borrow::Cow;
 use types::DateTime;
 use user::{User, UserId};
 use util;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct DirectMessage {
+pub struct DirectMessage<'a> {
     #[serde(deserialize_with = "util::deserialize_datetime")]
     pub created_at: DateTime,
-    pub entities: Entities,
+
+    #[serde(borrow)]
+    pub entities: Entities<'a>,
+
     pub id: DirectMessageId,
-    pub recipient: User,
+
+    #[serde(borrow)]
+    pub recipient: User<'a>,
+
     pub recipient_id: UserId,
-    pub recipient_screen_name: String,
-    pub sender: User,
+
+    #[serde(borrow)]
+    pub recipient_screen_name: Cow<'a, str>,
+
+    #[serde(borrow)]
+    pub sender: User<'a>,
+
     pub sender_id: UserId,
-    pub sender_screen_name: String,
-    pub text: String,
+
+    #[serde(borrow)]
+    pub sender_screen_name: Cow<'a, str>,
+
+    #[serde(borrow)]
+    pub text: Cow<'a, str>,
 }
 
 /// ID of a direct message.
