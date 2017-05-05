@@ -14,11 +14,11 @@ script:
   - |
     cd $CRATE
     if [ -z "$FEATURES" ]; then
-      cargo build --verbose --no-default-features
-      cargo test --verbose --no-default-features
+      cargo build --verbose &&
+      cargo test --verbose
     else
-      cargo check --verbose --no-default-features --features=$FEATURES
-    fi
+      cargo check --verbose --features=$FEATURES
+    fi &&
     cargo doc --verbose --no-deps --no-default-features --features=$FEATURES
 env:
   - CRATE=twitter-stream
