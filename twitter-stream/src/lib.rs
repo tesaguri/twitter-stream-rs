@@ -505,7 +505,7 @@ impl Stream for TwitterStream {
             match try_ready!(self.inner.poll()) {
                 Some(line) => {
                      // Skip whitespaces (RFC7159 §2)
-                    if ! line.iter().all(|&c| c == b' ' || c == b'\t' || c == b'\n' || c == b'\r') {
+                    if ! line.iter().all(|&c| c == b'\n' || c == b'\r' || c == b' ' || c == b'\t') {
                         let line = JsonStr::from_utf8(line).map_err(Error::Utf8)?;
                         return Ok(Some(line).into());
                     }
