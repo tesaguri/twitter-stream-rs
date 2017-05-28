@@ -130,32 +130,34 @@ impl<S> Stream for TimeoutStream<S> where S: Stream<Error=HyperError> {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<S::Item>, Error> {
-        let ret;
+        self.stream.poll().map_err(Error::Hyper).and_then(|async| {
+            let ret;
 
-        if let Some(ref mut inner) = self.inner {
-            match self.stream.poll() {
-                Ok(Async::Ready(Some(v))) => {
-                    ret = Ok(Some(v).into());
-                    if let Ok(timer) = Timeout::new(inner.dur, &inner.handle) {
-                        inner.timer = timer;
-                        return ret;
-                    }
-                    // goto timeout_new_failed;
-                },
-                Ok(Async::NotReady) => match inner.timer.poll() {
-                    Ok(Async::Ready(())) => return Err(Error::TimedOut),
-                    Ok(Async::NotReady) => return Ok(Async::NotReady),
-                    Err(_) => unreachable!(), // `Timeout` never fails.
-                },
-                v => return v.map_err(Error::Hyper),
+            if let Some(ref mut inner) = self.inner {
+                match async {
+                    Async::Ready(Some(v)) => {
+                        ret = Ok(Some(v).into());
+                        if let Ok(timer) = Timeout::new(inner.dur, &inner.handle) {
+                            inner.timer = timer;
+                            return ret;
+                        }
+                        // goto timeout_new_failed;
+                    },
+                    Async::Ready(None) => return Ok(Async::Ready(None)),
+                    Async::NotReady => match inner.timer.poll() {
+                        Ok(Async::Ready(())) => return Err(Error::TimedOut),
+                        Ok(Async::NotReady) => return Ok(Async::NotReady),
+                        Err(_) => unreachable!(), // `Timeout` never fails.
+                    },
+                }
+            } else {
+                return Ok(async);
             }
-        } else {
-            return self.stream.poll().map_err(Error::Hyper);
-        }
 
-        // timeout_new_failed:
-        self.inner = None;
-        ret
+            // timeout_new_failed:
+            self.inner = None;
+            ret
+        })
     }
 }
 
