@@ -1,4 +1,4 @@
-use bytes::{BufMut, Bytes};
+use bytes::Bytes;
 use error::{Error, HyperError};
 use futures::{Async, Future, Poll, Stream};
 use futures::stream::Fuse;
@@ -212,16 +212,16 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
                     let mut chunk = chunk.into();
                     if &b'\r' == self.buf.last().unwrap() && Some(&b'\n') == chunk.first() {
                         let i = self.buf.len() + 1;
-                        extend_from_bytes(&mut self.buf, chunk);
+                        self.buf.extend_from_slice(&chunk);
                         let next = self.buf.split_off(i);
                         let ret = mem::replace(&mut self.buf, next);
                         return Ok(Some(ret).into());
                     } else if let Some(tail) = remove_first_line(&mut chunk) {
-                        extend_from_bytes(&mut self.buf, tail);
+                        self.buf.extend_from_slice(&tail);
                         let ret = mem::replace(&mut self.buf, chunk);
                         return Ok(Some(ret).into());
                     } else {
-                        extend_from_bytes(&mut self.buf, chunk);
+                        self.buf.extend_from_slice(&chunk);
                     }
                 },
                 None => {
@@ -231,30 +231,6 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
             };
         }
     }
-}
-
-// XXX: possibly can be replaced with carllerche/bytes#85
-fn extend_from_bytes(dst: &mut Bytes, src: Bytes) {
-    use std::mem;
-
-    if src.is_empty() { return; }
-
-    // Temporary swap just to take the ownership
-    let buf = mem::replace(dst, src);
-
-    *dst = match buf.try_mut() {
-        Ok(mut buf) => {
-            buf.reserve(dst.len());
-            buf.put_slice(dst);
-            buf.freeze()
-        },
-        Err(buf) => {
-            let mut vec = Vec::with_capacity(buf.len() + dst.len());
-            vec.extend_from_slice(&buf);
-            vec.extend_from_slice(dst);
-            vec.into()
-        },
-    };
 }
 
 #[cfg(test)]
@@ -281,6 +257,7 @@ mod test {
             Bytes::from(b"d\r\nefg\r\n".to_vec()),
             Bytes::from(b"hi".to_vec()),
             Bytes::from(b"jk".to_vec()),
+            Bytes::from(b"".to_vec()),
             Bytes::from(b"\r\n".to_vec()),
             Bytes::from(b"\r\n".to_vec()),
             Bytes::from(b"lmn\r\nop".to_vec()),
