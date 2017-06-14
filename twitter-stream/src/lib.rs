@@ -284,7 +284,7 @@ def_stream! {
         // Setters:
 
         /// Set a timeout for the stream. `None` means infinity.
-        :timeout: Option<Duration> = None,
+        :timeout: Option<Duration> = Some(Duration::from_secs(90)),
 
         // delimited: bool,
 
