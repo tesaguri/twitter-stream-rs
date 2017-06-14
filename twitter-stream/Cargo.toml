@@ -16,7 +16,7 @@ A library for listening on Twitter Streaming API.
 [dependencies]
 bytes = "0.4"
 futures = "0.1.11"
-hyper = { version = "0.11.0-a", git = "https://github.com/hyperium/hyper/" }
+hyper = "0.11"
 lazy_static = "0.2"
 oauthcli = "1.0"
 tokio-core = "0.1"

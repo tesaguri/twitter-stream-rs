@@ -376,14 +376,14 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
         }
 
         if RequestMethod::Post == self.method {
-            use hyper::mime::{Mime, SubLevel, TopLevel};
+            use hyper::mime;
 
             let mut body = Serializer::new(String::new());
             self.append_query_pairs(&mut body);
             let body = body.finish();
 
             headers.set(auth::create_authorization_header(self.token, &self.method, &url, Some(body.as_ref())));
-            headers.set(ContentType(Mime(TopLevel::Application, SubLevel::WwwFormUrlEncoded, Vec::new())));
+            headers.set(ContentType(mime::APPLICATION_WWW_FORM_URLENCODED));
 
             let mut req = Request::new(RequestMethod::Post, url.as_ref().parse().unwrap());
             *req.headers_mut() = headers;

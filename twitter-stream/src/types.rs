@@ -1,7 +1,7 @@
 //! Common types used across the crate.
 
 pub use hyper::Method as RequestMethod;
-pub use hyper::status::StatusCode;
+pub use hyper::StatusCode;
 pub use url::Url;
 
 use bytes::Bytes;
