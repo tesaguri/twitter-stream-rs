@@ -15,7 +15,7 @@ A library for listening on Twitter Streaming API.
 
 [dependencies]
 bytes = "0.4"
-futures = "0.1.11"
+futures = "0.1.4"
 hyper = "0.11"
 lazy_static = "0.2"
 oauthcli = "1.0"
@@ -33,7 +33,3 @@ default = ["parse", "tls", "use-serde"]
 parse = ["twitter-stream-message"]
 tls = ["hyper-tls"]
 use-serde = ["serde", "serde_derive"]
-
-[[example]]
-name = "echo_bot"
-required-features = ["tweetust"]

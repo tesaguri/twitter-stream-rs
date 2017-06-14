@@ -1,5 +1,6 @@
 extern crate futures;
 extern crate serde_json as json;
+extern crate tweetust;
 extern crate tokio_core;
 extern crate twitter_stream;
 
@@ -7,16 +8,15 @@ use futures::{Future, Stream};
 use std::fs::File;
 use std::path::PathBuf;
 use tokio_core::reactor::Core;
-use twitter_stream::{Error, StreamMessage, Token, TwitterStream};
+use twitter_stream::{Error, Token, TwitterStream};
+use twitter_stream::message::StreamMessage;
 
 fn main() {
-    extern crate tweetust;
-
     // `credential.json` must have the following form:
     // {"consumer_key": "...", "consumer_secret": "...", "access_key": "...", "access_secret": "..."}
 
     let mut credential_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    credential_path.push("examples");
+    credential_path.pop();
     credential_path.push("credential.json");
 
     let credential = File::open(credential_path).unwrap();
@@ -30,8 +30,8 @@ fn main() {
     // Information of the authenticated user:
     let user = rest.account().verify_credentials().execute().unwrap().object;
 
-    let bot = stream.for_each(|message| {
-        if let StreamMessage::Tweet(tweet) = message {
+    let bot = stream.for_each(|json| {
+        if let Ok(StreamMessage::Tweet(tweet)) = twitter_stream::message::parse(&json) {
             if tweet.user.id != user.id as u64
                 && tweet.entities.user_mentions.iter().any(|mention| mention.id == user.id as u64)
             {

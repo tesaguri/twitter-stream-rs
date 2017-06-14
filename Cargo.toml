@@ -2,4 +2,5 @@
 members = [
   "twitter-stream",
   "twitter-stream-message",
+  "examples/echo_bot",
 ]
