@@ -1,3 +1,9 @@
+/*!
+# Twitter Stream Message
+
+A library for parsing JSON messages returned by Twitter Streaming API.
+*/
+
 extern crate chrono;
 extern crate serde;
 #[macro_use]
@@ -27,6 +33,27 @@ pub use place::Place;
 pub use tweet::Tweet;
 pub use user::User;
 
+/// Parse a JSON string returned from Twitter Streaming API.
+///
+/// ```
+/// use twitter_stream_message::message::{Delete, StreamMessage};
+///
+/// let parsed = twitter_stream_message::parse(r#"{
+///     "delete":{
+///         "status":{
+///             "id":1234,
+///             "id_str":"1234",
+///             "user_id":3,
+///             "user_id_str":"3"
+///         }
+///     }
+/// }"#).unwrap();
+/// let expected = StreamMessage::Delete(Delete {
+///     id: 1234,
+///     user_id: 3,
+/// });
+///
+/// assert_eq!(parsed, expected);
 pub fn parse<'a>(json: &'a str) -> Result<StreamMessage<'a>, Error> {
     json::from_str(json)
 }

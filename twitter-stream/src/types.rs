@@ -33,7 +33,7 @@ string_enums! {
     }
 }
 
-/// A string type returned by `TwitterJsonStream`.
+/// A string type returned by `TwitterStream`.
 // It is basically a wrapper type over `Bytes` that gurantees the contained bytes are valid UTF8 string.
 // Inspired by hyper::http::str::ByteStr.
 #[derive(Clone, PartialEq, PartialOrd, Ord, Eq, Debug, Hash)]

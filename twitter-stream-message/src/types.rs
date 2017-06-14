@@ -1,3 +1,5 @@
+//! Common types used across the crate.
+
 pub use json::Map as JsonMap;
 pub use json::Number as JsonNumber;
 pub use json::Value as JsonValue;

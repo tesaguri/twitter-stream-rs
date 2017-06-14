@@ -165,6 +165,11 @@ macro_rules! def_stream {
         }
 
         impl<$lifetime, $CH> $B<$lifetime, $CH> {
+            /// Set a `hyper::Client` to be used for connecting to the server.
+            ///
+            /// The `Client` should be able to handle the `https` scheme.
+            ///
+            /// This method overrides the effect of `handle` method.
             pub fn client<C, B>(self, client: &$lifetime Client<C, B>) -> $B<$lifetime, Client<C, B>>
                 where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
             {
@@ -176,6 +181,9 @@ macro_rules! def_stream {
                 }
             }
 
+            /// Set a `tokio_core::reactor::Handle` to be used for connecting to the server.
+            ///
+            /// This method overrides the effect of `client` method.
             pub fn handle(self, handle: &$lifetime Handle) -> $B<$lifetime, Handle> {
                 $B {
                     $client_or_handle: handle,
@@ -229,12 +237,48 @@ const TUPLE_REF: &'static () = &();
 
 def_stream! {
     /// A builder for `TwitterStream`.
+    ///
+    /// ## Example
+    ///
+    /// ```rust,no_run
+    /// extern crate futures;
+    /// extern crate tokio_core;
+    /// extern crate twitter_stream;
+    ///
+    /// use futures::{Future, Stream};
+    /// use tokio_core::reactor::Core;
+    /// use twitter_stream::{Token, TwitterStreamBuilder};
+    ///
+    /// # fn main() {
+    /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
+    /// let mut core = Core::new().unwrap();
+    /// let handle = core.handle();
+    ///
+    /// let future = TwitterStreamBuilder::user(&token)
+    ///     .handle(&handle)
+    ///     .timeout(None)
+    ///     .replies(true)
+    ///     .listen() // You cannot call `listen` method before you call `client` or `handle` method.
+    ///     .flatten_stream()
+    ///     .for_each(|json| {
+    ///         println!("{}", json);
+    ///         Ok(())
+    ///     });
+    ///
+    /// core.run(future).unwrap();
+    /// # }
+    /// ```
     #[derive(Clone, Debug)]
     pub struct TwitterStreamBuilder<'a, CH> {
         client_or_handle: &'a CH = TUPLE_REF;
 
+        /// Reset the HTTP request method to be used when connecting to the server.
         :method: RequestMethod,
+
+        /// Reset the API endpoint URL to be connected.
         :end_point: &'a Url,
+
+        /// Reset the token to be used to log into Twitter.
         :token: &'a Token<'a>;
 
         // Setters:
@@ -303,12 +347,13 @@ def_stream! {
         :user_agent: Option<Cow<'static, str>> = None;
     }
 
+    /// A future returned by constructor methods which resolves to a `TwitterStream`.
     pub struct FutureTwitterStream {
         inner: FutureResponse,
         timeout: Option<BaseTimeout>,
     }
 
-    /// A listener for Twitter Streaming API.
+    /// A listener for Twitter Streaming API. It yields JSON strings returned from the API.
     pub struct TwitterStream {
         inner: Lines<TimeoutStream<Body>>,
     }
@@ -344,6 +389,8 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
     where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
 {
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
+     ///
+     /// You need to call `client` method before trying to call this method.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
             inner: self.connect(self.client_or_handle),
@@ -354,6 +401,8 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
 
 impl<'a> TwitterStreamBuilder<'a, Handle> {
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields JSON messages from the API.
+     ///
+     /// You need to call `handle` method before trying to call this method.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
             inner: self.connect(&default_client(self.client_or_handle)),
