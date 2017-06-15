@@ -53,8 +53,6 @@ extern crate bytes;
 #[macro_use]
 extern crate futures;
 extern crate hyper;
-#[cfg(feature = "tls")]
-extern crate hyper_tls;
 #[macro_use]
 extern crate lazy_static;
 extern crate oauthcli;
@@ -349,8 +347,7 @@ def_stream! {
 
     /// A future returned by constructor methods which resolves to a `TwitterStream`.
     pub struct FutureTwitterStream {
-        inner: FutureResponse,
-        timeout: Option<BaseTimeout>,
+        inner: FutureTwitterStreamInner,
     }
 
     /// A listener for Twitter Streaming API. It yields JSON strings returned from the API.
@@ -385,6 +382,14 @@ def_stream! {
     pub fn user(Get, EP_USER);
 }
 
+enum FutureTwitterStreamInner {
+    Ok {
+        inner: FutureResponse,
+        timeout: Option<BaseTimeout>,
+    },
+    Err(Option<error::TlsError>),
+}
+
 impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
     where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
 {
@@ -393,8 +398,10 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
      /// You need to call `client` method before trying to call this method.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: self.connect(self.client_or_handle),
-            timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.handle().clone())),
+            inner: FutureTwitterStreamInner::Ok {
+                inner: self.connect(self.client_or_handle),
+                timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.handle().clone())),
+            },
         }
     }
 }
@@ -404,9 +411,16 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
      ///
      /// You need to call `handle` method before trying to call this method.
     pub fn listen(&self) -> FutureTwitterStream {
-        FutureTwitterStream {
-            inner: self.connect(&default_client(self.client_or_handle)),
-            timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.clone())),
+        match default_connector::new(self.client_or_handle) {
+            Ok(c) => FutureTwitterStream {
+                inner: FutureTwitterStreamInner::Ok {
+                    inner: self.connect(&Client::configure().connector(c).build(self.client_or_handle)),
+                    timeout: self.timeout.and_then(|dur| BaseTimeout::new(dur, self.client_or_handle.clone())),
+                },
+            },
+            Err(e) => FutureTwitterStream {
+                inner: FutureTwitterStreamInner::Err(Some(e)),
+            },
         }
     }
 }
@@ -515,32 +529,38 @@ impl Future for FutureTwitterStream {
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
         use futures::Async;
 
-        match self.inner.poll().map_err(Error::Hyper)? {
-            Async::Ready(res) => {
-                let status = res.status();
-                if StatusCode::Ok != status {
-                    return Err(Error::Http(status));
-                }
-
-                let body = match self.timeout.take() {
-                    Some(timeout) => timeout.for_stream(res.body()),
-                    None => TimeoutStream::never(res.body()),
-                };
-
-                Ok(TwitterStream {
-                    inner: Lines::new(body),
-                }.into())
-            },
-            Async::NotReady => {
-                if let Some(ref mut timeout) = self.timeout {
-                    match timeout.timer_mut().poll() {
-                        Ok(Async::Ready(())) => return Err(Error::TimedOut),
-                        Ok(Async::NotReady) => (),
-                        Err(_) => unreachable!(), // `Timeout` never fails.
+        match self.inner {
+            FutureTwitterStreamInner::Ok { ref mut inner, ref mut timeout } => match inner.poll().map_err(Error::Hyper)?
+            {
+                Async::Ready(res) => {
+                    let status = res.status();
+                    if StatusCode::Ok != status {
+                        return Err(Error::Http(status));
                     }
-                }
-                Ok(Async::NotReady)
+
+                    let body = match timeout.take() {
+                        Some(timeout) => timeout.for_stream(res.body()),
+                        None => TimeoutStream::never(res.body()),
+                    };
+
+                    Ok(TwitterStream {
+                        inner: Lines::new(body),
+                    }.into())
+                },
+                Async::NotReady => {
+                    if let Some(ref mut timeout) = *timeout {
+                        match timeout.timer_mut().poll() {
+                            Ok(Async::Ready(())) => return Err(Error::TimedOut),
+                            Ok(Async::NotReady) => (),
+                            Err(_) => unreachable!(), // `Timeout` never fails.
+                        }
+                    }
+                    Ok(Async::NotReady)
+                },
             },
+            FutureTwitterStreamInner::Err(ref mut e) => Err(
+                Error::Tls(e.take().expect("cannot poll FutureTwitterStream twice"))
+            ),
         }
     }
 }
@@ -566,12 +586,27 @@ impl Stream for TwitterStream {
 }
 
 #[cfg(feature = "tls")]
-fn default_client(h: &Handle) -> Client<hyper_tls::HttpsConnector> {
-    Client::configure().connector(hyper_tls::HttpsConnector::new(1, h)).build(h)
+mod default_connector {
+    extern crate hyper_tls;
+    extern crate native_tls;
+
+    pub use self::native_tls::Error as Error;
+
+    use self::hyper_tls::HttpsConnector;
+
+    pub fn new(h: &::tokio_core::reactor::Handle) -> Result<HttpsConnector<::hyper::client::HttpConnector>, Error> {
+        HttpsConnector::new(1, h)
+    }
 }
 
 #[cfg(not(feature = "tls"))]
-#[cold]
-fn default_client(h: &Handle) -> Client<hyper::client::HttpConnector> {
-    Client::new(h)
+mod default_connector {
+    pub use util::Never as Error;
+
+    use hyper::client::HttpConnector;
+
+    #[cold]
+    pub fn new(h: &::tokio_core::reactor::Handle) -> Result<HttpConnector, Error> {
+        Ok(HttpConnector::new(1, h))
+    }
 }

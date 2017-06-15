@@ -2,6 +2,8 @@ use bytes::Bytes;
 use error::{Error, HyperError};
 use futures::{Async, Future, Poll, Stream};
 use futures::stream::Fuse;
+use std::error;
+use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 use tokio_core::reactor::{Handle, Timeout};
 
@@ -87,6 +89,10 @@ pub struct Lines<B> where B: Stream {
     inner: Fuse<B>,
     buf: Bytes,
 }
+
+/// Represents an infallible operation in `default_connector::new`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum Never {}
 
 impl BaseTimeout {
     pub fn new(dur: Duration, handle: Handle) -> Option<Self> {
@@ -230,6 +236,18 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
                 },
             };
         }
+    }
+}
+
+impl error::Error for Never {
+    fn description(&self) -> &str {
+        unreachable!();
+    }
+}
+
+impl Display for Never {
+    fn fmt(&self, _: &mut Formatter) -> fmt::Result {
+        unreachable!();
     }
 }
 

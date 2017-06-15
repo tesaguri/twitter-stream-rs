@@ -1,5 +1,6 @@
 //! Error types
 
+pub use default_connector::Error as TlsError;
 pub use hyper::Error as HyperError;
 
 use std::error::Error as StdError;
@@ -15,6 +16,7 @@ pub enum Error {
     /// An error from the `hyper` crate.
     Hyper(HyperError),
     TimedOut,
+    Tls(TlsError),
     Utf8(Utf8Error),
     Custom(Box<StdError + Send + Sync>),
 }
@@ -33,6 +35,7 @@ impl StdError for Error {
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
             TimedOut => "timed out",
+            Tls(ref e) => e.description(),
             Utf8(ref e) => e.description(),
             Custom(ref e) => e.description(),
         }
@@ -45,6 +48,7 @@ impl StdError for Error {
             Hyper(ref e) => Some(e),
             Utf8(ref e) => Some(e),
             Custom(ref e) => Some(e.as_ref()),
+            Tls(ref e) => Some(e),
             Http(_) | TimedOut => None,
         }
     }
@@ -58,6 +62,7 @@ impl Display for Error {
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
             TimedOut => Display::fmt(self.description(), f),
+            Tls(ref e) => Display::fmt(e, f),
             Utf8(ref e) => Display::fmt(e, f),
             Custom(ref e) => Display::fmt(e, f),
         }

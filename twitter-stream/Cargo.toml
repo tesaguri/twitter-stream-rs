@@ -22,7 +22,8 @@ oauthcli = "1.0"
 tokio-core = "0.1"
 url = "1.0"
 egg-mode = { version = "0.8", optional = true }
-hyper-tls = { version = "0.0", git = "https://github.com/hyperium/hyper-tls/", optional = true }
+hyper-tls = { version = "0.1", optional = true }
+native-tls = { version = "0.1", optional = true }
 serde = { version = "1", optional = true }
 serde_derive = { version = "1", optional = true }
 tweetust = { version = "0.7", optional = true }
@@ -31,5 +32,5 @@ twitter-stream-message = { path = "../twitter-stream-message", optional = true }
 [features]
 default = ["parse", "tls", "use-serde"]
 parse = ["twitter-stream-message"]
-tls = ["hyper-tls"]
+tls = ["hyper-tls", "native-tls"]
 use-serde = ["serde", "serde_derive"]
