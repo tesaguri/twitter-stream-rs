@@ -3,7 +3,7 @@
 pub use default_connector::Error as TlsError;
 pub use hyper::Error as HyperError;
 
-use std::error::Error as StdError;
+use std::error::{self, Error as _Error};
 use std::fmt::{self, Display, Formatter};
 use std::str::Utf8Error;
 use types::StatusCode;
@@ -15,19 +15,23 @@ pub enum Error {
     Http(StatusCode),
     /// An error from the `hyper` crate.
     Hyper(HyperError),
+    /// The stream has timed out.
     TimedOut,
+    /// An error occured when initializing a TLS client.
     Tls(TlsError),
+    /// Twitter returned a non-UTF-8 string.
     Utf8(Utf8Error),
-    Custom(Box<StdError + Send + Sync>),
+    /// User-defined error.
+    Custom(Box<error::Error + Send + Sync>),
 }
 
 impl Error {
-    pub fn custom<E>(error: E) -> Self where Box<StdError + Send + Sync>: From<E> {
+    pub fn custom<E>(error: E) -> Self where Box<error::Error + Send + Sync>: From<E> {
         Error::Custom(From::from(error))
     }
 }
 
-impl StdError for Error {
+impl error::Error for Error {
     fn description(&self) -> &str {
         use Error::*;
 
@@ -41,7 +45,7 @@ impl StdError for Error {
         }
     }
 
-    fn cause(&self) -> Option<&StdError> {
+    fn cause(&self) -> Option<&error::Error> {
         use Error::*;
 
         match *self {
