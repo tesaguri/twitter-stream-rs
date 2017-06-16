@@ -599,7 +599,20 @@ mod default_connector {
     }
 }
 
-#[cfg(all(feature = "tls-openssl", not(feature = "tls")))]
+#[cfg(all(feature = "tls-rustls", not(feature = "tls")))]
+mod default_connector {
+    extern crate hyper_rustls;
+
+    pub use util::Never as Error;
+
+    use self::hyper_rustls::HttpsConnector;
+
+    pub fn new(h: &::tokio_core::reactor::Handle) -> Result<HttpsConnector, Error> {
+        Ok(HttpsConnector::new(1, h))
+    }
+}
+
+#[cfg(all(feature = "tls-openssl", not(any(feature = "tls", feature = "tls-rustls"))))]
 mod default_connector {
     extern crate hyper_openssl;
 
@@ -612,7 +625,7 @@ mod default_connector {
     }
 }
 
-#[cfg(not(any(feature = "tls", feature = "tls-openssl")))]
+#[cfg(not(any(feature = "tls", feature = "tls-rustls", feature = "tls-openssl")))]
 mod default_connector {
     pub use util::Never as Error;
 
