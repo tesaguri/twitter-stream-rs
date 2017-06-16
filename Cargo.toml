@@ -4,3 +4,6 @@ members = [
   "twitter-stream-message",
   "examples/echo_bot",
 ]
+
+[replace]
+"twitter-stream-message:0.1.0" = { path = "twitter-stream-message" }
