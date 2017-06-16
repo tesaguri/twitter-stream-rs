@@ -599,7 +599,20 @@ mod default_connector {
     }
 }
 
-#[cfg(not(feature = "tls"))]
+#[cfg(all(feature = "tls-openssl", not(feature = "tls")))]
+mod default_connector {
+    extern crate hyper_openssl;
+
+    pub use self::hyper_openssl::openssl::error::ErrorStack as Error;
+
+    use self::hyper_openssl::HttpsConnector;
+
+    pub fn new(h: &::tokio_core::reactor::Handle) -> Result<HttpsConnector<::hyper::client::HttpConnector>, Error> {
+        HttpsConnector::new(1, h)
+    }
+}
+
+#[cfg(not(any(feature = "tls", feature = "tls-openssl")))]
 mod default_connector {
     pub use util::Never as Error;
 

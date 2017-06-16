@@ -22,6 +22,7 @@ oauthcli = "1.0"
 tokio-core = "0.1"
 url = "1.0"
 egg-mode = { version = "0.8", optional = true }
+hyper-openssl = { version = "0.3", optional = true }
 hyper-tls = { version = "0.1", optional = true }
 native-tls = { version = "0.1", optional = true }
 serde = { version = "1", optional = true }
@@ -33,4 +34,5 @@ twitter-stream-message = { path = "../twitter-stream-message", optional = true }
 default = ["parse", "tls", "use-serde"]
 parse = ["twitter-stream-message"]
 tls = ["hyper-tls", "native-tls"]
+tls-openssl = ["hyper-openssl"]
 use-serde = ["serde", "serde_derive"]

@@ -22,6 +22,7 @@ script:
     cargo doc --verbose --no-deps --no-default-features --features=$FEATURES
 env:
   - CRATE=twitter-stream
+  - CRATE=twitter-stream FEATURES=tls-openssl
   - CRATE=twitter-stream FEATURES=egg-mode
   - CRATE=twitter-stream FEATURES=tweetust
   - CRATE=twitter-stream-message
