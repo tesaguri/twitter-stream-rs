@@ -31,7 +31,7 @@ fn main() {
     let user = rest.account().verify_credentials().execute().unwrap().object;
 
     let bot = stream.for_each(|json| {
-        if let Ok(StreamMessage::Tweet(tweet)) = twitter_stream::message::parse(&json) {
+        if let Ok(StreamMessage::Tweet(tweet)) = StreamMessage::from_str(&json) {
             if tweet.user.id != user.id as u64
                 && tweet.entities.user_mentions.iter().any(|mention| mention.id == user.id as u64)
             {

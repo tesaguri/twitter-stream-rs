@@ -214,6 +214,37 @@ pub struct Control<'a> {
 
 pub type Friends = Vec<UserId>;
 
+impl<'a> StreamMessage<'a> {
+    /// Parse a JSON string returned from Twitter Streaming API.
+    ///
+    /// Note that this method is not a member of the `FromStr` trait.
+    /// It is because the method requires the lifetime information of the JSON string,
+    /// while `FromStr::from_str` does not take a lifetime parameter.
+    ///
+    /// ```
+    /// use twitter_stream_message::message::{Delete, StreamMessage};
+    ///
+    /// let parsed = StreamMessage::from_str(r#"{
+    ///     "delete":{
+    ///         "status":{
+    ///             "id":1234,
+    ///             "id_str":"1234",
+    ///             "user_id":3,
+    ///             "user_id_str":"3"
+    ///         }
+    ///     }
+    /// }"#).unwrap();
+    /// let expected = StreamMessage::Delete(Delete {
+    ///     id: 1234,
+    ///     user_id: 3,
+    /// });
+    ///
+    /// assert_eq!(parsed, expected);
+    pub fn from_str(json: &'a str) -> ::Result<Self> {
+        ::json::from_str(json)
+    }
+}
+
 impl<'de: 'a, 'a> Deserialize<'de> for StreamMessage<'a> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
         struct SMVisitor;

@@ -27,33 +27,16 @@ pub use direct_message::DirectMessage;
 pub use entities::Entities;
 pub use geometry::Geometry;
 pub use json::Error;
+pub use json::Result;
 pub use list::List;
 pub use message::StreamMessage;
 pub use place::Place;
 pub use tweet::Tweet;
 pub use user::User;
 
+/// Alias to [`StreamMessage::from_str`](message/enum.StreamMessage.html#method.from_str).
 /// Parse a JSON string returned from Twitter Streaming API.
-///
-/// ```
-/// use twitter_stream_message::message::{Delete, StreamMessage};
-///
-/// let parsed = twitter_stream_message::parse(r#"{
-///     "delete":{
-///         "status":{
-///             "id":1234,
-///             "id_str":"1234",
-///             "user_id":3,
-///             "user_id_str":"3"
-///         }
-///     }
-/// }"#).unwrap();
-/// let expected = StreamMessage::Delete(Delete {
-///     id: 1234,
-///     user_id: 3,
-/// });
-///
-/// assert_eq!(parsed, expected);
-pub fn parse<'a>(json: &'a str) -> Result<StreamMessage<'a>, Error> {
-    json::from_str(json)
+#[inline]
+pub fn from_str<'a>(json: &'a str) -> Result<StreamMessage<'a>> {
+    StreamMessage::from_str(json)
 }

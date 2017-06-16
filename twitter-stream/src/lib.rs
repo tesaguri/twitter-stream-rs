@@ -38,7 +38,7 @@ let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_
 let mut core = Core::new().unwrap();
 
 let future = TwitterStream::user(&token, &core.handle()).flatten_stream().for_each(|json| {
-    if let Ok(StreamMessage::Tweet(tweet)) = twitter_stream::message::parse(&json) {
+    if let Ok(StreamMessage::Tweet(tweet)) = StreamMessage::from_str(&json) {
         println!("{}", tweet.text);
     }
     Ok(())
