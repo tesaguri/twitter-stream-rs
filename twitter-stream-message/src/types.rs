@@ -4,7 +4,7 @@ pub use json::Map as JsonMap;
 pub use json::Number as JsonNumber;
 pub use json::Value as JsonValue;
 
-use chrono::{DateTime as ChronoDateTime, UTC};
+use chrono::{DateTime as ChronoDateTime, Utc};
 
 string_enums! {
     /// Represents the `filter_level` field in Tweets.
@@ -25,4 +25,4 @@ string_enums! {
     }
 }
 
-pub type DateTime = ChronoDateTime<UTC>;
+pub type DateTime = ChronoDateTime<Utc>;

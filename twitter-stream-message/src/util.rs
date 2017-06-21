@@ -171,7 +171,7 @@ pub fn deserialize_default<'de, D, T>(d: D) -> Result<T, D::Error>
 }
 
 pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
-    use chrono::UTC;
+    use chrono::Utc;
     use chrono::format::{self, Fixed, Item, Numeric, Pad, Parsed};
 
     // "%a %b %e %H:%M:%S %z %Y"
@@ -195,7 +195,7 @@ pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
 
     let mut parsed = Parsed::new();
     format::parse(&mut parsed, s, ITEMS.iter().cloned())?;
-    parsed.to_datetime_with_timezone(&UTC)
+    parsed.to_datetime_with_timezone(&Utc)
 }
 
 pub fn deserialize_datetime<'x, D: Deserializer<'x>>(d: D) -> Result<DateTime, D::Error> {
@@ -293,11 +293,11 @@ mod tests {
 
     #[test]
     fn test_parse_datetime() {
-        use chrono::{NaiveDate, UTC};
+        use chrono::{NaiveDate, Utc};
         use types::DateTime;
 
         assert_eq!(
-            DateTime::from_utc(NaiveDate::from_ymd(2017, 5, 1).and_hms(0, 1, 2), UTC),
+            DateTime::from_utc(NaiveDate::from_ymd(2017, 5, 1).and_hms(0, 1, 2), Utc),
             parse_datetime("Mon May 01 00:01:02 +0000 2017").unwrap()
         );
         assert!(parse_datetime("2017-05-01T00:01:02Z").is_err());
