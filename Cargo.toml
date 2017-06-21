@@ -7,4 +7,4 @@ members = [
 
 [replace]
 "twitter-stream:0.4.1" = { path = "twitter-stream" }
-"twitter-stream-message:0.1.0" = { path = "twitter-stream-message" }
+"twitter-stream-message:0.2.0" = { path = "twitter-stream-message" }
