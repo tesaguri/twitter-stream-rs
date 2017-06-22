@@ -10,4 +10,4 @@ hyper = "0.11"
 serde_json = "1"
 tokio-core = "0.1"
 tweetust = "0.8"
-twitter-stream = { version = "0.4", features = ["tweetust"] }
+twitter-stream = { version = "0.5", features = ["tweetust"] }
