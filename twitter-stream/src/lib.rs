@@ -83,7 +83,7 @@ use error::HyperError;
 use futures::{Future, Poll, Stream};
 use hyper::Body;
 use hyper::client::{Client, Connect, FutureResponse, Request};
-use hyper::header::{Headers, ContentType, UserAgent};
+use hyper::header::{Headers, ContentLength, ContentType, UserAgent};
 use std::ops::Deref;
 use std::borrow::Cow;
 use std::time::Duration;
@@ -447,6 +447,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
 
             headers.set(auth::create_authorization_header(self.token, &self.method, &url, Some(body.as_ref())));
             headers.set(ContentType(mime::APPLICATION_WWW_FORM_URLENCODED));
+            headers.set(ContentLength(body.len() as u64));
 
             let mut req = Request::new(RequestMethod::Post, url.as_ref().parse().unwrap());
             *req.headers_mut() = headers;
