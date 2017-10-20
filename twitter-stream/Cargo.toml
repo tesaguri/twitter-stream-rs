@@ -18,12 +18,12 @@ bytes = "0.4.4"
 futures = "0.1.4"
 hyper = "0.11"
 lazy_static = "0.2"
-oauthcli = "1"
+oauth1 = "0.3"
 tokio-core = "0.1"
 url = "1.0"
 egg-mode = { version = "0.8", optional = true }
 hyper-openssl = { version = "0.3", optional = true }
-# hyper-rustls = { version = "0.7", optional = true }
+hyper-rustls = { version = "0.11", optional = true }
 hyper-tls = { version = "0.1", optional = true }
 native-tls = { version = "0.1", optional = true }
 serde = { version = "1", optional = true }
@@ -32,9 +32,9 @@ tweetust = { version = "0.8", optional = true }
 twitter-stream-message = { version = "0.2", optional = true }
 
 [features]
-default = ["parse", "tls", "use-serde"]
+default = ["parse", "tls-rustls", "use-serde"]
 parse = ["twitter-stream-message"]
 tls = ["hyper-tls", "native-tls"]
 tls-openssl = ["hyper-openssl"]
-# tls-rustls = ["hyper-rustls"]
+tls-rustls = ["hyper-rustls"]
 use-serde = ["serde", "serde_derive"]
