@@ -55,7 +55,7 @@ extern crate futures;
 extern crate hyper;
 #[macro_use]
 extern crate lazy_static;
-extern crate oauthcli;
+extern crate oauth1;
 #[cfg(feature = "use-serde")]
 extern crate serde;
 #[cfg(feature = "use-serde")]
@@ -438,6 +438,9 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             headers.set(UserAgent::new(ua.clone()));
         }
 
+        let token_consumer = oauth1::Token::new(self.token.consumer_key.as_ref(), self.token.consumer_secret.as_ref());
+        let token_auth = oauth1::Token::new(self.token.access_key.as_ref(), self.token.access_secret.as_ref());
+
         if RequestMethod::Post == self.method {
             use hyper::mime;
 
@@ -445,7 +448,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             self.append_query_pairs(&mut body);
             let body = body.finish();
 
-            headers.set(auth::create_authorization_header(self.token, &self.method, &url, Some(body.as_ref())));
+            headers.set_raw("authorization",oauth1::authorize(self.method.as_ref(), self.end_point.as_str(), &token_consumer, Some(&token_auth),None));
             headers.set(ContentType(mime::APPLICATION_WWW_FORM_URLENCODED));
             headers.set(ContentLength(body.len() as u64));
 
@@ -456,7 +459,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             c.request(req)
         } else {
             self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(auth::create_authorization_header(self.token, &self.method, &url, None));
+            headers.set_raw("authorization",oauth1::authorize(self.method.as_ref(), self.end_point.as_str(), &token_consumer, Some(&token_auth),None));
 
             let mut req = Request::new(self.method.clone(), url.as_ref().parse().unwrap());
             *req.headers_mut() = headers;

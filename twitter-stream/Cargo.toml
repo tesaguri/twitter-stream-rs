@@ -18,7 +18,7 @@ bytes = "0.4.4"
 futures = "0.1.4"
 hyper = "0.11"
 lazy_static = "0.2"
-oauthcli = "1"
+oauth1 = "0.3"
 tokio-core = "0.1"
 url = "1.0"
 egg-mode = { version = "0.8", optional = true }
