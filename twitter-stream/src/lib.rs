@@ -602,7 +602,7 @@ mod default_connector {
         HttpsConnector::new(1, h)
     }
 }
-/*
+
 #[cfg(all(feature = "tls-rustls", not(feature = "tls")))]
 mod default_connector {
     extern crate hyper_rustls;
@@ -615,7 +615,7 @@ mod default_connector {
         Ok(HttpsConnector::new(1, h))
     }
 }
-*/
+
 #[cfg(all(feature = "tls-openssl", not(any(feature = "tls", feature = "tls-rustls"))))]
 mod default_connector {
     extern crate hyper_openssl;
