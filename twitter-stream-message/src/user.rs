@@ -109,12 +109,12 @@ pub struct User<'a> {
     /// A HTTP-based URL pointing to the background image
     /// the user has uploaded for their profile.
     #[serde(borrow)]
-    pub profile_background_image_url: Cow<'a, str>,
+    pub profile_background_image_url: Option<Cow<'a, str>>,
 
     /// A HTTPS-based URL pointing to the background image
     /// the user has uploaded for their profile.
     #[serde(borrow)]
-    pub profile_background_image_url_https: Cow<'a, str>,
+    pub profile_background_image_url_https: Option<Cow<'a, str>>,
 
     /// When `true`, indicates that the user’s `profile_background_image_url`
     /// should be tiled when displayed.
