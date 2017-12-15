@@ -357,19 +357,14 @@ impl<'x> Deserialize<'x> for Delete {
             type Value = Delete;
 
             fn visit_map<A: MapAccess<'x>>(self, mut a: A) -> Result<Delete, A::Error> {
-                use std::mem;
-
-                #[allow(dead_code)]
                 #[derive(Deserialize)]
                 struct Status { id: StatusId, user_id: UserId };
 
                 while let Some(k) = a.next_key::<CowStr>()? {
                     if "status" == k.as_ref() {
-                        let ret = a.next_value::<Status>()?;
+                        let Status { id, user_id } = a.next_value()?;
                         while a.next_entry::<IgnoredAny,IgnoredAny>()?.is_some() {}
-                        unsafe {
-                            return Ok(mem::transmute(ret));
-                        }
+                        return Ok(Delete { id, user_id });
                     } else {
                         a.next_value::<IgnoredAny>()?;
                     }
