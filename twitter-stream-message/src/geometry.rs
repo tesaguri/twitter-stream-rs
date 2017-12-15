@@ -185,19 +185,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deserialize() {
-        let geo = Geometry::Point(Position(-75.14310264, 40.05701649));
-        let c = "\"coordinates\":[-75.14310264,40.05701649]";
-        let t = "\"type\":\"Point\"";
-        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", c, t)).unwrap());
-        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", t, c)).unwrap());
+    fn deserialize_pass() {
+        macro_rules! assert_deserialize_to {
+            ($typ:ident($($inner:tt)*), $c:expr) => {{
+                let geo = Geometry::$typ($($inner)*);
+                let c = format!("\"coordinates\":{}", $c);
+                let t = format!("\"type\":\"{}\"", stringify!($typ));
+                assert_eq!(geo, json::from_str(&format!("{{{},{}}}", c, t)).unwrap());
+                assert_eq!(geo, json::from_str(&format!("{{{},{}}}", t, c)).unwrap());
+                assert_eq!(geo, json::from_str(&format!("{{\"1\":0,{},\"2\":[],{},\"3\":null}}", c, t)).unwrap());
+                assert_eq!(geo, json::from_str(&format!("{{\"1\":0,{},\"2\":[],{},\"3\":null}}", t, c)).unwrap());
+            }};
+        }
 
-        let geo = Geometry::Polygon(vec![vec![Position(2.2241006,48.8155414), Position(2.4699099,48.8155414),
-            Position(2.4699099,48.9021461), Position(2.2241006,48.9021461)]]);
-        let c = "\"coordinates\":[\
-            [[2.2241006,48.8155414],[2.4699099,48.8155414],[2.4699099,48.9021461],[2.2241006,48.9021461]]]";
-        let t = "\"type\":\"Polygon\"";
-        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", c, t)).unwrap());
-        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", t, c)).unwrap());
+        assert_deserialize_to!(
+            Point(Position(-75.14310264, 40.05701649)),
+            "[-75.14310264,40.05701649]"
+        );
+        assert_deserialize_to!(
+            Polygon(vec![vec![Position(2.2241006,48.8155414), Position(2.4699099,48.8155414),
+                Position(2.4699099,48.9021461), Position(2.2241006,48.9021461)]]),
+            "[[[2.2241006,48.8155414],[2.4699099,48.8155414],[2.4699099,48.9021461],[2.2241006,48.9021461]]]"
+        );
+    }
+
+    #[test]
+    fn deserialize_fail() {
+        macro_rules! assert_fail {
+            ($json:expr) => {{
+                json::from_str::<::serde::de::IgnoredAny>($json)
+                    .expect("invalid JSON: this is a test bug");
+                json::from_str::<Geometry>($json).unwrap_err();
+            }};
+        }
+
+        assert_fail!("{}");
+        assert_fail!("[0,1]");
+        assert_fail!("{\"coordinates\":[1],\"type\":\"Point\"}");
+        assert_fail!("{\"coordinates\":[1,2],\"type\":\"MultiPoint\"}");
+        assert_fail!("{\"coordinates\":[[[[[0,0]]]]],\"type\":\"MultiPolygon\"}");
+        assert_fail!("{\"coordinates\":[],\"type\":\"Foo\"}");
     }
 }
