@@ -109,7 +109,7 @@ impl<'x> Deserialize<'x> for Geometry {
                             }
                         }
 
-                        d.deserialize_seq(CoordinatesVisitor)
+                        d.deserialize_any(CoordinatesVisitor)
                     }
                 }
 
