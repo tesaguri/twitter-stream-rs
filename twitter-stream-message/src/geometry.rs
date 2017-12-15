@@ -139,8 +139,9 @@ impl<'x> Deserialize<'x> for Geometry {
                                             None => {
                                                 while let Some(k) = v.next_key::<String>()? {
                                                     if "coordinates" == k.as_str() {
+                                                        let c = v.next_value()?;
                                                         end!();
-                                                        return Ok($V(v.next_value()?));
+                                                        return Ok($V(c));
                                                     } else {
                                                         v.next_value::<IgnoredAny>()?;
                                                     }
@@ -185,16 +186,18 @@ mod tests {
 
     #[test]
     fn deserialize() {
-        assert_eq!(
-            Geometry::Point(Position(-75.14310264, 40.05701649)),
-            json::from_str("{\"coordinates\":[-75.14310264,40.05701649],\"type\":\"Point\"}").unwrap()
-        );
-        assert_eq!(
-            Geometry::Polygon(vec![vec![Position(2.2241006,48.8155414), Position(2.4699099,48.8155414),
-                Position(2.4699099,48.9021461), Position(2.2241006,48.9021461)]]),
-            json::from_str("{\"coordinates\":[
-                [[2.2241006,48.8155414],[2.4699099,48.8155414],[2.4699099,48.9021461],[2.2241006,48.9021461]]
-                ],\"type\":\"Polygon\"}").unwrap()
-        );
+        let geo = Geometry::Point(Position(-75.14310264, 40.05701649));
+        let c = "\"coordinates\":[-75.14310264,40.05701649]";
+        let t = "\"type\":\"Point\"";
+        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", c, t)).unwrap());
+        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", t, c)).unwrap());
+
+        let geo = Geometry::Polygon(vec![vec![Position(2.2241006,48.8155414), Position(2.4699099,48.8155414),
+            Position(2.4699099,48.9021461), Position(2.2241006,48.9021461)]]);
+        let c = "\"coordinates\":[\
+            [[2.2241006,48.8155414],[2.4699099,48.8155414],[2.4699099,48.9021461],[2.2241006,48.9021461]]]";
+        let t = "\"type\":\"Polygon\"";
+        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", c, t)).unwrap());
+        assert_eq!(geo, json::from_str(&format!("{{{},{}}}", t, c)).unwrap());
     }
 }
