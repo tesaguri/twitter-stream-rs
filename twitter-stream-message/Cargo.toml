@@ -1,13 +1,13 @@
 [package]
 name = "twitter-stream-message"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Daiki Mizukami <mizukami1113@gmail.com>"]
 license = "MIT"
 readme = "../README.md"
 keywords = ["twitter"]
 homepage = "https://github.com/dmizuk/twitter-stream-rs"
 repository = "https://github.com/dmizuk/twitter-stream-rs"
-documentation = "https://docs.rs/twitter-stream/0.2.0/twitter_stream-message/"
+documentation = "https://docs.rs/twitter-stream/0.2.1/twitter_stream-message/"
 description = """
 Types for Twitter Streaming API's messages.
 """
