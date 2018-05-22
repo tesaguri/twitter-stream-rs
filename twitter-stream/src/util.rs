@@ -285,8 +285,9 @@ mod test {
         ];
 
         let mut iter1 = lines.iter().cloned();
-        let mut iter2 = Lines::new(stream::iter::<_,_,()>(body.into_iter().map(Ok)))
-            .wait().map(|s| String::from_utf8(s.unwrap().to_vec()).unwrap());
+        let mut iter2 = Lines::new(stream::iter_ok::<_,()>(body))
+            .wait()
+            .map(|s| String::from_utf8(s.unwrap().to_vec()).unwrap());
 
         for _ in 0..(lines.len()+1) {
             assert_eq!(
