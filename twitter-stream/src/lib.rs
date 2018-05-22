@@ -249,6 +249,7 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
+                #[allow(deprecated)]
                 pub fn $constructor(token: &Token, handle: &Handle) -> $FS {
                     $B::$constructor(token).handle(handle).listen()
                 }
@@ -436,8 +437,16 @@ def_stream! {
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://dev.twitter.com/streaming/reference/get/user
+    #[deprecated(
+        since = "0.6.0",
+        note = "The User stream has been deprecated and will be unavailable",
+    )]
     -
     /// A shorthand for `TwitterStreamBuilder::user().listen()`.
+    #[deprecated(
+        since = "0.6.0",
+        note = "The User stream has been deprecated and will be unavailable",
+    )]
     pub fn user(Get, EP_USER);
 }
 
