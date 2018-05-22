@@ -1,6 +1,6 @@
 [package]
 name = "twitter-stream"
-version = "0.5.3"
+version = "0.6.0-alpha"
 authors = ["Daiki Mizukami <mizukami1113@gmail.com>"]
 license = "MIT"
 readme = "../README.md"
