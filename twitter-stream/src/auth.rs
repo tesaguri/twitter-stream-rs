@@ -19,8 +19,8 @@ use url::Url;
 /// An OAuth token used to log into Twitter.
 #[cfg_attr(feature = "tweetust", doc = "
 
-This implements `tweetust::conn::Authenticator` so you can pass it to `tweetust::TwitterClient`
-as if it were `tweetust::OAuthAuthenticator`"
+This implements `tweetust::conn::Authenticator` so you can pass it to
+`tweetust::TwitterClient` as if it were `tweetust::OAuthAuthenticator`"
 )]
 #[cfg_attr(feature = "use-serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Debug)]

@@ -258,7 +258,7 @@ def_stream! {
     ///     .handle(&handle)
     ///     .timeout(None)
     ///     .replies(true)
-    ///     .listen() // You cannot call `listen` method before you call `client` or `handle` method.
+    ///     .listen() // You cannot use `listen` method before calling `client` or `handle` method.
     ///     .flatten_stream()
     ///     .for_each(|json| {
     ///         println!("{}", json);
@@ -291,44 +291,51 @@ def_stream! {
         /// Set whether to receive messages when in danger of being disconnected.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#stallwarnings
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#stall-warnings
         :stall_warnings: bool = false,
 
         /// Set the minimum `filter_level` Tweet attribute to receive. The default is `FilterLevel::None`.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#filter_level
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#filter-level
         :filter_level: FilterLevel = FilterLevel::None,
 
         /// Set a comma-separated language identifiers to receive Tweets written in the specified languages only.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#language
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#language
         :language: Option<&'a str> = None,
 
         /// Set a list of user IDs to receive Tweets only from the specified users.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1] https://dev.twitter.com/streaming/overview/request-parameters#follow
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#follow
         :follow: Option<&'a [u64]> = None,
 
         /// A comma separated list of phrases to filter Tweets by.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#track
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#track
         :track: Option<&'a str> = None,
 
         /// Set a list of bounding boxes to filter Tweets by, specified by a pair of coordinates in
         /// the form of ((longitude, latitude), (longitude, latitude)) tuple.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#locations
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
         :locations: Option<&'a [((f64, f64), (f64, f64))]> = None,
 
         /// The `count` parameter. This parameter requires elevated access to use.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#count
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#count
         :count: Option<i32> = None,
 
         /// Set types of messages delivered to User and Site Streams clients.
@@ -337,7 +344,8 @@ def_stream! {
         /// Set whether to receive all @replies.
         ///
         /// See the [Twitter Developer Documentation][1] for more information.
-        /// [1]: https://dev.twitter.com/streaming/overview/request-parameters#replies
+        ///
+        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#replies
         :replies: bool = false;
 
         // stringify_friend_ids: bool;
@@ -395,9 +403,10 @@ enum FutureTwitterStreamInner {
 impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
     where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
 {
-     /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
-     ///
-     /// You need to call `client` method before trying to call this method.
+    /// Start listening on a Stream, returning a `Future` which resolves
+    /// to a `Stream` yielding JSON messages from the API.
+    ///
+    /// You need to call `handle` method before calling this method.
     #[allow(deprecated)]
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
@@ -410,9 +419,10 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
 }
 
 impl<'a> TwitterStreamBuilder<'a, Handle> {
-     /// Attempt to start listening on a Stream and returns a `Stream` object which yields JSON messages from the API.
-     ///
-     /// You need to call `handle` method before trying to call this method.
+    /// Start listening on a Stream, returning a `Future` which resolves
+    /// to a `Stream` yielding JSON messages from the API.
+    ///
+    /// You need to call `handle` method before calling this method.
     pub fn listen(&self) -> FutureTwitterStream {
         match default_connector::new(self.client_or_handle) {
             Ok(c) => FutureTwitterStream {
@@ -429,7 +439,7 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
 }
 
 impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
-    /// Attempt to make an HTTP connection to an end point of the Streaming API.
+    /// Make an HTTP connection to an end point of the Streaming API.
     fn connect<C, B>(&self, c: &Client<C, B>) -> FutureResponse
         where C: Connect, B: From<Vec<u8>> + Stream<Error=HyperError> + 'static, B::Item: AsRef<[u8]>
     {
