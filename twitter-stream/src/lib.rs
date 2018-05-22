@@ -74,9 +74,18 @@ extern crate url;
 mod util;
 
 pub mod error;
-#[cfg(feature = "parse")]
-pub mod message;
 pub mod types;
+
+/// Exports `twitter_stream_message` crate for convenience.
+/// This module requires `parse` feature flag to be enabled.
+#[cfg(feature = "parse")]
+#[deprecated(
+    since = "0.6.0",
+    note = "use `extern crate twitter_stream_message;` instead",
+)]
+pub mod message {
+    pub use twitter_stream_message::*;
+}
 
 mod auth;
 

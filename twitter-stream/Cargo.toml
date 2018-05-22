@@ -33,7 +33,7 @@ tweetust = { version = "0.8", optional = true }
 twitter-stream-message = { version = "0.2", optional = true }
 
 [features]
-default = ["parse", "tls", "use-serde"]
+default = ["tls"]
 parse = ["twitter-stream-message"]
 tls = ["hyper-tls", "native-tls"]
 tls-openssl = ["hyper-openssl"]
