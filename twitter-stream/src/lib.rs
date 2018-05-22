@@ -398,6 +398,7 @@ impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
      /// Attempt to start listening on a Stream and returns a `Stream` object which yields parsed messages from the API.
      ///
      /// You need to call `client` method before trying to call this method.
+    #[allow(deprecated)]
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
             inner: FutureTwitterStreamInner::Ok {
