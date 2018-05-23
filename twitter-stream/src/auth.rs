@@ -19,7 +19,7 @@ use types::RequestMethod;
 This implements `tweetust::conn::Authenticator` so you can pass it to
 `tweetust::TwitterClient` as if it were `tweetust::OAuthAuthenticator`"
 )]
-#[cfg_attr(feature = "use-serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Debug)]
 pub struct Token<'a> {
     pub consumer_key: Cow<'a, str>,

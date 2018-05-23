@@ -60,11 +60,9 @@ extern crate hyper;
 #[macro_use]
 extern crate lazy_static;
 extern crate oauthcli;
-#[cfg(feature = "use-serde")]
-extern crate serde;
-#[cfg(feature = "use-serde")]
+#[cfg(feature = "serde")]
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 extern crate tokio_core;
 #[cfg(feature = "parse")]
 extern crate twitter_stream_message;
