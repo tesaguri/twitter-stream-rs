@@ -1,8 +1,19 @@
-use serde::de::{Deserialize, DeserializeSeed, Deserializer, Error as SerdeError, IntoDeserializer, MapAccess, Visitor};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{self, Formatter};
 use std::mem;
+use std::ops::Deref;
+
+use serde::de::{
+    Deserialize,
+    DeserializeSeed,
+    Deserializer,
+    Error as SerdeError,
+    IntoDeserializer,
+    MapAccess,
+    Visitor
+};
+
 use types::{DateTime, JsonValue};
 
 macro_rules! string_enums {
@@ -12,10 +23,10 @@ macro_rules! string_enums {
             pub enum $E:ident<$lifetime:tt> {
                 $(
                     $(#[$v_attr:meta])*
-                    :$V:ident($by:expr) // The leading (ugly) colon is to suppress local ambiguity error.
+                    $V:ident($by:expr)
                 ),*;
                 $(#[$u_attr:meta])*
-                :$U:ident(_),
+                $U:ident(_),
             }
         )*
     ) => {
@@ -31,34 +42,44 @@ macro_rules! string_enums {
             }
 
             impl<'de: 'a, 'a> ::serde::Deserialize<'de> for $E<'a> {
-                fn deserialize<D: ::serde::Deserializer<'de>>(d: D) -> ::std::result::Result<Self, D::Error> {
+                fn deserialize<D: ::serde::Deserializer<'de>>(d: D)
+                    -> ::std::result::Result<Self, D::Error>
+                {
                     struct V;
 
                     impl<'a> ::serde::de::Visitor<'a> for V {
                         type Value = $E<'a>;
 
-                        fn visit_str<E>(self, s: &str) -> ::std::result::Result<$E<'a>, E> {
+                        fn visit_str<E>(self, s: &str)
+                            -> ::std::result::Result<$E<'a>, E>
+                        {
                             match s {
                                 $($by => Ok($E::$V),)*
                                 _ => Ok($E::$U(s.to_owned().into())),
                             }
                         }
 
-                        fn visit_borrowed_str<E>(self, s: &'a str) -> ::std::result::Result<$E<'a>, E> {
+                        fn visit_borrowed_str<E>(self, s: &'a str)
+                            -> ::std::result::Result<$E<'a>, E>
+                        {
                             match s {
                                 $($by => Ok($E::$V),)*
                                 _ => Ok($E::$U(s.into())),
                             }
                         }
 
-                        fn visit_string<E>(self, s: String) -> ::std::result::Result<$E<'a>, E> {
+                        fn visit_string<E>(self, s: String)
+                            -> ::std::result::Result<$E<'a>, E>
+                        {
                             match s.as_str() {
                                 $($by => Ok($E::$V),)*
                                 _ => Ok($E::$U(s.into())),
                             }
                         }
 
-                        fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        fn expecting(&self, f: &mut ::std::fmt::Formatter)
+                            -> ::std::fmt::Result
+                        {
                             write!(f, "a string")
                         }
                     }
@@ -71,7 +92,7 @@ macro_rules! string_enums {
                 fn as_ref(&self) -> &str {
                     match *self {
                         $($E::$V => $by,)*
-                        $E::$U(ref s) => s.as_ref(),
+                        $E::$U(ref s) => s,
                     }
                 }
             }
@@ -112,10 +133,11 @@ pub struct CowStr<'a>(
     pub Cow<'a, str>
 );
 
-/// A `MapAccess` that first yields values from `keys` and `vals`, and after they are exhausted, yields from `tail`.
-pub struct MapAccessChain<I, J, A> where I: IntoIterator, J: IntoIterator {
-    keys: I::IntoIter,
-    vals: J::IntoIter,
+/// A `MapAccess` that first yields values from `keys` and `vals`,
+/// and after they are exhausted, yields from `tail`.
+pub struct MapAccessChain<I, J, A> {
+    keys: I,
+    vals: J,
     tail: A,
 }
 
@@ -125,8 +147,20 @@ impl<'a> AsRef<str> for CowStr<'a> {
     }
 }
 
-impl<I, J, A> MapAccessChain<I, J, A> where I: IntoIterator, J: IntoIterator {
-    pub fn new(keys: I, vals: J, a: A) -> MapAccessChain<I, J, A> {
+impl<'a> Deref for CowStr<'a> {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        self.as_ref()
+    }
+}
+
+impl<I: Iterator, J: Iterator, A> MapAccessChain<I, J, A> {
+    pub fn new<K, V>(keys: K, vals: V, a: A) -> MapAccessChain<I, J, A>
+    where
+        K: IntoIterator<IntoIter=I, Item=I::Item>,
+        V: IntoIterator<IntoIter=J, Item=J::Item>,
+    {
         MapAccessChain {
             keys: keys.into_iter(),
             vals: vals.into_iter(),
@@ -136,11 +170,16 @@ impl<I, J, A> MapAccessChain<I, J, A> where I: IntoIterator, J: IntoIterator {
 }
 
 impl<'de: 'a, 'a, I, J, A> MapAccess<'de> for MapAccessChain<I, J, A>
-    where I: IntoIterator<Item=Cow<'a, str>>, J: IntoIterator<Item=JsonValue>, A: MapAccess<'de>
+where
+    I: Iterator<Item=Cow<'a, str>>,
+    J: Iterator<Item=JsonValue>,
+    A: MapAccess<'de>,
 {
     type Error = A::Error;
 
-    fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, A::Error> {
+    fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K)
+        -> Result<Option<K::Value>, A::Error>
+    {
         if let Some(k) = self.keys.next() {
             seed.deserialize(k.into_deserializer()).map(Some)
         } else {
@@ -148,18 +187,27 @@ impl<'de: 'a, 'a, I, J, A> MapAccess<'de> for MapAccessChain<I, J, A>
         }
     }
 
-    fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, A::Error> {
+    fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V)
+        -> Result<V::Value, A::Error>
+    {
         if let Some(v) = self.vals.next() {
             seed.deserialize(v).map_err(A::Error::custom)
         } else {
-            self.tail.next_value::<JsonValue>().and_then(|v| {
-                seed.deserialize(v).map_err(A::Error::custom)
-            })
-
-            // FIXME: The above code unnecessarily copies data from the input. Initially, I wrote that like below:
-            // `self.tail.next_value_seed(seed)`
-            // ... but this somehow caused `message::tests::parse` test to fail, with the error being as following:
-            // `ErrorImpl { code: ExpectedObjectCommaOrEnd, line: 67, column: 38 }`
+            // FIXME: The code below unnecessarily copies data from the input.
+            // Initially, I wrote it like `self.tail.next_value_seed(seed)`,
+            // but this somehow caused `message::tests::parse` test to fail,
+            // with the following error:
+            // ```
+            // ErrorImpl {
+            //     code: ExpectedObjectCommaOrEnd,
+            //     line: 67,
+            //     column: 38
+            // }
+            // ```
+            // self.tail.next_value::<JsonValue>().and_then(|v| {
+            //     seed.deserialize(v).map_err(A::Error::custom)
+            // })
+            self.tail.next_value_seed(seed)
         }
     }
 }
@@ -175,7 +223,7 @@ pub fn parse_datetime(s: &str) -> ::chrono::format::ParseResult<DateTime> {
     use chrono::format::{self, Fixed, Item, Numeric, Pad, Parsed};
 
     // "%a %b %e %H:%M:%S %z %Y"
-    const ITEMS: &'static [Item<'static>] = &[
+    const ITEMS: &[Item] = &[
         Item::Fixed(Fixed::ShortWeekdayName),
         Item::Space(" "),
         Item::Fixed(Fixed::ShortMonthName),
@@ -217,8 +265,8 @@ pub fn deserialize_datetime<'x, D: Deserializer<'x>>(d: D) -> Result<DateTime, D
 }
 
 /// Deserializes a map of strings in zero-copy fashion.
-pub fn deserialize_map_cow_str<'de: 'a, 'a, D>(d: D) -> Result<HashMap<Cow<'a, str>, Cow<'a, str>>, D::Error>
-    where D: Deserializer<'de>
+pub fn deserialize_map_cow_str<'de: 'a, 'a, D: Deserializer<'de>>(d: D)
+    -> Result<HashMap<Cow<'a, str>, Cow<'a, str>>, D::Error>
 {
     #[derive(Deserialize)]
     struct MapDeserialize<'a>(
@@ -227,25 +275,32 @@ pub fn deserialize_map_cow_str<'de: 'a, 'a, D>(d: D) -> Result<HashMap<Cow<'a, s
     );
 
     MapDeserialize::deserialize(d).map(|m| unsafe {
-        mem::transmute::<MapDeserialize<'a>, HashMap<Cow<'a, str>, Cow<'a, str>>>(m)
+        mem::transmute::<
+            HashMap<CowStr<'a>, CowStr<'a>>,
+            HashMap<Cow<'a, str>, Cow<'a, str>,
+        >>(m.0)
     }).map_err(D::Error::custom)
 }
 
 /// Deserializes an optional string in zero-copy fashion.
-pub fn deserialize_opt_cow_str<'de: 'a, 'a, D: Deserializer<'de>>(d: D) -> Result<Option<Cow<'a, str>>, D::Error> {
+pub fn deserialize_opt_cow_str<'de: 'a, 'a, D: Deserializer<'de>>(d: D)
+    -> Result<Option<Cow<'a, str>>, D::Error>
+{
     #[derive(Deserialize)]
     struct OptDeserialize<'a>(
         #[serde(borrow)]
         Option<CowStr<'a>>
     );
 
-    OptDeserialize::deserialize(d).map(|o| unsafe {
-        mem::transmute::<OptDeserialize<'a>, Option<Cow<'a, str>>>(o)
-    }).map_err(D::Error::custom)
+    OptDeserialize::deserialize(d)
+        .map(|de| de.0.map(|c| c.0))
+        .map_err(D::Error::custom)
 }
 
 /// Deserializes a sequenve of strings in zero-copy fashion.
-pub fn deserialize_vec_cow_str<'de: 'a, 'a, D: Deserializer<'de>>(d: D) -> Result<Vec<Cow<'a, str>>, D::Error> {
+pub fn deserialize_vec_cow_str<'de: 'a, 'a, D: Deserializer<'de>>(d: D)
+    -> Result<Vec<Cow<'a, str>>, D::Error>
+{
     #[derive(Deserialize)]
     struct VecDeserialize<'a>(
         #[serde(borrow)]
@@ -253,12 +308,14 @@ pub fn deserialize_vec_cow_str<'de: 'a, 'a, D: Deserializer<'de>>(d: D) -> Resul
     );
 
     VecDeserialize::deserialize(d).map(|v| unsafe {
-        mem::transmute::<VecDeserialize<'a>, Vec<Cow<'a, str>>>(v)
+        mem::transmute::<Vec<CowStr<'a>>, Vec<Cow<'a, str>>>(v.0)
     }).map_err(D::Error::custom)
 }
 
 #[cfg(test)]
 mod tests {
+    use json;
+
     use super::*;
 
     #[test]
@@ -301,5 +358,30 @@ mod tests {
             parse_datetime("Mon May 01 00:01:02 +0000 2017").unwrap()
         );
         assert!(parse_datetime("2017-05-01T00:01:02Z").is_err());
+    }
+
+    #[test]
+    fn test_deserialize_cow() {
+        match deserialize_map_cow_str(
+            &mut json::Deserializer::from_str(r#"{"a":"b"}"#)
+        ).unwrap().into_iter().next().unwrap()
+        {
+            (Cow::Borrowed(_), Cow::Borrowed(_)) => (),
+            _ => panic!("`deserialize_map_cow_str` didn't borrow")
+        }
+
+        if let Cow::Owned(_) = deserialize_opt_cow_str(
+            &mut json::Deserializer::from_str(r#""a""#)
+        ).unwrap().unwrap()
+        {
+            panic!("`deserialize_opt_cow_str` didn't borrow");
+        }
+
+        if let Cow::Owned(_) = deserialize_vec_cow_str(
+            &mut json::Deserializer::from_str(r#"["a"]"#)
+        ).unwrap()[0]
+        {
+            panic!("`deserialize_vec_cow_str` didn't borrow");
+        }
     }
 }

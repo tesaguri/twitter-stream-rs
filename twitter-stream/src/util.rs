@@ -15,10 +15,10 @@ macro_rules! string_enums {
             pub enum $E:ident {
                 $(
                     $(#[$v_attr:meta])*
-                    :$V:ident($by:expr) // The leading (ugly) colon is to suppress local ambiguity error.
+                    $V:ident($by:expr)
                 ),*;
                 $(#[$u_attr:meta])*
-                :$U:ident(_),
+                $U:ident(_),
             }
         )*
     ) => {
@@ -97,20 +97,16 @@ pub enum Never {}
 impl BaseTimeout {
     pub fn new(dur: Duration, handle: Handle) -> Option<Self> {
         Timeout::new(dur, &handle).ok().map(|timer| {
-            BaseTimeout {
-                dur: dur,
-                handle: handle,
-                timer: timer,
-            }
+            BaseTimeout { dur, handle, timer }
         })
     }
 
     pub fn for_stream<S>(self, stream: S) -> TimeoutStream<S> {
         TimeoutStream {
-            stream: stream,
+            stream,
             inner: Timeout::new(self.dur, &self.handle).ok().map(move |timer| {
                 BaseTimeout {
-                    timer: timer,
+                    timer,
                     ..self
                 }
             }),
@@ -124,10 +120,7 @@ impl BaseTimeout {
 
 impl<S> TimeoutStream<S> {
     pub fn never(stream: S) -> Self {
-        TimeoutStream {
-            stream: stream,
-            inner: None,
-        }
+        TimeoutStream { stream, inner: None }
     }
 }
 
@@ -143,7 +136,9 @@ impl<S> Stream for TimeoutStream<S> where S: Stream<Error=HyperError> {
                 match async {
                     Async::Ready(Some(v)) => {
                         ret = Ok(Some(v).into());
-                        if let Ok(timer) = Timeout::new(inner.dur, &inner.handle) {
+                        if let Ok(timer)
+                            = Timeout::new(inner.dur, &inner.handle)
+                        {
                             inner.timer = timer;
                             return ret;
                         }
@@ -153,7 +148,8 @@ impl<S> Stream for TimeoutStream<S> where S: Stream<Error=HyperError> {
                     Async::NotReady => match inner.timer.poll() {
                         Ok(Async::Ready(())) => return Err(Error::TimedOut),
                         Ok(Async::NotReady) => return Ok(Async::NotReady),
-                        Err(_) => unreachable!(), // `Timeout` never fails.
+                        // `Timeout` never fails.
+                        Err(_) => unreachable!(),
                     },
                 }
             } else {
@@ -216,7 +212,9 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
             match try_ready!(self.inner.poll()) {
                 Some(chunk) => {
                     let mut chunk = chunk.into();
-                    if &b'\r' == self.buf.last().unwrap() && Some(&b'\n') == chunk.first() {
+                    if b'\r' == *self.buf.last().unwrap()
+                        && Some(&b'\n') == chunk.first()
+                    {
                         let i = self.buf.len() + 1;
                         self.buf.extend_from_slice(&chunk);
                         let next = self.buf.split_off(i);

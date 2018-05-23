@@ -1,7 +1,8 @@
 //! Direct messages
 
-use Entities;
 use std::borrow::Cow;
+
+use Entities;
 use types::DateTime;
 use user::{User, UserId};
 use util;

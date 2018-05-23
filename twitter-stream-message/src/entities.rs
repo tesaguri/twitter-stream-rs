@@ -1,6 +1,7 @@
 //! Entities
 
 use std::borrow::Cow;
+
 use tweet::StatusId;
 use user::UserId;
 
@@ -10,8 +11,11 @@ pub type MediaId = u64;
 ///
 /// # Reference
 ///
-/// 1. [Entities — Twitter Developers](https://dev.twitter.com/overview/api/entities)
-/// 1. [Entities in Objects — Twitter Developers](https://dev.twitter.com/overview/api/entities-in-twitter-objects)
+/// 1. [Entities — Twitter Developers][1]
+/// 1. [Entities in Objects — Twitter Developers][2]
+///
+/// [1]: https://dev.twitter.com/overview/api/entities
+/// [2]: https://dev.twitter.com/overview/api/entities-in-twitter-objects
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Entities<'a> {
     /// Represents hashtags which have been parsed out of the Tweet text.
@@ -22,7 +26,8 @@ pub struct Entities<'a> {
     #[serde(borrow)]
     pub media: Option<Vec<Media<'a>>>,
 
-    /// Represents URLs included in the `text` of a `Tweet` or within textual fields of a `User` object.
+    /// Represents URLs included in the `text` of a `Tweet`
+    /// or within textual fields of a `User` object.
     #[serde(borrow)]
     pub urls: Vec<Url<'a>>,
 
@@ -30,7 +35,8 @@ pub struct Entities<'a> {
     #[serde(borrow)]
     pub user_mentions: Vec<UserMention<'a>>,
 
-    /// Represents financial symbols which have been parsed out of the Tweet text.
+    /// Represents financial symbols which have been parsed out of
+    /// the Tweet text.
     #[serde(borrow)]
     pub symbols: Vec<Symbol<'a>>,
 }
@@ -38,10 +44,12 @@ pub struct Entities<'a> {
 /// Represents a hashtag in `hashtags` field of `Entities`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub struct Hashtag<'a> {
-    /// A pair of integers indicating the offsets within the Tweet text where the hashtag begins and ends.
-    /// The first integer represents the location of the `#` character in the Tweet text string.
-    /// The second integer represents the location of the first character after the hashtag. Therefore
-    /// the difference between the two numbers will be the length of the hashtag name plus one (for the `#` character).
+    /// A pair of integers indicating the offsets within the Tweet text
+    /// where the hashtag begins and ends. The first integer represents
+    /// the location of the `#` character in the Tweet text string.
+    /// The second integer represents the location of the first character
+    /// after the hashtag. Therefore the difference between the two numbers
+    /// will be the length of the hashtag name plus one (for the `#` character).
     pub indices: (u64, u64),
 
     /// Name of the hashtag, minus the leading `#` character.
@@ -65,20 +73,24 @@ pub struct Media<'a> {
 
     // pub id_str: String,
 
-    /// A pair of integers indicating the offsets within the Tweet text where the URL begins and ends.
-    /// The first integer represents the location of the first character of the URL in the Tweet text.
-    /// The second integer represents the location of the first non-URL character occurring after the URL
-    /// (or the end of the string if the URL is the last part of the Tweet text).
+    /// A pair of integers indicating the offsets within the Tweet text
+    /// where the URL begins and ends. The first integer represents
+    /// the location of the first character of the URL in the Tweet text.
+    /// The second integer represents the location of the first non-URL
+    /// character occurring after the URL (or the end of the string
+    /// if the URL is the last part of the Tweet text).
     pub indices: (u64, u64),
 
     /// An http:// URL pointing directly to the uploaded media file.
     #[serde(borrow)]
     pub media_url: Cow<'a, str>,
 
-    /// An https:// URL pointing directly to the uploaded media file, for embedding on https pages.
+    /// An https:// URL pointing directly to the uploaded media file,
+    /// for embedding on https pages.
     ///
-    /// For media in direct messages, `media_url_https` must be accessed via an authenticated twitter.com session
-    /// or by signing a request with the user’s access token using OAuth 1.0A.
+    /// For media in direct messages, `media_url_https` must be accessed
+    /// via an authenticated twitter.com session or by signing a request
+    /// with the user’s access token using OAuth 1.0A.
     /// It is not possible to directly embed these images in a web page.
     #[serde(borrow)]
     pub media_url_https: Cow<'a, str>,
@@ -87,8 +99,8 @@ pub struct Media<'a> {
     #[serde(borrow)]
     pub sizes: Sizes<'a>,
 
-    /// For Tweets containing media that was originally associated with a different tweet,
-    /// this ID points to the original Tweet.
+    /// For Tweets containing media that was originally associated with
+    /// a different tweet, this ID points to the original Tweet.
     pub source_status_id: Option<StatusId>,
 
     // source_status_id_str: String,
@@ -98,7 +110,8 @@ pub struct Media<'a> {
     #[serde(rename="type")]
     pub kind: Cow<'a, str>,
 
-    /// Wrapped URL for the media link. This corresponds with the URL embedded directly into the raw Tweet text,
+    /// Wrapped URL for the media link. This corresponds with the URL
+    /// embedded directly into the raw Tweet text,
     /// and the values for the `indices` parameter.
     #[serde(borrow)]
     pub url: Cow<'a, str>,
@@ -137,11 +150,12 @@ string_enums! {
     /// Represents the `resize` field in `Size`.
     #[derive(Clone, Debug)]
     pub enum Resize<'a> {
-        /// The media was resized to fit one dimension, keeping its native aspect ratio.
-        :Fit("fit"),
+        /// The media was resized to fit one dimension,
+        /// keeping its native aspect ratio.
+        Fit("fit"),
         /// The media was cropped in order to fit a specific resolution.
-        :Crop("crop");
-        :Custom(_),
+        Crop("crop");
+        Custom(_),
     }
 }
 
@@ -151,22 +165,26 @@ pub struct Url<'a> {
     /// Version of the URL to display to clients.
     #[serde(borrow)]
     #[serde(default)]
-    #[serde(deserialize_with = "::util::deserialize_default")] // nullable in Retweets.
+    // nullable in Retweets.
+    #[serde(deserialize_with = "::util::deserialize_default")]
     pub display_url: Cow<'a, str>,
 
     /// Expanded version of `display_url`.
     #[serde(borrow)]
     #[serde(default)]
-    #[serde(deserialize_with = "::util::deserialize_default")] // nullable in Retweets.
+    // nullable in Retweets.
+    #[serde(deserialize_with = "::util::deserialize_default")]
     pub expanded_url: Cow<'a, str>,
 
-    /// A pair of integers representing offsets within the Tweet text where the URL begins and ends.
-    /// The first integer represents the location of the first character of the URL in the Tweet text.
-    /// The second integer represents the location of the first non-URL character after the end of the URL.
+    /// A pair of integers representing offsets within the Tweet text
+    /// where the URL begins and ends. The first integer represents
+    /// the location of the first character of the URL in the Tweet text.
+    /// The second integer represents the location of the first non-URL
+    /// character after the end of the URL.
     pub indices: (u64, u64),
 
-    /// Wrapped URL, corresponding to the value embedded directly into the raw Tweet text, and the
-    /// values for the `indices` parameter.
+    /// Wrapped URL, corresponding to the value embedded directly into
+    /// the raw Tweet text, and the values for the `indices` parameter.
     #[serde(borrow)]
     pub url: Cow<'a, str>,
 }
@@ -179,9 +197,11 @@ pub struct UserMention<'a> {
 
     // pub id_str: String,
 
-    /// A pair of integers representing the offsets within the Tweet text where the user reference begins and ends.
-    /// The first integer represents the location of the ‘@’ character of the user mention.
-    /// The second integer represents the location of the first non-screenname character following the user mention.
+    /// A pair of integers representing the offsets within the Tweet text
+    /// where the user reference begins and ends. The first integer represents
+    /// the location of the ‘@’ character of the user mention.
+    /// The second integer represents the location of the first non-screenname
+    /// character following the user mention.
     pub indices: (u64, u64),
 
     /// Display name of the referenced user.

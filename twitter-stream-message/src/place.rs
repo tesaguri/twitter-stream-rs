@@ -1,17 +1,22 @@
 //! Place
 
-use geometry::Geometry;
 use std::borrow::Cow;
 use std::collections::HashMap;
+
+use geometry::Geometry;
 
 /// Represents `place` field in `Tweet`.
 ///
 /// # Reference
 ///
-/// 1. [Places — Twitter Developers](https://dev.twitter.com/overview/api/places)
+/// 1. [Places — Twitter Developers][1]
+///
+/// [1]: https://dev.twitter.com/overview/api/places
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Place<'a> {
-    /// Contains a hash of variant information about the place. See [Place Attributes][1] for more detail.
+    /// Contains a hash of variant information about the place.
+    /// See [Place Attributes][1] for more detail.
+    ///
     /// [1]: https://dev.twitter.com/overview/api/places#place_attributes
     #[serde(borrow)]
     #[serde(deserialize_with = "::util::deserialize_map_cow_str")]
@@ -32,7 +37,8 @@ pub struct Place<'a> {
     #[serde(borrow)]
     pub full_name: Cow<'a, str>,
 
-    /// ID representing this place. Note that this is represented as a string, not an integer.
+    /// ID representing this place. Note that this is represented as a string,
+    /// not an integer.
     #[serde(borrow)]
     pub id: PlaceId<'a>,
 
@@ -44,7 +50,8 @@ pub struct Place<'a> {
     #[serde(borrow)]
     pub place_type: Cow<'a, str>,
 
-    /// URL representing the location of additional place metadata for this place.
+    /// URL representing the location of additional place metadata
+    /// for this place.
     #[serde(borrow)]
     pub url: Cow<'a, str>,
 }

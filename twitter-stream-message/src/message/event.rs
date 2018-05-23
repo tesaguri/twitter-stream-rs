@@ -1,6 +1,15 @@
-use {List, Tweet, User};
-use serde::de::{Deserialize, Deserializer, Error, IgnoredAny, MapAccess, Visitor};
 use std::fmt;
+
+use serde::de::{
+    Deserialize,
+    Deserializer,
+    Error,
+    IgnoredAny,
+    MapAccess,
+    Visitor,
+};
+
+use {List, Tweet, User};
 use types::{DateTime, JsonValue};
 use util;
 
@@ -8,14 +17,15 @@ use util;
 ///
 /// # Reference
 ///
-/// 1. [Streaming message types — Twitter Developers]
-///    (https://dev.twitter.com/streaming/overview/messages-types#Events_event)
+/// 1. [Streaming message types — Twitter Developers][1]
+///
+/// [1]: https://dev.twitter.com/streaming/overview/messages-types#Events_event
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event<'a> {
     pub created_at: DateTime,
 
-    /// An object which indicates the name of the event and contains an optional object which
-    /// represents the target of the event.
+    /// An object which indicates the name of the event and contains
+    /// an optional object which represents the target of the event.
     pub event: EventKind<'a>,
 
     pub target: User<'a>,
@@ -29,14 +39,14 @@ macro_rules! impl_event {
         pub enum $T:ident<$lifetime:tt> {
             $(
                 $(#[$c_attr:meta])*
-                :$Container:ident($c_tag:expr, $Content:ty)
+                $Container:ident($c_tag:expr, $Content:ty)
             ),*;
             $(
                 $(#[$l_attr:meta])*
-                :$Label:ident($l_tag:expr)
+                $Label:ident($l_tag:expr)
             ),*;
             $(#[$cu_attr:meta])*
-            :$Custom:ident(_, _),
+            $Custom:ident(_, _),
         }
     ) => {
         $(#[$attr])*
@@ -54,112 +64,126 @@ macro_rules! impl_event {
         }
 
         impl<'de: 'a, 'a> Deserialize<'de> for Event<'a> {
-            fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-                struct EventVisitor;
+            fn deserialize<D: Deserializer<'de>>(d: D)
+                -> Result<Self, D::Error>
+            {
+                d.deserialize_map(EventVisitor)
+            }
+        }
 
-                impl<'a> Visitor<'a> for EventVisitor {
-                    type Value = Event<'a>;
+        struct EventVisitor;
 
-                    fn visit_map<A: MapAccess<'a>>(self, mut a: A) -> Result<Event<'a>, A::Error> {
-                        use util::CowStr;
+        impl<'a> Visitor<'a> for EventVisitor {
+            type Value = Event<'a>;
 
-                        #[derive(Default)]
-                        struct EventBuffer<'a> {
-                            created_at: Option<DateTime>,
-                            event: Option<EventKind<'a>>,
-                            target: Option<User<'a>>,
-                            source: Option<User<'a>>,
-                        }
+            fn visit_map<A: MapAccess<'a>>(self, mut a: A)
+                -> Result<Event<'a>, A::Error>
+            {
+                use util::CowStr;
 
-                        let mut event = EventBuffer::default();
-                        let mut event_kind: Option<CowStr> = None;
-                        let mut target_obj: Option<JsonValue> = None;
+                #[derive(Default)]
+                struct EventBuffer<'a> {
+                    created_at: Option<DateTime>,
+                    event: Option<EventKind<'a>>,
+                    target: Option<User<'a>>,
+                    source: Option<User<'a>>,
+                }
 
-                        while let Some(k) = a.next_key::<CowStr>()? {
-                            match k.as_ref() {
-                                "created_at" => {
-                                    let val = a.next_value::<CowStr>()?;
-                                    event.created_at = Some(
-                                        util::parse_datetime(val.as_ref()).map_err(A::Error::custom)?
-                                    );
-                                },
-                                "event" => {
-                                    let e = a.next_value::<CowStr>()?;
-                                    event.event = if let Some(t) = target_obj.take() {
-                                        match e.as_ref() {
-                                            $($c_tag => {
-                                                $T::$Container(<$Content>::deserialize(t).map_err(A::Error::custom)?)
-                                            },)*
-                                            $($l_tag => $T::$Label,)*
-                                            _ => $T::$Custom(e.0, Some(t)),
-                                        }.into()
-                                    } else {
-                                        match e.as_ref() {
-                                            $($l_tag => Some($T::$Label),)*
-                                            $($c_tag)|* => { event_kind = Some(e); None },
-                                            _ => Some($T::Custom(e.0, None)),
-                                        }
-                                    };
-                                },
-                                "target" => event.target = Some(a.next_value()?),
-                                "source" => event.source = Some(a.next_value()?),
-                                "target_object" => if let Some(e) = event_kind.take() {
-                                    event.event = match e.as_ref() {
-                                        $($c_tag => $T::$Container(a.next_value()?),)*
-                                        $($l_tag => { a.next_value::<IgnoredAny>()?; $T::$Label },)*
-                                        _ => $T::$Custom(e.0, a.next_value()?),
-                                    }.into();
-                                } else if event.event.is_none() {
-                                    target_obj = Some(a.next_value()?);
-                                } else {
-                                    a.next_value::<IgnoredAny>()?;
-                                },
-                                _ => { a.next_value::<IgnoredAny>()?; },
-                            }
+                let mut event = EventBuffer::default();
+                let mut event_kind: Option<CowStr> = None;
+                let mut target_obj: Option<JsonValue> = None;
 
-                            if let EventBuffer {
-                                    created_at: Some(ca), event: Some(e), target: Some(t), source: Some(s),
-                                } = event
-                            {
-                                while a.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
-                                return Ok(Event { created_at: ca, event: e, target: t, source: s });
-                            }
-                        }
-
-                        Err(A::Error::missing_field(if event.created_at.is_none() {
-                            "created_at"
-                        } else if event.target.is_none() {
-                            "target"
-                        } else if event.source.is_none() {
-                            "source"
-                        } else if event.event.is_none() {
-                            if target_obj.is_some() {
-                                "event"
+                while let Some(k) = a.next_key::<CowStr>()? {
+                    match &*k {
+                        "created_at" => {
+                            let val = a.next_value::<CowStr>()?;
+                            let dt = util::parse_datetime(&*val)
+                                .map_err(A::Error::custom)?;
+                            event.created_at = Some(dt);
+                        },
+                        "event" => {
+                            let e = a.next_value::<CowStr>()?;
+                            event.event = if let Some(t) = target_obj.take() {
+                                match &*e {
+                                    $($c_tag => {
+                                        let c = <$Content>::deserialize(t)
+                                            .map_err(A::Error::custom)?;
+                                        $T::$Container(c)
+                                    },)*
+                                    $($l_tag => $T::$Label,)*
+                                    _ => $T::$Custom(e.0, Some(t)),
+                                }.into()
                             } else {
-                                "target_object"
-                            }
+                                match &*e {
+                                    $($c_tag)|* => {
+                                        event_kind = Some(e);
+                                        None
+                                    },
+                                    $($l_tag => Some($T::$Label),)*
+                                    _ => Some($T::Custom(e.0, None)),
+                                }
+                            };
+                        },
+                        "target" => event.target = Some(a.next_value()?),
+                        "source" => event.source = Some(a.next_value()?),
+                        "target_object" => if let Some(e) = event_kind.take() {
+                            event.event = match &*e {
+                                $($c_tag => $T::$Container(a.next_value()?),)*
+                                $($l_tag => { a.next_value::<IgnoredAny>()?; $T::$Label },)*
+                                _ => $T::$Custom(e.0, a.next_value()?),
+                            }.into();
+                        } else if event.event.is_none() {
+                            target_obj = Some(a.next_value()?);
                         } else {
-                            unreachable!();
-                        }))
+                            a.next_value::<IgnoredAny>()?;
+                        },
+                        _ => { a.next_value::<IgnoredAny>()?; },
                     }
 
-                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                        write!(f, "a map")
+                    if let EventBuffer {
+                        created_at: Some(created_at),
+                        event: Some(event),
+                        target: Some(target),
+                        source: Some(source),
+                    } = event
+                    {
+                        while a.next_entry::<IgnoredAny, IgnoredAny>()?
+                            .is_some() {}
+                        return Ok(Event { created_at, event, target, source });
                     }
                 }
 
-                d.deserialize_map(EventVisitor)
+                Err(A::Error::missing_field(match event {
+                    EventBuffer { created_at: None, .. } => "created_at",
+                    EventBuffer { target: None, .. } => "target",
+                    EventBuffer { source: None, .. } => "source",
+                    EventBuffer { event: None, .. } => if target_obj.is_some() {
+                        "event"
+                    } else {
+                        "target_object"
+                    },
+                    EventBuffer {
+                        created_at: Some(_),
+                        target: Some(_),
+                        source: Some(_),
+                        event: Some(_),
+                    } => unreachable!(),
+                }))
+            }
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a map")
             }
         }
     };
 }
 
 impl_event! {
-    /// An object which indicates the name of an event.
-    /// It may contain an object called "target object" which represents the target of the event.
+    /// An object which indicates the name of an event. It may contain an
+    /// object called "target object" which represents the target of the event.
     ///
-    /// The meaning of `target` and `source` field of an `Event` will be different based on the name of the event,
-    /// as described below.
+    /// The meaning of `target` and `source` field of an `Event` will
+    /// be different based on the name of the event, as described below.
     ///
     /// | Description                         | Event Name             | `source`           | `target`       |
     /// | ----------------------------------- | ---------------------- | ------------------ | -------------- |
@@ -189,24 +213,24 @@ impl_event! {
     /// | User updates their protected status | `UserUpdate`           | Current user       | Current user   |
     #[derive(Clone, Debug, PartialEq)]
     pub enum EventKind<'a> {
-        :Favorite("favorite", Box<Tweet<'a>>),
-        :Unfavorite("unfavorite", Box<Tweet<'a>>),
-        :ListCreated("list_created", Box<List<'a>>),
-        :ListDestroyed("list_destroyed", Box<List<'a>>),
-        :ListUpdated("list_updated", Box<List<'a>>),
-        :ListMemberAdded("list_member_added", Box<List<'a>>),
-        :ListMemberRemoved("list_member_removed", Box<List<'a>>),
-        :ListUserSubscribed("list_user_subscribed", Box<List<'a>>),
-        :ListUserUnsubscribed("list_user_unsubscribed", Box<List<'a>>),
-        :QuotedTweet("quoted_tweet", Box<Tweet<'a>>);
-        :AccessRevoked("access_revoked"),
-        :Block("block"),
-        :Unblock("unblock"),
-        :Follow("follow"),
-        :Unfollow("unfollow"),
-        :UserUpdate("user_update");
+        Favorite("favorite", Box<Tweet<'a>>),
+        Unfavorite("unfavorite", Box<Tweet<'a>>),
+        ListCreated("list_created", Box<List<'a>>),
+        ListDestroyed("list_destroyed", Box<List<'a>>),
+        ListUpdated("list_updated", Box<List<'a>>),
+        ListMemberAdded("list_member_added", Box<List<'a>>),
+        ListMemberRemoved("list_member_removed", Box<List<'a>>),
+        ListUserSubscribed("list_user_subscribed", Box<List<'a>>),
+        ListUserUnsubscribed("list_user_unsubscribed", Box<List<'a>>),
+        QuotedTweet("quoted_tweet", Box<Tweet<'a>>);
+        AccessRevoked("access_revoked"),
+        Block("block"),
+        Unblock("unblock"),
+        Follow("follow"),
+        Unfollow("unfollow"),
+        UserUpdate("user_update");
         /// An event this library does not know. The first value is raw event name
         /// and the second is the target object.
-        :Custom(_, _),
+        Custom(_, _),
     }
 }

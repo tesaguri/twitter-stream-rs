@@ -10,18 +10,18 @@ string_enums! {
     /// Represents the `filter_level` field in Tweets.
     #[derive(Clone, Debug)]
     pub enum FilterLevel<'a> {
-        :None("none"),
-        :Low("low"),
-        :Medium("medium");
-        :Custom(_),
+        None("none"),
+        Low("low"),
+        Medium("medium");
+        Custom(_),
     }
 
     /// Represents the `withheld_scope` field in `Tweet` and `User`.
     #[derive(Clone, Debug)]
     pub enum WithheldScope<'a> {
-        :Status("status"),
-        :User("user");
-        :Custom(_),
+        Status("status"),
+        User("user");
+        Custom(_),
     }
 }
 

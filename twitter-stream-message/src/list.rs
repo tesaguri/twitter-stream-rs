@@ -1,7 +1,8 @@
 //! Lists
 
-use User;
 use std::borrow::Cow;
+
+use User;
 use types::DateTime;
 use util;
 
@@ -9,7 +10,9 @@ use util;
 ///
 /// # Reference
 ///
-/// 1. [GET lists/show — Twitter Developers](https://dev.twitter.com/rest/reference/get/lists/show)
+/// 1. [GET lists/show — Twitter Developers][1]
+///
+/// [1]: https://dev.twitter.com/rest/reference/get/lists/show
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct List<'a> {
     #[serde(borrow)]
@@ -49,9 +52,9 @@ string_enums! {
     /// Represents `mode` field of `List`.
     #[derive(Clone, Debug)]
     pub enum Mode<'a> {
-        :Public("public"),
-        :Private("private");
-        :Custom(_),
+        Public("public"),
+        Private("private");
+        Custom(_),
     }
 }
 

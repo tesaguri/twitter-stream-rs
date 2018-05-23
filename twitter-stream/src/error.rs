@@ -6,6 +6,7 @@ pub use hyper::Error as HyperError;
 use std::error::{self, Error as _Error};
 use std::fmt::{self, Display, Formatter};
 use std::str::Utf8Error;
+
 use types::StatusCode;
 
 /// An error occurred while trying to connect to a Stream.
@@ -26,8 +27,10 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn custom<E>(error: E) -> Self where Box<error::Error + Send + Sync>: From<E> {
-        Error::Custom(From::from(error))
+    pub fn custom<E>(error: E) -> Self
+        where E: Into<Box<error::Error + Send + Sync>>
+    {
+        Error::Custom(error.into())
     }
 }
 
@@ -36,7 +39,8 @@ impl error::Error for Error {
         use Error::*;
 
         match *self {
-            Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
+            Http(ref status) => status.canonical_reason()
+                .unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
             TimedOut => "timed out",
             Tls(ref e) => e.description(),
@@ -49,11 +53,11 @@ impl error::Error for Error {
         use Error::*;
 
         match *self {
-            Hyper(ref e) => Some(e),
-            Utf8(ref e) => Some(e),
-            Custom(ref e) => Some(e.as_ref()),
-            Tls(ref e) => Some(e),
             Http(_) | TimedOut => None,
+            Hyper(ref e) => Some(e),
+            Tls(ref e) => Some(e),
+            Utf8(ref e) => Some(e),
+            Custom(ref e) => Some(&**e),
         }
     }
 }

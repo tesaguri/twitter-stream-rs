@@ -34,8 +34,10 @@ pub use place::Place;
 pub use tweet::Tweet;
 pub use user::User;
 
-/// Alias to [`StreamMessage::from_str`](message/enum.StreamMessage.html#method.from_str).
-/// Parse a JSON string returned from Twitter Streaming API.
+/// Alias to [`StreamMessage::from_str`][1].
+/// Parses a JSON string returned from Twitter Streaming API.
+///
+/// [1]: message/enum.StreamMessage.html#method.from_str
 #[inline]
 pub fn from_str<'a>(json: &'a str) -> Result<StreamMessage<'a>> {
     StreamMessage::from_str(json)

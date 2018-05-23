@@ -4,19 +4,20 @@ pub use hyper::Method as RequestMethod;
 pub use hyper::StatusCode;
 pub use url::Url;
 
-use bytes::Bytes;
 use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
 use std::str::{self, Utf8Error};
+
+use bytes::Bytes;
 
 string_enums! {
     /// Represents the `filter_level` parameter in API requests.
     #[derive(Clone, Debug)]
     pub enum FilterLevel {
-        :None("none"),
-        :Low("low"),
-        :Medium("medium");
-        :Custom(_),
+        None("none"),
+        Low("low"),
+        Medium("medium");
+        Custom(_),
     }
 
     /// A value for `with` parameter for User and Site Streams.
@@ -24,12 +25,12 @@ string_enums! {
     pub enum With {
         /// Instruct the stream to send messages only from the user associated with that stream.
         /// The default for Site Streams.
-        :User("user"),
+        User("user"),
         /// Instruct the stream to send messages from accounts the user follows as well, equivalent
         /// to the user’s home timeline. The default for User Streams.
-        :Following("following");
+        Following("following");
         /// Custom value.
-        :Custom(_),
+        Custom(_),
     }
 }
 
@@ -50,7 +51,7 @@ impl JsonStr {
 
     pub fn from_static(s: &'static str) -> Self {
         JsonStr {
-            inner: Bytes::from_static(s.as_ref()),
+            inner: Bytes::from_static(s.as_bytes()),
         }
     }
 
