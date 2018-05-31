@@ -84,6 +84,8 @@ pub struct TimeoutStream<S> {
     inner: Option<BaseTimeout>,
 }
 
+pub struct JoinDisplay<'a, D: 'a, Sep: ?Sized+'a>(pub &'a [D], pub &'a Sep);
+
 /// A stream over the lines (delimited by CRLF) of a `Body`.
 pub struct Lines<B> where B: Stream {
     inner: Fuse<B>,
@@ -160,6 +162,21 @@ impl<S> Stream for TimeoutStream<S> where S: Stream<Error=HyperError> {
             self.inner = None;
             ret
         })
+    }
+}
+
+impl<'a, D, Sep> Display for JoinDisplay<'a, D, Sep>
+    where D: Display+'a, Sep: Display+?Sized+'a
+{
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let mut iter = self.0.iter();
+        if let Some(d) = iter.next() {
+            Display::fmt(d, f)?;
+            for d in iter {
+                write!(f, "{}{}", self.1, d)?;
+            }
+        }
+        Ok(())
     }
 }
 

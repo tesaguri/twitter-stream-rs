@@ -56,13 +56,17 @@ extern crate bytes;
 extern crate cfg_if;
 #[macro_use]
 extern crate futures;
+extern crate hmac;
 extern crate hyper;
 #[macro_use]
 extern crate lazy_static;
-extern crate oauthcli;
+extern crate byteorder;
+extern crate percent_encoding;
+extern crate rand;
 #[cfg(feature = "serde")]
 #[macro_use]
 extern crate serde;
+extern crate sha1;
 extern crate tokio_core;
 #[cfg(feature = "parse")]
 extern crate twitter_stream_message;
@@ -85,13 +89,14 @@ pub mod message {
     pub use twitter_stream_message::*;
 }
 
-mod auth;
+mod query_builder;
+mod token;
 
-pub use auth::Token;
+pub use token::Token;
 pub use error::Error;
 
 use std::borrow::Cow;
-use std::fmt::Write;
+use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
 use std::time::Duration;
 
@@ -100,11 +105,11 @@ use hyper::Body;
 use hyper::client::{Client, Connect, FutureResponse, Request};
 use hyper::header::{Headers, ContentLength, ContentType, UserAgent};
 use tokio_core::reactor::Handle;
-use url::form_urlencoded::{Serializer, Target};
 
 use error::{HyperError, TlsError};
+use query_builder::{QueryBuilder, QueryOutcome};
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
-use util::{BaseTimeout, Lines, TimeoutStream};
+use util::{BaseTimeout, JoinDisplay, Lines, TimeoutStream};
 
 macro_rules! def_stream {
     (
@@ -508,8 +513,6 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
         B: From<Vec<u8>> + Stream<Error=HyperError> + 'static,
         B::Item: AsRef<[u8]>,
     {
-        let mut url = self.end_point.clone();
-
         let mut headers = Headers::new();
         // headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));
         if let Some(ref ua) = self.user_agent {
@@ -519,39 +522,44 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
         if RequestMethod::Post == self.method {
             use hyper::mime;
 
-            let mut body = Serializer::new(String::new());
-            self.append_query_pairs(&mut body);
-            let body = body.finish();
+            let query = QueryBuilder::new_form(
+                &*self.token.consumer_secret, &*self.token.access_secret,
+                "POST", self.end_point.as_str(),
+            );
+            let QueryOutcome { header, query } = self.build_query(query);
 
-            headers.set(auth::create_authorization_header(
-                self.token,
-                &self.method,
-                &url,
-                Some(body.as_bytes()),
-            ));
+            headers.set_raw("Authorization", header);
             headers.set(ContentType(mime::APPLICATION_WWW_FORM_URLENCODED));
-            headers.set(ContentLength(body.len() as u64));
+            headers.set(ContentLength(query.len() as u64));
 
             let mut req = Request::new(
                 RequestMethod::Post,
-                url.as_str().parse().unwrap(),
+                self.end_point.as_str().parse().unwrap(),
             );
             *req.headers_mut() = headers;
-            req.set_body(body.into_bytes());
+            req.set_body(query.into_bytes());
 
             c.request(req)
         } else {
-            self.append_query_pairs(&mut url.query_pairs_mut());
-            headers.set(auth::create_authorization_header(
-                self.token,
-                &self.method,
-                &url,
-                None,
-            ));
+            let upcase;
+            let query = QueryBuilder::new(
+                &*self.token.consumer_secret, &*self.token.access_secret,
+                match self.method {
+                    RequestMethod::Extension(ref m) => {
+                        upcase = m.to_ascii_uppercase();
+                        &upcase
+                    },
+                    ref m => m.as_ref(),
+                },
+                self.end_point.as_str().to_owned(),
+            );
+            let QueryOutcome { header, query: uri } = self.build_query(query);
+
+            headers.set_raw("Authorization", header);
 
             let mut req = Request::new(
                 self.method.clone(),
-                url.as_str().parse().unwrap()
+                uri.parse().unwrap(),
             );
             *req.headers_mut() = headers;
 
@@ -559,59 +567,78 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
         }
     }
 
-    fn append_query_pairs<T: Target>(&self, pairs: &mut Serializer<T>) {
-        if self.stall_warnings {
-            pairs.append_pair("stall_warnings", "true");
+    fn build_query(&self, mut query: QueryBuilder) -> QueryOutcome {
+        const COMMA: &str = "%2C";
+        const COMMA_DOUBLE_ENCODED: &str = "%252C";
+        if let Some(n) = self.count {
+            query.append_encoded("count", n, n, false);
         }
         if self.filter_level != FilterLevel::None {
-            pairs.append_pair("filter_level", self.filter_level.as_ref());
-        }
-        if let Some(s) = self.language {
-            pairs.append_pair("language", s);
+            query.append("filter_level", self.filter_level.as_ref(), false);
         }
         if let Some(ids) = self.follow {
-            let mut val = String::new();
-            if let Some(id) = ids.first() {
-                val = id.to_string();
-            }
-            for id in ids.into_iter().skip(1) {
-                write!(val, ",{}", id).unwrap();
-            }
-            pairs.append_pair("follow", &val);
+            query.append_encoded(
+                "follow",
+                JoinDisplay(ids, COMMA),
+                JoinDisplay(ids, COMMA_DOUBLE_ENCODED),
+                false,
+            );
         }
-        if let Some(s) = self.track {
-            pairs.append_pair("track", s);
+        if let Some(s) = self.language {
+            query.append("language", s, false);
         }
         if let Some(locs) = self.locations {
-            let mut val = String::new();
-            macro_rules! push {
-                ($coordinate:expr) => {{
-                    write!(val, ",{}", $coordinate).unwrap();
-                }};
+            struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
+            impl<'a, D: Display> Display for LocationsDisplay<'a, D> {
+                fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+                    macro_rules! push {
+                        ($($c:expr),*) => {{
+                            $(write!(f, "{}{}", self.1, $c)?;)*
+                        }};
+                    }
+                    let mut iter = self.0.iter();
+                    if let Some(&((x1, y1), (x2, y2))) = iter.next() {
+                        write!(f, "{}", x1)?;
+                        push!(y1, x2, y2);
+                        for &((x1, y1), (x2, y2)) in iter {
+                            push!(x1, y1, x2, y2);
+                        }
+                    }
+                    Ok(())
+                }
             }
-            if let Some(&((lon1, lat1), (lon2, lat2))) = locs.first() {
-                val = lon1.to_string();
-                push!(lat1);
-                push!(lon2);
-                push!(lat2);
-            }
-            for &((lon1, lat1), (lon2, lat2)) in locs.into_iter().skip(1) {
-                push!(lon1);
-                push!(lat1);
-                push!(lon2);
-                push!(lat2);
-            }
-            pairs.append_pair("locations", &val);
+            query.append_encoded(
+                "locations",
+                LocationsDisplay(locs, COMMA),
+                LocationsDisplay(locs, COMMA_DOUBLE_ENCODED),
+                false,
+            );
         }
-        if let Some(n) = self.count {
-            pairs.append_pair("count", &n.to_string());
+        query.append_oauth_params(
+            &self.token.consumer_key,
+            &self.token.access_key,
+            ! (self.replies || self.stall_warnings
+                || self.track.is_some() || self.with.is_some())
+        );
+        if self.replies {
+            query.append_encoded("replies", "all", "all",
+                ! (self.stall_warnings
+                    || self.track.is_some() || self.with.is_some())
+            );
+        }
+        if self.stall_warnings {
+            query.append_encoded("stall_warnings", "true", "true",
+                ! (self.track.is_some() || self.with.is_some())
+            );
+        }
+        if let Some(s) = self.track {
+            query.append("track", s, ! self.with.is_some());
         }
         if let Some(ref w) = self.with {
-            pairs.append_pair("with", w.as_ref());
+            query.append("with", w.as_ref(), true);
         }
-        if self.replies {
-            pairs.append_pair("replies", "all");
-        }
+
+        query.build()
     }
 }
 

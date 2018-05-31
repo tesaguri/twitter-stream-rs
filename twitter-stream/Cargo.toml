@@ -14,12 +14,16 @@ A library for listening on Twitter Streaming API.
 """
 
 [dependencies]
+byteorder = { version = "1.2.3", features = ["i128"] }
 bytes = "0.4.4"
 cfg-if = "0.1"
 futures = "0.1.4"
+hmac = "0.6"
 hyper = "0.11"
 lazy_static = "1"
-oauthcli = "1"
+percent-encoding = "1"
+rand = "0.5"
+sha-1 = "0.7"
 tokio-core = "0.1"
 url = "1"
 egg-mode = { version = "0.8", optional = true }
@@ -30,6 +34,9 @@ native-tls = { version = "0.1", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 tweetust = { version = "0.8", optional = true }
 twitter-stream-message = { version = "0.2", optional = true }
+
+[dev-dependencies]
+base64 = "0.9"
 
 [features]
 default = ["tls"]
