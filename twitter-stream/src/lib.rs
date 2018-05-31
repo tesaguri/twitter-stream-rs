@@ -70,7 +70,6 @@ extern crate sha1;
 extern crate tokio_core;
 #[cfg(feature = "parse")]
 extern crate twitter_stream_message;
-extern crate url;
 
 #[macro_use]
 mod util;
@@ -108,7 +107,7 @@ use tokio_core::reactor::Handle;
 
 use error::{HyperError, TlsError};
 use query_builder::{QueryBuilder, QueryOutcome};
-use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
+use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri, With};
 use util::{BaseTimeout, JoinDisplay, Lines, TimeoutStream};
 
 macro_rules! def_stream {
@@ -262,15 +261,12 @@ macro_rules! def_stream {
 }
 
 lazy_static! {
-    static ref EP_FILTER: Url = Url::parse(
-        "https://stream.twitter.com/1.1/statuses/filter.json"
-    ).unwrap();
-    static ref EP_SAMPLE: Url = Url::parse(
-        "https://stream.twitter.com/1.1/statuses/sample.json"
-    ).unwrap();
-    static ref EP_USER: Url = Url::parse(
-        "https://userstream.twitter.com/1.1/user.json"
-    ).unwrap();
+    static ref EP_FILTER: Uri =
+        "https://stream.twitter.com/1.1/statuses/filter.json".parse().unwrap();
+    static ref EP_SAMPLE: Uri =
+        "https://stream.twitter.com/1.1/statuses/sample.json".parse().unwrap();
+    static ref EP_USER: Uri =
+        "https://userstream.twitter.com/1.1/user.json".parse().unwrap();
 }
 
 const TUPLE_REF: &() = &();
@@ -316,8 +312,8 @@ def_stream! {
         /// to the server.
         method: RequestMethod,
 
-        /// Reset the API endpoint URL to be connected.
-        end_point: &'a Url,
+        /// Reset the API endpoint URI to be connected.
+        end_point: &'a Uri,
 
         /// Reset the token to be used to log into Twitter.
         token: &'a Token<'a>;
@@ -524,7 +520,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
 
             let query = QueryBuilder::new_form(
                 &*self.token.consumer_secret, &*self.token.access_secret,
-                "POST", self.end_point.as_str(),
+                "POST", self.end_point.as_ref(),
             );
             let QueryOutcome { header, query } = self.build_query(query);
 
@@ -534,7 +530,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
 
             let mut req = Request::new(
                 RequestMethod::Post,
-                self.end_point.as_str().parse().unwrap(),
+                self.end_point.clone(),
             );
             *req.headers_mut() = headers;
             req.set_body(query.into_bytes());
@@ -551,7 +547,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
                     },
                     ref m => m.as_ref(),
                 },
-                self.end_point.as_str().to_owned(),
+                self.end_point.as_ref().to_owned(),
             );
             let QueryOutcome { header, query: uri } = self.build_query(query);
 

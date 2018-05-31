@@ -25,7 +25,6 @@ percent-encoding = "1"
 rand = "0.5"
 sha-1 = "0.7"
 tokio-core = "0.1"
-url = "1"
 egg-mode = { version = "0.8", optional = true }
 hyper-openssl = { version = "0.3", optional = true }
 # hyper-rustls = { version = "0.7", optional = true }

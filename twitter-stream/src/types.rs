@@ -2,7 +2,7 @@
 
 pub use hyper::Method as RequestMethod;
 pub use hyper::StatusCode;
-pub use url::Url;
+pub use hyper::Uri;
 
 use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
