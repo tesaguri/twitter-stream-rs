@@ -94,7 +94,7 @@ mod token;
 pub use token::Token;
 pub use error::Error;
 
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
 use std::time::Duration;
@@ -113,12 +113,9 @@ use util::{BaseTimeout, JoinDisplay, Lines, TimeoutStream};
 macro_rules! def_stream {
     (
         $(#[$builder_attr:meta])*
-        pub struct $B:ident<$lifetime:tt, $CH:ident> {
+        pub struct $B:ident<$lifetime:tt, $T:ident, $CH:ident> {
             $client_or_handle:ident: $ch_ty:ty = $ch_default:expr;
-            $(
-                $(#[$arg_setter_attr:meta])*
-                $arg:ident: $a_ty:ty
-            ),*;
+            $($arg:ident: $a_ty:ty),*;
             $(
                 $(#[$setter_attr:meta])*
                 $setter:ident: $s_ty:ty = $default:expr
@@ -144,9 +141,9 @@ macro_rules! def_stream {
         )*
     ) => {
         $(#[$builder_attr])*
-        pub struct $B<$lifetime, $CH: 'a> {
+        pub struct $B<$lifetime, $T: $lifetime, $CH: $lifetime> {
             $client_or_handle: $ch_ty,
-            $($(#[$arg_setter_attr])* $arg: $a_ty,)*
+            $($arg: $a_ty,)*
             $($(#[$setter_attr])* $setter: $s_ty,)*
             $($custom_setter: $c_ty,)*
         }
@@ -161,12 +158,12 @@ macro_rules! def_stream {
             $($s_field: $sf_ty,)*
         }
 
-        impl<$lifetime> $B<$lifetime, ()> {
+        impl<$lifetime, C, A> $B<$lifetime, Token<C, A>, ()>
+            where C: Borrow<str>, A: Borrow<str>
+        {
             $(
                 $(#[$constructor_attr])*
-                pub fn $constructor(token: &$lifetime Token<$lifetime>)
-                    -> $B<$lifetime, ()>
-                {
+                pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
                     $B::custom(
                         RequestMethod::$Method,
                         $endpoint.deref(),
@@ -176,26 +173,33 @@ macro_rules! def_stream {
             )*
 
             /// Constructs a builder for a Stream at a custom endpoint.
-            pub fn custom($($arg: $a_ty),*) -> $B<$lifetime, ()> {
+            pub fn custom(
+                method: RequestMethod,
+                endpoint: &$lifetime Uri,
+                token: &$lifetime Token<C, A>,
+            ) -> Self
+            {
                 $B {
                     $client_or_handle: $ch_default,
-                    $($arg,)*
+                    method,
+                    endpoint,
+                    token,
                     $($setter: $default,)*
                     $($custom_setter: $c_default,)*
                 }
             }
         }
 
-        impl<$lifetime, $CH> $B<$lifetime, $CH> {
+        impl<$lifetime, C, A, _CH> $B<$lifetime, Token<C, A>, _CH> {
             /// Set a `hyper::Client` to be used for connecting to the server.
             ///
             /// The `Client` should be able to handle the `https` scheme.
             ///
             /// This method overrides the effect of `handle` method.
-            pub fn client<C, B>(self, client: &$lifetime Client<C, B>)
-                -> $B<$lifetime, Client<C, B>>
+            pub fn client<Conn, B>(self, client: &$lifetime Client<Conn, B>)
+                -> $B<$lifetime, Token<C, A>, Client<Conn, B>>
             where
-                C: Connect,
+                Conn: Connect,
                 B: From<Vec<u8>> + Stream<Error=HyperError> + 'static,
                 B::Item: AsRef<[u8]>,
             {
@@ -212,7 +216,7 @@ macro_rules! def_stream {
             ///
             /// This method overrides the effect of `client` method.
             pub fn handle(self, handle: &$lifetime Handle)
-                -> $B<$lifetime, Handle>
+                -> $B<$lifetime, Token<C, A>, Handle>
             {
                 $B {
                     $client_or_handle: handle,
@@ -222,13 +226,33 @@ macro_rules! def_stream {
                 }
             }
 
-            $(
-                $(#[$arg_setter_attr])*
-                pub fn $arg(&mut self, $arg: $a_ty) -> &mut Self {
-                    self.$arg = $arg;
-                    self
-                }
-            )*
+            /// Reset the HTTP request method to be used when connecting
+            /// to the server.
+            pub fn method(&mut self, method: RequestMethod) -> &mut Self {
+                self.method = method;
+                self
+            }
+
+            /// Reset the API endpoint URI to be connected.
+            pub fn endpoint(&mut self, endpoint: &$lifetime Uri) -> &mut Self {
+                self.endpoint = endpoint;
+                self
+            }
+
+            /// Reset the API endpoint URI to be connected.
+            #[deprecated(since = "0.6.0", note = "Use `endpoint` instead")]
+            pub fn end_point(&mut self, end_point: &$lifetime Uri) -> &mut Self
+            {
+                self.endpoint = end_point;
+                self
+            }
+
+            /// Reset the token to be used to log into Twitter.
+            pub fn token(&mut self, token: &$lifetime Token<C, A>) -> &mut Self
+            {
+                self.token = token;
+                self
+            }
 
             $(
                 $(#[$setter_attr])*
@@ -238,18 +262,11 @@ macro_rules! def_stream {
                 }
             )*
 
-            /// Reset the API endpoint URI to be connected.
-            #[deprecated(since = "0.6.0", note = "Use `endpoint` instead")]
-            pub fn end_point(&mut self, end_point: &'a Uri) -> &mut Self {
-                self.endpoint = end_point;
-                self
-            }
-
             /// Set a user agent string to be sent when connectiong to
             /// the Stream.
             #[deprecated(since = "0.6.0", note = "Will be removed in 0.7")]
-            pub fn user_agent<T>(&mut self, user_agent: Option<T>) -> &mut Self
-                where T: Into<Cow<'static, str>>
+            pub fn user_agent<U>(&mut self, user_agent: Option<U>) -> &mut Self
+                where U: Into<Cow<'static, str>>
             {
                 self.user_agent = user_agent.map(Into::into);
                 self
@@ -260,7 +277,10 @@ macro_rules! def_stream {
             $(
                 $(#[$s_constructor_attr])*
                 #[allow(deprecated)]
-                pub fn $constructor(token: &Token, handle: &Handle) -> $FS {
+                pub fn $constructor<C, A>(token: &Token<C, A>, handle: &Handle)
+                    -> $FS
+                    where C: Borrow<str>, A: Borrow<str>
+                {
                     $B::$constructor(token).handle(handle).listen()
                 }
             )*
@@ -313,18 +333,12 @@ def_stream! {
     /// # }
     /// ```
     #[derive(Clone, Debug)]
-    pub struct TwitterStreamBuilder<'a, CH> {
+    pub struct TwitterStreamBuilder<'a, T, CH> {
         client_or_handle: &'a CH = TUPLE_REF;
 
-        /// Reset the HTTP request method to be used when connecting
-        /// to the server.
         method: RequestMethod,
-
-        /// Reset the API endpoint URI to be connected.
         endpoint: &'a Uri,
-
-        /// Reset the token to be used to log into Twitter.
-        token: &'a Token<'a>;
+        token: &'a T;
 
         // Setters:
 
@@ -462,9 +476,11 @@ struct FutureTwitterStreamInner {
     timeout: Option<BaseTimeout>,
 }
 
-impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
+impl<'a, C, A, Conn, B> TwitterStreamBuilder<'a, Token<C, A>, Client<Conn, B>>
 where
-    C: Connect,
+    C: Borrow<str>,
+    A: Borrow<str>,
+    Conn: Connect,
     B: From<Vec<u8>> + Stream<Error=HyperError> + 'static,
     B::Item: AsRef<[u8]>,
 {
@@ -486,7 +502,9 @@ where
     }
 }
 
-impl<'a> TwitterStreamBuilder<'a, Handle> {
+impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, Handle>
+    where C: Borrow<str>, A: Borrow<str>
+{
     /// Start listening on a Stream, returning a `Future` which resolves
     /// to a `Stream` yielding JSON messages from the API.
     ///
@@ -509,11 +527,13 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
     }
 }
 
-impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
+impl<'a, C, A, _CH> TwitterStreamBuilder<'a, Token<C, A>, _CH>
+    where C: Borrow<str>, A: Borrow<str>
+{
     /// Make an HTTP connection to an endpoint of the Streaming API.
-    fn connect<C, B>(&self, c: &Client<C, B>) -> FutureResponse
+    fn connect<Conn, B>(&self, c: &Client<Conn, B>) -> FutureResponse
     where
-        C: Connect,
+        Conn: Connect,
         B: From<Vec<u8>> + Stream<Error=HyperError> + 'static,
         B::Item: AsRef<[u8]>,
     {
@@ -527,7 +547,8 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             use hyper::mime;
 
             let query = QueryBuilder::new_form(
-                &*self.token.consumer_secret, &*self.token.access_secret,
+                self.token.consumer_secret.borrow(),
+                self.token.access_secret.borrow(),
                 "POST", self.endpoint.as_ref(),
             );
             let QueryOutcome { header, query } = self.build_query(query);
@@ -547,7 +568,8 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
         } else {
             let upcase;
             let query = QueryBuilder::new(
-                &*self.token.consumer_secret, &*self.token.access_secret,
+                self.token.consumer_secret.borrow(),
+                self.token.access_secret.borrow(),
                 match self.method {
                     RequestMethod::Extension(ref m) => {
                         upcase = m.to_ascii_uppercase();
@@ -619,8 +641,8 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
             );
         }
         query.append_oauth_params(
-            &self.token.consumer_key,
-            &self.token.access_key,
+            self.token.consumer_key.borrow(),
+            self.token.access_key.borrow(),
             ! (self.replies || self.stall_warnings
                 || self.track.is_some() || self.with.is_some())
         );

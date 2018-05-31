@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::borrow::Borrow;
 
 /// An OAuth token used to log into Twitter.
 #[cfg_attr(feature = "tweetust", doc = "
@@ -8,33 +8,23 @@ This implements `tweetust::conn::Authenticator` so you can pass it to
 )]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Debug)]
-pub struct Token<'a> {
-    pub consumer_key: Cow<'a, str>,
-    pub consumer_secret: Cow<'a, str>,
-    pub access_key: Cow<'a, str>,
-    pub access_secret: Cow<'a, str>,
+pub struct Token<C=String, A=String> {
+    pub consumer_key: C,
+    pub consumer_secret: C,
+    pub access_key: A,
+    pub access_secret: A,
 }
 
-impl<'a> Token<'a> {
-    pub fn new<CK, CS, AK, AS>(
-        consumer_key: CK,
-        consumer_secret: CS,
-        access_key: AK,
-        access_secret: AS
-    )
-        -> Self
-    where
-        CK: Into<Cow<'a, str>>,
-        CS: Into<Cow<'a, str>>,
-        AK: Into<Cow<'a, str>>,
-        AS: Into<Cow<'a, str>>,
+impl<C, A> Token<C, A> {
+    pub fn new(
+        consumer_key: C,
+        consumer_secret: C,
+        access_key: A,
+        access_secret: A,
+    ) -> Self
+        where C: Borrow<str>, A: Borrow<str>
     {
-        Token {
-            consumer_key: consumer_key.into(),
-            consumer_secret: consumer_secret.into(),
-            access_key: access_key.into(),
-            access_secret: access_secret.into(),
-        }
+        Token { consumer_key, consumer_secret, access_key, access_secret }
     }
 }
 
@@ -42,17 +32,17 @@ cfg_if! {
     if #[cfg(feature = "egg-mode")] {
         extern crate egg_mode;
 
-        impl<'a> From<Token<'a>> for egg_mode::Token<'a> {
-            fn from(t: Token<'a>) -> Self {
+        use std::borrow::Cow;
+
+        use self::egg_mode::KeyPair;
+
+        impl<'a, C, A> From<Token<C, A>> for egg_mode::Token<'a>
+            where C: Into<Cow<'a, str>>, A: Into<Cow<'a, str>>
+        {
+            fn from(t: Token<C, A>) -> Self {
                 egg_mode::Token::Access {
-                    consumer: egg_mode::KeyPair::new(
-                        t.consumer_key,
-                        t.consumer_secret,
-                    ),
-                    access: egg_mode::KeyPair::new(
-                        t.access_key,
-                        t.access_secret,
-                    ),
+                    consumer: KeyPair::new(t.consumer_key, t.consumer_secret),
+                    access: KeyPair::new(t.access_key, t.access_secret),
                 }
             }
         }
@@ -68,7 +58,9 @@ cfg_if! {
         use self::tweetust::conn::{Request, RequestContent};
         use self::tweetust::conn::oauth_authenticator::OAuthAuthorizationScheme;
 
-        impl<'a> tweetust::conn::Authenticator for Token<'a> {
+        impl<C, A> tweetust::conn::Authenticator for Token<C, A>
+            where C: Borrow<str>, A: Borrow<str>
+        {
             type Scheme = OAuthAuthorizationScheme;
 
             fn create_authorization_header(&self, request: &Request)
@@ -77,8 +69,8 @@ cfg_if! {
                 let mut header = OAuthAuthorizationHeaderBuilder::new(
                     request.method.as_ref(),
                     &request.url,
-                    &*self.consumer_key,
-                    &*self.consumer_secret,
+                    self.consumer_key.borrow(),
+                    self.consumer_secret.borrow(),
                     SignatureMethod::HmacSha1,
                 );
 
