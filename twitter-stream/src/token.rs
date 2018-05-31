@@ -60,9 +60,11 @@ cfg_if! {
 }
 
 cfg_if! {
-    if #[cfg(feature = "tweetust")] {
+    if #[cfg(feature = "use-tweetust")] {
+        extern crate oauthcli;
         extern crate tweetust;
 
+        use self::oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
         use self::tweetust::conn::{Request, RequestContent};
         use self::tweetust::conn::oauth_authenticator::OAuthAuthorizationScheme;
 
@@ -72,19 +74,21 @@ cfg_if! {
             fn create_authorization_header(&self, request: &Request)
                 -> Option<OAuthAuthorizationScheme>
             {
-                let params = match request.content {
-                    RequestContent::WwwForm(ref params) => {
-                        Some(params.iter().map(|&(ref k, ref v)| (&**k, &**v)))
-                    },
-                    _ => None,
-                };
-
-                Some(OAuthAuthorizationScheme(authorize(
-                    self,
+                let mut header = OAuthAuthorizationHeaderBuilder::new(
                     request.method.as_ref(),
                     &request.url,
-                    params,
-                )))
+                    &*self.consumer_key,
+                    &*self.consumer_secret,
+                    SignatureMethod::HmacSha1,
+                );
+
+                if let RequestContent::WwwForm(ref params) = request.content {
+                    header.request_parameters(
+                        params.iter().map(|&(ref k, ref v)| (&**k, &**v))
+                    );
+                }
+
+                Some(OAuthAuthorizationScheme(header.finish_for_twitter()))
             }
         }
     }
