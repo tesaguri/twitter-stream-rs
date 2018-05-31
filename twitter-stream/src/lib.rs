@@ -175,7 +175,7 @@ macro_rules! def_stream {
                 }
             )*
 
-            /// Constructs a builder for a Stream at a custom end point.
+            /// Constructs a builder for a Stream at a custom endpoint.
             pub fn custom($($arg: $a_ty),*) -> $B<$lifetime, ()> {
                 $B {
                     $client_or_handle: $ch_default,
@@ -246,6 +246,13 @@ macro_rules! def_stream {
                     self
                 }
             )*
+
+            /// Reset the API endpoint URI to be connected.
+            #[deprecated(since = "0.6.0", note = "Use `endpoint` instead")]
+            pub fn end_point(&mut self, end_point: &'a Uri) -> &mut Self {
+                self.endpoint = end_point;
+                self
+            }
         }
 
         impl $S {
@@ -313,7 +320,7 @@ def_stream! {
         method: RequestMethod,
 
         /// Reset the API endpoint URI to be connected.
-        end_point: &'a Uri,
+        endpoint: &'a Uri,
 
         /// Reset the token to be used to log into Twitter.
         token: &'a Token<'a>;
@@ -502,7 +509,7 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
 }
 
 impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
-    /// Make an HTTP connection to an end point of the Streaming API.
+    /// Make an HTTP connection to an endpoint of the Streaming API.
     fn connect<C, B>(&self, c: &Client<C, B>) -> FutureResponse
     where
         C: Connect,
@@ -520,7 +527,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
 
             let query = QueryBuilder::new_form(
                 &*self.token.consumer_secret, &*self.token.access_secret,
-                "POST", self.end_point.as_ref(),
+                "POST", self.endpoint.as_ref(),
             );
             let QueryOutcome { header, query } = self.build_query(query);
 
@@ -530,7 +537,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
 
             let mut req = Request::new(
                 RequestMethod::Post,
-                self.end_point.clone(),
+                self.endpoint.clone(),
             );
             *req.headers_mut() = headers;
             req.set_body(query.into_bytes());
@@ -547,7 +554,7 @@ impl<'a, _CH> TwitterStreamBuilder<'a, _CH> {
                     },
                     ref m => m.as_ref(),
                 },
-                self.end_point.as_ref().to_owned(),
+                self.endpoint.as_ref().to_owned(),
             );
             let QueryOutcome { header, query: uri } = self.build_query(query);
 
