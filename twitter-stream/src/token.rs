@@ -36,8 +36,8 @@ cfg_if! {
 
         use self::egg_mode::KeyPair;
 
-        impl<'a, C, A> From<Token<C, A>> for egg_mode::Token<'a>
-            where C: Into<Cow<'a, str>>, A: Into<Cow<'a, str>>
+        impl<'a, C, A> From<Token<C, A>> for egg_mode::Token
+            where C: Into<Cow<'static, str>>, A: Into<Cow<'static, str>>
         {
             fn from(t: Token<C, A>) -> Self {
                 egg_mode::Token::Access {
