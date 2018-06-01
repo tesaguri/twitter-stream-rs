@@ -96,7 +96,6 @@ pub use error::Error;
 
 use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Display, Formatter};
-use std::ops::Deref;
 use std::time::Duration;
 
 use futures::{Future, Poll, Stream};
@@ -166,7 +165,7 @@ macro_rules! def_stream {
                 pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
                     $B::custom(
                         RequestMethod::$Method,
-                        $endpoint.deref(),
+                        &*$endpoint,
                         token,
                     )
                 }
