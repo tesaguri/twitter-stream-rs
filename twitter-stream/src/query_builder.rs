@@ -16,10 +16,14 @@ pub struct QueryBuilder {
     query: String,
     mac: MacWrite<Hmac<Sha1>>,
     will_append_question_mark: bool,
+    #[cfg(debug_assertions)]
+    prev_key: String,
 }
 
 pub struct QueryOutcome {
+    /// `Authorization` header string.
     pub header: String,
+    /// A URI with query string or a x-www-form-urlencoded string.
     pub query: String,
 }
 
@@ -34,10 +38,12 @@ struct MacWrite<M>(M);
 struct EncodeSet;
 
 impl QueryBuilder {
+    /// Returns a `QueryBuilder` that appends query string to `uri`.
     pub fn new(cs: &str, as_: &str, method: &str, uri: String) -> Self {
         Self::new_(cs, as_, method, Cow::Owned(uri))
     }
 
+    /// Returns a `QueryBuilder` that builds a x-www-form-urlencoded string.
     pub fn new_form(cs: &str, as_: &str, method: &str, uri: &str) -> Self {
         Self::new_(cs, as_, method, Cow::Borrowed(uri))
     }
@@ -67,7 +73,9 @@ impl QueryBuilder {
         );
         write!(signing_key, "{}&{}", percent_encode(cs), percent_encode(as_))
             .unwrap();
-        let mut mac = MacWrite(Hmac::new_varkey(signing_key.as_bytes()).unwrap());
+        let mut mac = MacWrite(
+            Hmac::new_varkey(signing_key.as_bytes()).unwrap()
+        );
 
         let query;
         let will_append_question_mark;
@@ -88,10 +96,18 @@ impl QueryBuilder {
                 .unwrap();
         }
 
-        QueryBuilder { header, query, mac, will_append_question_mark }
+        #[cfg(debug_assertions)] {
+            QueryBuilder {
+                header, query, mac, will_append_question_mark,
+                prev_key: String::new(),
+            }
+        } #[cfg(not(debug_assertions))] {
+            QueryBuilder { header, query, mac, will_append_question_mark }
+        }
     }
 
     pub fn append(&mut self, k: &str, v: &str, end: bool) {
+        self.check_dictionary_order(k);
         self.append_question_mark();
         write!(self.query, "{}={}", k, percent_encode(v)).unwrap();
         self.mac_input(k, v, end);
@@ -103,6 +119,7 @@ impl QueryBuilder {
     pub fn append_encoded<V, W>(&mut self, k: &str, v: V, w: W, end: bool)
         where V: Display, W: Display
     {
+        self.check_dictionary_order(k);
         self.append_question_mark();
         write!(self.query, "{}={}", k, v).unwrap();
         self.mac_input_encoded(k, w, end);
@@ -140,12 +157,14 @@ impl QueryBuilder {
     }
 
     fn append_to_header(&mut self, k: &str, v: &str, end: bool) {
+        self.check_dictionary_order(k);
         write!(self.header, r#"{}="{}","#, k, percent_encode(v)).unwrap();
         self.mac_input(k, v, end);
     }
 
     fn append_to_header_encoded<V: Display>(&mut self, k: &str, v: V, end: bool)
     {
+        self.check_dictionary_order(k);
         write!(self.header, r#"{}="{}","#, k, v).unwrap();
         self.mac_input_encoded(k, v, end);
     }
@@ -165,6 +184,15 @@ impl QueryBuilder {
     fn mac_input_encoded<V: Display>(&mut self, k: &str, v: V, end: bool) {
         write!(self.mac, "{}%3D{}", k, v).unwrap();
         if ! end { self.mac.write_str("%26").unwrap(); }
+    }
+
+    fn check_dictionary_order(&mut self, _k: &str) {
+        #[cfg(debug_assertions)] {
+            assert!(*self.prev_key < *_k,
+                "keys must be inserted in dictionary order",
+            );
+            self.prev_key = _k.to_owned();
+        }
     }
 
     pub fn build(mut self) -> QueryOutcome {

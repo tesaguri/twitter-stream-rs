@@ -786,3 +786,31 @@ cfg_if! {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_dictionary_order() {
+        TwitterStreamBuilder {
+            client_or_handle: &(),
+            method: RequestMethod::Get,
+            endpoint: &EP_FILTER,
+            token: &Token::new("", "", "", ""),
+            timeout: None,
+            stall_warnings: true,
+            filter_level: FilterLevel::Low,
+            language: Some("en"),
+            follow: Some(&[12]),
+            track: Some("\"User Stream\" to:TwitterDev"),
+            locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
+            count: Some(10),
+            with: Some(With::User),
+            replies: true,
+            user_agent: None,
+        }.build_query(QueryBuilder::new_form("", "", "", ""));
+        // `QueryBuilder::check_dictionary_order` will panic
+        // if the insertion order of query pairs is incorrect.
+    }
+}
