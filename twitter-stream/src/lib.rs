@@ -95,7 +95,7 @@ use hyper::header::{Headers, ContentLength, ContentType, UserAgent};
 use tokio_core::reactor::Handle;
 use url::form_urlencoded::{Serializer, Target};
 
-use error::HyperError;
+use error::{HyperError, TlsError};
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Url, With};
 use util::{BaseTimeout, Lines, TimeoutStream};
 
@@ -393,7 +393,7 @@ def_stream! {
     /// A future returned by constructor methods
     /// which resolves to a `TwitterStream`.
     pub struct FutureTwitterStream {
-        inner: FutureTwitterStreamInner,
+        inner: Result<FutureTwitterStreamInner, Option<TlsError>>,
     }
 
     /// A listener for Twitter Streaming API.
@@ -432,12 +432,9 @@ def_stream! {
     pub fn user(Get, EP_USER);
 }
 
-enum FutureTwitterStreamInner {
-    Ok {
-        inner: FutureResponse,
-        timeout: Option<BaseTimeout>,
-    },
-    Err(Option<error::TlsError>),
+struct FutureTwitterStreamInner {
+    resp: FutureResponse,
+    timeout: Option<BaseTimeout>,
 }
 
 impl<'a, C, B> TwitterStreamBuilder<'a, Client<C, B>>
@@ -453,13 +450,13 @@ where
     #[allow(deprecated)]
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: FutureTwitterStreamInner::Ok {
-                inner: self.connect(self.client_or_handle),
+            inner: Ok(FutureTwitterStreamInner {
+                resp: self.connect(self.client_or_handle),
                 timeout: self.timeout.and_then(|dur| {
                     let h = self.client_or_handle.handle().clone();
                     BaseTimeout::new(dur, h)
                 }),
-            },
+            }),
         }
     }
 }
@@ -470,10 +467,10 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
     ///
     /// You need to call `handle` method before calling this method.
     pub fn listen(&self) -> FutureTwitterStream {
-        match default_connector::new(self.client_or_handle) {
-            Ok(c) => FutureTwitterStream {
-                inner: FutureTwitterStreamInner::Ok {
-                    inner: self.connect(
+        FutureTwitterStream {
+            inner: default_connector::new(self.client_or_handle)
+                .map(|c| FutureTwitterStreamInner {
+                    resp: self.connect(
                         &Client::configure().connector(c)
                             .build(self.client_or_handle)
                     ),
@@ -481,11 +478,8 @@ impl<'a> TwitterStreamBuilder<'a, Handle> {
                         let h = self.client_or_handle.clone();
                         BaseTimeout::new(dur, h)
                     }),
-                },
-            },
-            Err(e) => FutureTwitterStream {
-                inner: FutureTwitterStreamInner::Err(Some(e)),
-            },
+                })
+                .map_err(Some),
         }
     }
 }
@@ -612,43 +606,37 @@ impl Future for FutureTwitterStream {
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
         use futures::Async;
 
-        match self.inner {
-            FutureTwitterStreamInner::Ok { ref mut inner, ref mut timeout } => {
-                match inner.poll().map_err(Error::Hyper)? {
-                    Async::Ready(res) => {
-                        let status = res.status();
-                        if StatusCode::Ok != status {
-                            return Err(Error::Http(status));
-                        }
+        let FutureTwitterStreamInner { ref mut resp, ref mut timeout } =
+            *self.inner.as_mut().map_err(|e| Error::Tls(
+                e.take().expect("cannot poll FutureTwitterStream twice")
+            ))?;
 
-                        let body = match timeout.take() {
-                            Some(timeout) => timeout.for_stream(res.body()),
-                            None => TimeoutStream::never(res.body()),
-                        };
-
-                        Ok(TwitterStream {
-                            inner: Lines::new(body),
-                        }.into())
-                    },
-                    Async::NotReady => {
-                        if let Some(ref mut timeout) = *timeout {
-                            match timeout.timer_mut().poll() {
-                                Ok(Async::Ready(())) =>
-                                    return Err(Error::TimedOut),
-                                Ok(Async::NotReady) => (),
-                                // `Timeout` never fails.
-                                Err(_) => unreachable!(),
-                            }
-                        }
-                        Ok(Async::NotReady)
-                    },
+        match resp.poll().map_err(Error::Hyper)? {
+            Async::Ready(res) => {
+                let status = res.status();
+                if StatusCode::Ok != status {
+                    return Err(Error::Http(status));
                 }
+
+                let body = match timeout.take() {
+                    Some(timeout) => timeout.for_stream(res.body()),
+                    None => TimeoutStream::never(res.body()),
+                };
+
+                Ok(TwitterStream { inner: Lines::new(body) }.into())
             },
-            FutureTwitterStreamInner::Err(ref mut e) => Err(
-                Error::Tls(
-                    e.take().expect("cannot poll FutureTwitterStream twice")
-                )
-            ),
+            Async::NotReady => {
+                if let Some(ref mut timeout) = *timeout {
+                    match timeout.timer_mut().poll() {
+                        Ok(Async::Ready(())) =>
+                            return Err(Error::TimedOut),
+                        Ok(Async::NotReady) => (),
+                        // `Timeout` never fails.
+                        Err(_) => unreachable!(),
+                    }
+                }
+                Ok(Async::NotReady)
+            },
         }
     }
 }
