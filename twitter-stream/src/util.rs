@@ -1,11 +1,14 @@
-use bytes::Bytes;
-use error::{Error, HyperError};
-use futures::{Async, Future, Poll, Stream};
-use futures::stream::Fuse;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
-use tokio_core::reactor::{Handle, Timeout};
+
+use bytes::Bytes;
+use futures::{Async, Future, Poll, Stream};
+use futures::stream::Fuse;
+use tokio_timer::Delay;
+use tokio_timer::timer::{Now, SystemNow};
+
+use error::{Error, HyperError};
 
 // Synonym of `twitter_stream_message::util::string_enums`
 macro_rules! string_enums {
@@ -72,16 +75,21 @@ macro_rules! string_enums {
     }
 }
 
-pub struct BaseTimeout {
-    dur: Duration,
-    handle: Handle,
-    timer: Timeout,
+pub struct Timeout<N=SystemNow> {
+    inner: Option<TimeoutInner<N>>,
 }
 
-/// Adds a timeout to a `Stream`. Inspired by `tokio_timer::TimeoutStream`.
-pub struct TimeoutStream<S> {
+struct TimeoutInner<N=SystemNow> {
+    dur: Duration,
+    timer: Delay,
+    now: N,
+}
+
+/// Adds a timeout to a `Stream`.
+/// Inspired by `tokio_timer::TimeoutStream` (v0.1).
+pub struct TimeoutStream<S, N=SystemNow> {
     stream: S,
-    inner: Option<BaseTimeout>,
+    timeout: Timeout<N>,
 }
 
 pub struct JoinDisplay<'a, D: 'a, Sep: ?Sized+'a>(pub &'a [D], pub &'a Sep);
@@ -96,33 +104,61 @@ pub struct Lines<B> where B: Stream {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum Never {}
 
-impl BaseTimeout {
-    pub fn new(dur: Duration, handle: Handle) -> Option<Self> {
-        Timeout::new(dur, &handle).ok().map(|timer| {
-            BaseTimeout { dur, handle, timer }
-        })
+impl Timeout {
+    pub fn new(dur: Duration) -> Self {
+        Timeout::with_now(SystemNow::new(), dur)
+    }
+}
+
+impl<N> Timeout<N> {
+    pub fn cancel(&mut self) {
+        self.inner = None;
+    }
+}
+
+impl<N: Now> Timeout<N> {
+    pub fn never() -> Self {
+        Timeout { inner: None }
     }
 
-    pub fn for_stream<S>(self, stream: S) -> TimeoutStream<S> {
-        TimeoutStream {
-            stream,
-            inner: Timeout::new(self.dur, &self.handle).ok().map(move |timer| {
-                BaseTimeout {
-                    timer,
-                    ..self
-                }
+    fn with_now(mut now: N, dur: Duration) -> Self {
+        Timeout {
+            inner: Some(TimeoutInner {
+                dur, timer: Delay::new(now.now() + dur), now
             }),
         }
     }
 
-    pub fn timer_mut(&mut self) -> &mut Timeout {
-        &mut self.timer
+    pub fn reset(&mut self) {
+        if let Some(ref mut inner) = self.inner {
+            inner.timer.reset(inner.now.now() + inner.dur)
+        }
+    }
+
+    pub fn take(&mut self) -> Self {
+        Timeout { inner: self.inner.take() }
+    }
+
+    pub fn for_stream<S>(mut self, stream: S) -> TimeoutStream<S, N> {
+        self.reset();
+        TimeoutStream { stream, timeout: self }
     }
 }
 
-impl<S> TimeoutStream<S> {
-    pub fn never(stream: S) -> Self {
-        TimeoutStream { stream, inner: None }
+impl<N> Future for Timeout<N> {
+    type Item = ();
+    type Error = Never;
+
+    fn poll(&mut self) -> Poll<(), Never> {
+        if let Some(ref mut inner) = self.inner {
+            match inner.timer.poll() {
+                Ok(async) => return Ok(async),
+                Err(e) => if ! e.is_shutdown() { return Ok(Async::NotReady); },
+            }
+        }
+        // if `e.is_shutdown`:
+        self.cancel();
+        Ok(Async::NotReady)
     }
 }
 
@@ -132,35 +168,18 @@ impl<S> Stream for TimeoutStream<S> where S: Stream<Error=HyperError> {
 
     fn poll(&mut self) -> Poll<Option<S::Item>, Error> {
         self.stream.poll().map_err(Error::Hyper).and_then(|async| {
-            let ret;
-
-            if let Some(ref mut inner) = self.inner {
-                match async {
-                    Async::Ready(Some(v)) => {
-                        ret = Ok(Some(v).into());
-                        if let Ok(timer)
-                            = Timeout::new(inner.dur, &inner.handle)
-                        {
-                            inner.timer = timer;
-                            return ret;
-                        }
-                        // goto timeout_new_failed;
-                    },
-                    Async::Ready(None) => return Ok(Async::Ready(None)),
-                    Async::NotReady => match inner.timer.poll() {
-                        Ok(Async::Ready(())) => return Err(Error::TimedOut),
-                        Ok(Async::NotReady) => return Ok(Async::NotReady),
-                        // `Timeout` never fails.
-                        Err(_) => unreachable!(),
-                    },
-                }
-            } else {
-                return Ok(async);
+            match async {
+                Async::Ready(Some(v)) => {
+                    self.timeout.reset();
+                    Ok(Some(v).into())
+                },
+                Async::Ready(None) => Ok(Async::Ready(None)),
+                Async::NotReady => match self.timeout.poll() {
+                    Ok(Async::Ready(())) => Err(Error::TimedOut),
+                    Ok(Async::NotReady) => Ok(Async::NotReady),
+                    Err(_never) => unreachable!(),
+                },
             }
-
-            // timeout_new_failed:
-            self.inner = None;
-            ret
         })
     }
 }

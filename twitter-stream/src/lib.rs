@@ -23,20 +23,15 @@ extern crate twitter_stream;
 Here is a basic example that prints public mentions @Twitter in JSON format:
 
 ```rust,no_run
-extern crate futures;
-extern crate tokio_core;
 extern crate twitter_stream;
 
-use futures::{Future, Stream};
-use tokio_core::reactor::Core;
 use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::rt::{self, Future, Stream};
 
 # fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let mut core = Core::new().unwrap();
-
-let future = TwitterStreamBuilder::filter(&token).handle(&core.handle())
+let future = TwitterStreamBuilder::filter(&token)
     .replies(true)
     .track(Some("@Twitter"))
     .listen()
@@ -44,12 +39,16 @@ let future = TwitterStreamBuilder::filter(&token).handle(&core.handle())
     .for_each(|json| {
         println!("{}", json);
         Ok(())
-    });
+    })
+    .map_err(|e| println!("error: {}", e));
 
-core.run(future).unwrap();
+rt::run(future);
 # }
 ```
 */
+
+#[cfg(not(feature = "runtime"))]
+compile_error!("`runtime` feature must be enabled for now.");
 
 extern crate bytes;
 #[macro_use]
@@ -58,8 +57,6 @@ extern crate cfg_if;
 extern crate futures;
 extern crate hmac;
 extern crate hyper;
-#[macro_use]
-extern crate lazy_static;
 extern crate byteorder;
 extern crate percent_encoding;
 extern crate rand;
@@ -67,7 +64,8 @@ extern crate rand;
 #[macro_use]
 extern crate serde;
 extern crate sha1;
-extern crate tokio_core;
+extern crate tokio;
+extern crate tokio_timer;
 #[cfg(feature = "parse")]
 extern crate twitter_stream_message;
 
@@ -75,6 +73,7 @@ extern crate twitter_stream_message;
 mod util;
 
 pub mod error;
+pub mod rt;
 pub mod types;
 
 /// Exports `twitter_stream_message` crate for convenience.
@@ -98,22 +97,30 @@ use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
+use bytes::Bytes;
 use futures::{Future, Poll, Stream};
-use hyper::Body;
-use hyper::client::{Client, Connect, FutureResponse, Request};
-use hyper::header::{Headers, ContentLength, ContentType, UserAgent};
-use tokio_core::reactor::Handle;
+use hyper::Request;
+use hyper::body::{Body, Payload};
+use hyper::client::{Client, ResponseFuture};
+use hyper::client::connect::Connect;
+use hyper::header::{
+    HeaderValue,
+    AUTHORIZATION,
+    CONTENT_LENGTH,
+    CONTENT_TYPE,
+    USER_AGENT,
+};
 
-use error::{HyperError, TlsError};
+use error::TlsError;
 use query_builder::{QueryBuilder, QueryOutcome};
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri, With};
-use util::{BaseTimeout, JoinDisplay, Lines, TimeoutStream};
+use util::{JoinDisplay, Lines, Timeout, TimeoutStream};
 
 macro_rules! def_stream {
     (
         $(#[$builder_attr:meta])*
-        pub struct $B:ident<$lifetime:tt, $T:ident, $CH:ident> {
-            $client_or_handle:ident: $ch_ty:ty = $ch_default:expr;
+        pub struct $B:ident<$lifetime:tt, $T:ident, $Cli:ident> {
+            $client:ident: $cli_ty:ty = $cli_default:expr;
             $($arg:ident: $a_ty:ty),*;
             $(
                 $(#[$setter_attr:meta])*
@@ -140,8 +147,8 @@ macro_rules! def_stream {
         )*
     ) => {
         $(#[$builder_attr])*
-        pub struct $B<$lifetime, $T: $lifetime, $CH: $lifetime> {
-            $client_or_handle: $ch_ty,
+        pub struct $B<$lifetime, $T: $lifetime, $Cli: $lifetime> {
+            $client: $cli_ty,
             $($arg: $a_ty,)*
             $($(#[$setter_attr])* $setter: $s_ty,)*
             $($custom_setter: $c_ty,)*
@@ -165,7 +172,9 @@ macro_rules! def_stream {
                 pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
                     $B::custom(
                         RequestMethod::$Method,
-                        &*$endpoint,
+                        Uri::from_shared(
+                            Bytes::from_static($endpoint.as_bytes())
+                        ).unwrap(),
                         token,
                     )
                 }
@@ -174,12 +183,12 @@ macro_rules! def_stream {
             /// Constructs a builder for a Stream at a custom endpoint.
             pub fn custom(
                 method: RequestMethod,
-                endpoint: &$lifetime Uri,
+                endpoint: Uri,
                 token: &$lifetime Token<C, A>,
             ) -> Self
             {
                 $B {
-                    $client_or_handle: $ch_default,
+                    $client: $cli_default,
                     method,
                     endpoint,
                     token,
@@ -189,36 +198,31 @@ macro_rules! def_stream {
             }
         }
 
-        impl<$lifetime, C, A, _CH> $B<$lifetime, Token<C, A>, _CH> {
+        impl<$lifetime, C, A, _Cli> $B<$lifetime, Token<C, A>, _Cli> {
             /// Set a `hyper::Client` to be used for connecting to the server.
             ///
             /// The `Client` should be able to handle the `https` scheme.
-            ///
-            /// This method overrides the effect of `handle` method.
             pub fn client<Conn, B>(self, client: &$lifetime Client<Conn, B>)
                 -> $B<$lifetime, Token<C, A>, Client<Conn, B>>
             where
-                Conn: Connect,
-                B: From<Vec<u8>> + Stream<Error=HyperError> + 'static,
-                B::Item: AsRef<[u8]>,
+                Conn: Connect + Sync + 'static,
+                Conn::Transport: 'static,
+                Conn::Future: 'static,
+                B: Default + From<Vec<u8>> + Payload + Send + 'static,
+                B::Data: Send,
             {
                 $B {
-                    $client_or_handle: client,
+                    $client: client,
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
                     $($custom_setter: self.$custom_setter,)*
                 }
             }
 
-            /// Set a `tokio_core::reactor::Handle` to be used for
-            /// connecting to the server.
-            ///
-            /// This method overrides the effect of `client` method.
-            pub fn handle(self, handle: &$lifetime Handle)
-                -> $B<$lifetime, Token<C, A>, Handle>
-            {
+            /// Unset the client set by `client` method.
+            pub fn unset_client(self) -> $B<$lifetime, Token<C, A>, ()> {
                 $B {
-                    $client_or_handle: handle,
+                    $client: &(),
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
                     $($custom_setter: self.$custom_setter,)*
@@ -233,15 +237,14 @@ macro_rules! def_stream {
             }
 
             /// Reset the API endpoint URI to be connected.
-            pub fn endpoint(&mut self, endpoint: &$lifetime Uri) -> &mut Self {
+            pub fn endpoint(&mut self, endpoint: Uri) -> &mut Self {
                 self.endpoint = endpoint;
                 self
             }
 
             /// Reset the API endpoint URI to be connected.
             #[deprecated(since = "0.6.0", note = "Use `endpoint` instead")]
-            pub fn end_point(&mut self, end_point: &$lifetime Uri) -> &mut Self
-            {
+            pub fn end_point(&mut self, end_point: Uri) -> &mut Self {
                 self.endpoint = end_point;
                 self
             }
@@ -276,27 +279,15 @@ macro_rules! def_stream {
             $(
                 $(#[$s_constructor_attr])*
                 #[allow(deprecated)]
-                pub fn $constructor<C, A>(token: &Token<C, A>, handle: &Handle)
-                    -> $FS
+                pub fn $constructor<C, A>(token: &Token<C, A>) -> $FS
                     where C: Borrow<str>, A: Borrow<str>
                 {
-                    $B::$constructor(token).handle(handle).listen()
+                    $B::$constructor(token).listen()
                 }
             )*
         }
     };
 }
-
-lazy_static! {
-    static ref EP_FILTER: Uri =
-        "https://stream.twitter.com/1.1/statuses/filter.json".parse().unwrap();
-    static ref EP_SAMPLE: Uri =
-        "https://stream.twitter.com/1.1/statuses/sample.json".parse().unwrap();
-    static ref EP_USER: Uri =
-        "https://userstream.twitter.com/1.1/user.json".parse().unwrap();
-}
-
-const TUPLE_REF: &() = &();
 
 def_stream! {
     /// A builder for `TwitterStream`.
@@ -304,39 +295,34 @@ def_stream! {
     /// ## Example
     ///
     /// ```rust,no_run
-    /// extern crate futures;
-    /// extern crate tokio_core;
     /// extern crate twitter_stream;
     ///
-    /// use futures::{Future, Stream};
-    /// use tokio_core::reactor::Core;
     /// use twitter_stream::{Token, TwitterStreamBuilder};
+    /// use twitter_stream::rt::{self, Future, Stream};
     ///
     /// # fn main() {
     /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
-    /// let mut core = Core::new().unwrap();
-    /// let handle = core.handle();
     ///
     /// let future = TwitterStreamBuilder::user(&token)
-    ///     .handle(&handle)
     ///     .timeout(None)
     ///     .replies(true)
-    ///     .listen() // You cannot use `listen` method before calling `client` or `handle` method.
+    ///     .listen()
     ///     .flatten_stream()
     ///     .for_each(|json| {
     ///         println!("{}", json);
     ///         Ok(())
-    ///     });
+    ///     })
+    ///     .map_err(|e| println!("error: {}", e));
     ///
-    /// core.run(future).unwrap();
+    /// rt::run(future);
     /// # }
     /// ```
     #[derive(Clone, Debug)]
-    pub struct TwitterStreamBuilder<'a, T, CH> {
-        client_or_handle: &'a CH = TUPLE_REF;
+    pub struct TwitterStreamBuilder<'a, T, Cli> {
+        client: &'a Cli = &();
 
         method: RequestMethod,
-        endpoint: &'a Uri,
+        endpoint: Uri,
         token: &'a T;
 
         // Setters:
@@ -441,7 +427,7 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
     -
     /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
-    pub fn filter(Post, EP_FILTER);
+    pub fn filter(POST, "https://stream.twitter.com/1.1/statuses/filter.json");
 
     /// Create a builder for `GET statuses/sample` endpoint.
     ///
@@ -450,7 +436,7 @@ def_stream! {
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
     -
     /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
-    pub fn sample(Get, EP_SAMPLE);
+    pub fn sample(GET, "https://stream.twitter.com/1.1/statuses/sample.json");
 
     /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
     ///
@@ -467,21 +453,23 @@ def_stream! {
         since = "0.6.0",
         note = "The User stream has been deprecated and will be unavailable",
     )]
-    pub fn user(Get, EP_USER);
+    pub fn user(GET, "https://userstream.twitter.com/1.1/user.json");
 }
 
 struct FutureTwitterStreamInner {
-    resp: FutureResponse,
-    timeout: Option<BaseTimeout>,
+    resp: ResponseFuture,
+    timeout: Timeout,
 }
 
 impl<'a, C, A, Conn, B> TwitterStreamBuilder<'a, Token<C, A>, Client<Conn, B>>
 where
     C: Borrow<str>,
     A: Borrow<str>,
-    Conn: Connect,
-    B: From<Vec<u8>> + Stream<Error=HyperError> + 'static,
-    B::Item: AsRef<[u8]>,
+    Conn: Connect + Sync + 'static,
+    Conn::Transport: 'static,
+    Conn::Future: 'static,
+    B: Default + From<Vec<u8>> + Payload + Send + 'static,
+    B::Data: Send,
 {
     /// Start listening on a Stream, returning a `Future` which resolves
     /// to a `Stream` yielding JSON messages from the API.
@@ -491,17 +479,16 @@ where
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
             inner: Ok(FutureTwitterStreamInner {
-                resp: self.connect(self.client_or_handle),
-                timeout: self.timeout.and_then(|dur| {
-                    let h = self.client_or_handle.handle().clone();
-                    BaseTimeout::new(dur, h)
-                }),
+                resp: self.connect(self.client),
+                timeout: self.timeout
+                    .map(Timeout::new)
+                    .unwrap_or_else(Timeout::never),
             }),
         }
     }
 }
 
-impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, Handle>
+impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
     where C: Borrow<str>, A: Borrow<str>
 {
     /// Start listening on a Stream, returning a `Future` which resolves
@@ -510,87 +497,71 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, Handle>
     /// You need to call `handle` method before calling this method.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
-            inner: default_connector::new(self.client_or_handle)
+            inner: default_connector::new()
                 .map(|c| FutureTwitterStreamInner {
-                    resp: self.connect(
-                        &Client::configure().connector(c)
-                            .build(self.client_or_handle)
-                    ),
-                    timeout: self.timeout.and_then(|dur| {
-                        let h = self.client_or_handle.clone();
-                        BaseTimeout::new(dur, h)
-                    }),
+                    resp: self.connect::<_, Body>(&Client::builder().build(c)),
+                    timeout: self.timeout
+                        .map(Timeout::new)
+                        .unwrap_or_else(Timeout::never),
                 })
                 .map_err(Some),
         }
     }
 }
 
-impl<'a, C, A, _CH> TwitterStreamBuilder<'a, Token<C, A>, _CH>
+impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
     where C: Borrow<str>, A: Borrow<str>
 {
     /// Make an HTTP connection to an endpoint of the Streaming API.
-    fn connect<Conn, B>(&self, c: &Client<Conn, B>) -> FutureResponse
+    fn connect<Conn, B>(&self, c: &Client<Conn, B>) -> ResponseFuture
     where
-        Conn: Connect,
-        B: From<Vec<u8>> + Stream<Error=HyperError> + 'static,
-        B::Item: AsRef<[u8]>,
+        Conn: Connect + Sync + 'static,
+        Conn::Transport: 'static,
+        Conn::Future: 'static,
+        B: Default + From<Vec<u8>> + Payload + Send + 'static,
+        B::Data: Send,
     {
-        let mut headers = Headers::new();
-        // headers.set(AcceptEncoding(vec![qitem(Encoding::Chunked), qitem(Encoding::Gzip)]));
+        let mut req = Request::builder();
+        req.method(self.method.clone());
+        // headers.insert(ACCEPT_ENCODING, "chunked, gzip");
         if let Some(ref ua) = self.user_agent {
-            headers.set(UserAgent::new(ua.clone()));
+            req.header(USER_AGENT, &**ua);
         }
 
-        if RequestMethod::Post == self.method {
-            use hyper::mime;
-
+        let req = if RequestMethod::POST == self.method {
             let query = QueryBuilder::new_form(
                 self.token.consumer_secret.borrow(),
                 self.token.access_secret.borrow(),
-                "POST", self.endpoint.as_ref(),
+                "POST", &self.endpoint,
             );
             let QueryOutcome { header, query } = self.build_query(query);
 
-            headers.set_raw("Authorization", header);
-            headers.set(ContentType(mime::APPLICATION_WWW_FORM_URLENCODED));
-            headers.set(ContentLength(query.len() as u64));
-
-            let mut req = Request::new(
-                RequestMethod::Post,
-                self.endpoint.clone(),
-            );
-            *req.headers_mut() = headers;
-            req.set_body(query.into_bytes());
-
-            c.request(req)
+            req
+                .uri(self.endpoint.clone())
+                .header(AUTHORIZATION, Bytes::from(header))
+                .header(CONTENT_TYPE, HeaderValue::from_static(
+                    "application/x-www-form-urlencoded"
+                ))
+                .header(CONTENT_LENGTH, Bytes::from(query.len().to_string()))
+                .body(query.into_bytes().into())
+                .unwrap()
         } else {
-            let upcase;
             let query = QueryBuilder::new(
                 self.token.consumer_secret.borrow(),
                 self.token.access_secret.borrow(),
-                match self.method {
-                    RequestMethod::Extension(ref m) => {
-                        upcase = m.to_ascii_uppercase();
-                        &upcase
-                    },
-                    ref m => m.as_ref(),
-                },
-                self.endpoint.as_ref().to_owned(),
+                self.method.as_ref(), &self.endpoint,
             );
             let QueryOutcome { header, query: uri } = self.build_query(query);
 
-            headers.set_raw("Authorization", header);
-
-            let mut req = Request::new(
-                self.method.clone(),
-                uri.parse().unwrap(),
-            );
-            *req.headers_mut() = headers;
+            req
+                .uri(uri)
+                .header(AUTHORIZATION, Bytes::from(header))
+                .body(B::default())
+                .unwrap()
+        };
 
             c.request(req)
         }
-    }
 
     fn build_query(&self, mut query: QueryBuilder) -> QueryOutcome {
         const COMMA: &str = "%2C";
@@ -682,28 +653,20 @@ impl Future for FutureTwitterStream {
         match resp.poll().map_err(Error::Hyper)? {
             Async::Ready(res) => {
                 let status = res.status();
-                if StatusCode::Ok != status {
+                if StatusCode::OK != status {
                     return Err(Error::Http(status));
                 }
 
-                let body = match timeout.take() {
-                    Some(timeout) => timeout.for_stream(res.body()),
-                    None => TimeoutStream::never(res.body()),
-                };
+                let body = timeout.take().for_stream(res.into_body());
 
                 Ok(TwitterStream { inner: Lines::new(body) }.into())
             },
             Async::NotReady => {
-                if let Some(ref mut timeout) = *timeout {
-                    match timeout.timer_mut().poll() {
-                        Ok(Async::Ready(())) =>
-                            return Err(Error::TimedOut),
-                        Ok(Async::NotReady) => (),
-                        // `Timeout` never fails.
-                        Err(_) => unreachable!(),
-                    }
+                match timeout.poll() {
+                    Ok(Async::Ready(())) => Err(Error::TimedOut),
+                    Ok(Async::NotReady) => Ok(Async::NotReady),
+                    Err(_never) => unreachable!(),
                 }
-                Ok(Async::NotReady)
             },
         }
     }
@@ -739,14 +702,13 @@ cfg_if! {
             extern crate hyper_tls;
             extern crate native_tls;
 
-            pub use self::native_tls::Error as Error;
+            pub use self::native_tls::Error;
 
+            use hyper::client::HttpConnector;
             use self::hyper_tls::HttpsConnector;
 
-            pub fn new(h: &::tokio_core::reactor::Handle)
-                -> Result<HttpsConnector<::hyper::client::HttpConnector>, Error>
-            {
-                HttpsConnector::new(1, h)
+            pub fn new() -> Result<HttpsConnector<HttpConnector>, Error> {
+                HttpsConnector::new(1)
             }
         }
     } else if #[cfg(feature = "tls-rustls")] {
@@ -767,10 +729,11 @@ cfg_if! {
 
             pub use self::hyper_openssl::openssl::error::ErrorStack as Error;
 
+            use hyper::client::HttpConnector;
             use self::hyper_openssl::HttpsConnector;
 
-            pub fn new(h: &::tokio_core::reactor::Handle) -> Result<HttpsConnector<::hyper::client::HttpConnector>, Error> {
-                HttpsConnector::new(1, h)
+            pub fn new() -> Result<HttpsConnector<HttpConnector>, Error> {
+                HttpsConnector::new(1)
             }
         }
     } else {
@@ -780,8 +743,8 @@ cfg_if! {
             use hyper::client::HttpConnector;
 
             #[cold]
-            pub fn new(h: &::tokio_core::reactor::Handle) -> Result<HttpConnector, Error> {
-                Ok(HttpConnector::new(1, h))
+            pub fn new() -> Result<HttpConnector, Error> {
+                Ok(HttpConnector::new(1))
             }
         }
     }
@@ -793,10 +756,12 @@ mod tests {
 
     #[test]
     fn query_dictionary_order() {
+        let endpoint = "https://stream.twitter.com/1.1/statuses/filter.json"
+            .parse::<Uri>().unwrap();
         TwitterStreamBuilder {
-            client_or_handle: &(),
-            method: RequestMethod::Get,
-            endpoint: &EP_FILTER,
+            client: &(),
+            method: RequestMethod::GET,
+            endpoint: endpoint.clone(),
             token: &Token::new("", "", "", ""),
             timeout: None,
             stall_warnings: true,
@@ -809,7 +774,7 @@ mod tests {
             with: Some(With::User),
             replies: true,
             user_agent: None,
-        }.build_query(QueryBuilder::new_form("", "", "", ""));
+        }.build_query(QueryBuilder::new_form("", "", "", &endpoint));
         // `QueryBuilder::check_dictionary_order` will panic
         // if the insertion order of query pairs is incorrect.
     }

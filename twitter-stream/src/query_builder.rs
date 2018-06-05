@@ -1,10 +1,10 @@
-use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter, Write};
 use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use byteorder::{BigEndian, ByteOrder};
 use hmac::{Hmac, Mac};
+use hyper::Uri;
 use percent_encoding::{EncodeSet as EncodeSet_, PercentEncode};
 use rand::thread_rng;
 use rand::distributions::{Alphanumeric, Distribution};
@@ -39,18 +39,16 @@ struct EncodeSet;
 
 impl QueryBuilder {
     /// Returns a `QueryBuilder` that appends query string to `uri`.
-    pub fn new(cs: &str, as_: &str, method: &str, uri: String) -> Self {
-        Self::new_(cs, as_, method, Cow::Owned(uri))
+    pub fn new(cs: &str, as_: &str, method: &str, uri: &Uri) -> Self {
+        Self::new_(cs, as_, method, uri, true)
     }
 
     /// Returns a `QueryBuilder` that builds a x-www-form-urlencoded string.
-    pub fn new_form(cs: &str, as_: &str, method: &str, uri: &str) -> Self {
-        Self::new_(cs, as_, method, Cow::Borrowed(uri))
+    pub fn new_form(cs: &str, as_: &str, method: &str, uri: &Uri) -> Self {
+        Self::new_(cs, as_, method, uri, false)
     }
 
-    fn new_(cs: &str, as_: &str, method: &str, uri: Cow<str>)
-        -> Self
-    {
+    fn new_(cs: &str, as_: &str, method: &str, uri: &Uri, q: bool) -> Self {
         let standard_header_len = str::len(r#"\
             OAuth \
             oauth_consumer_key="XXXXXXXXXXXXXXXXXXXXXXXXX",\
@@ -77,32 +75,31 @@ impl QueryBuilder {
             Hmac::new_varkey(signing_key.as_bytes()).unwrap()
         );
 
-        let query;
-        let will_append_question_mark;
-        {
-            let uri = match uri {
-                Cow::Borrowed(u) => { // x-www-form-urlencoded
-                    query = String::new();
-                    will_append_question_mark = false;
-                    u
-                },
-                Cow::Owned(u) => { // URI query
-                    query = u;
-                    will_append_question_mark = true;
-                    &query
-                },
-            };
-            write!(mac, "{}&{}&", method, percent_encode(uri))
-                .unwrap();
+        let query = if q { uri.to_string() } else { String::new() };
+
+        struct PercentEncodeUri<'a>(&'a Uri);
+        impl<'a> Display for PercentEncodeUri<'a> {
+            fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+                if let Some(scheme) = self.0.scheme_part() {
+                    write!(f, "{}%3A%2F%2F", scheme)?;
+                }
+                if let Some(authority) = self.0.authority_part() {
+                    write!(f, "{}", percent_encode(authority.as_ref()))?;
+                }
+                write!(f, "{}", percent_encode(self.0.path()))?;
+                // Query part is not used here
+                Ok(())
+            }
         }
+        write!(mac, "{}&{}&", method, PercentEncodeUri(uri)).unwrap();
 
         #[cfg(debug_assertions)] {
             QueryBuilder {
-                header, query, mac, will_append_question_mark,
+                header, query, mac, will_append_question_mark: q,
                 prev_key: String::new(),
             }
         } #[cfg(not(debug_assertions))] {
-            QueryBuilder { header, query, mac, will_append_question_mark }
+            QueryBuilder { header, query, mac, will_append_question_mark: q }
         }
     }
 
@@ -421,7 +418,8 @@ mod tests {
     #[test]
     fn query_builder() {
         let method = "GET";
-        let uri = "https://stream.twitter.com/1.1/statuses/sample.json";
+        let ep = "https://stream.twitter.com/1.1/statuses/sample.json"
+            .parse().unwrap();
         let expected_header = "\
             OAuth \
             oauth_consumer_key=\"xvz1evFS4wEEPTGEFPHBog\",\
@@ -434,7 +432,7 @@ mod tests {
         ";
         let expected_uri = "https://stream.twitter.com/1.1/statuses/sample.json?stall_warnings=true";
 
-        let mut qb = QueryBuilder::new(CS, AS, method, uri.to_owned());
+        let mut qb = QueryBuilder::new(CS, AS, method, &ep);
 
         qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP, false);
         qb.append_encoded("stall_warnings", "true", "true", true);
@@ -447,7 +445,8 @@ mod tests {
     #[test]
     fn query_builder_form() {
         let method = "POST";
-        let uri = "https://api.twitter.com/1.1/statuses/update.json";
+        let ep = "https://api.twitter.com/1.1/statuses/update.json"
+            .parse().unwrap();
         let status = "Hello Ladies + Gentlemen, a signed OAuth request!";
         let expected_header = "\
             OAuth \
@@ -461,7 +460,7 @@ mod tests {
         ";
         let expected_query = "include_entities=true&status=Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21";
 
-        let mut qb = QueryBuilder::new_form(CS, AS, method, uri);
+        let mut qb = QueryBuilder::new_form(CS, AS, method, &ep);
 
         qb.append_encoded("include_entities", "true", "true", false);
         qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP, false);
