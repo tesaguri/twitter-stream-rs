@@ -49,19 +49,19 @@ impl QueryBuilder {
     }
 
     fn new_(cs: &str, as_: &str, method: &str, uri: &Uri, q: bool) -> Self {
-        let standard_header_len = str::len(r#"\
+        let standard_header_len = str::len("\
             OAuth \
-            oauth_consumer_key="XXXXXXXXXXXXXXXXXXXXXXXXX",\
-            oauth_nonce="XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",\
-            oauth_signature_method="HMAC-SHA1",\
-            oauth_timestamp="NNNNNNNNNN",\
-            oauth_token="NNNNNNNNNNNNNNNNNNN-\
-                XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",\
-            oauth_version="1.0",\
-            oauth_signature="\
+            oauth_consumer_key=\"XXXXXXXXXXXXXXXXXXXXXXXXX\",\
+            oauth_nonce=\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\",\
+            oauth_signature_method=\"HMAC-SHA1\",\
+            oauth_timestamp=\"NNNNNNNNNN\",\
+            oauth_token=\"NNNNNNNNNNNNNNNNNNN-\
+                XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\",\
+            oauth_version=\"1.0\",\
+            oauth_signature=\"\
                 %XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX\
-                %XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX"\
-        "#);
+                %XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX%XX\"\
+        ");
 
         let mut header = String::with_capacity(standard_header_len);
         header.push_str("OAuth ");
