@@ -6,5 +6,5 @@ members = [
 ]
 
 [replace]
-"twitter-stream:0.6.0-alpha" = { path = "twitter-stream" }
+"twitter-stream:0.6.0" = { path = "twitter-stream" }
 "twitter-stream-message:0.3.0" = { path = "twitter-stream-message" }
