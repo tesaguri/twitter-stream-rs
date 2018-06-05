@@ -15,16 +15,16 @@ matrix:
 script:
   - |
     cd $CRATE
-    if [ -z "$FEATURES" ]; then
-      cargo build --verbose &&
-      cargo test --verbose
+    if [ -z "$FEATURES" ] || [ "$FEATURES" = runtime ]; then
+      cargo build --verbose --no-default-features --features=$FEATURES &&
+      cargo test --verbose --no-default-features --features=$FEATURES
     else
-      cargo check --verbose --features=$FEATURES
+      cargo check --verbose --no-default-features --features=$FEATURES
     fi
 env:
-  - CRATE=twitter-stream
-#  - CRATE=twitter-stream FEATURES=tls-rustls
-  - CRATE=twitter-stream FEATURES=tls-openssl
-  - CRATE=twitter-stream FEATURES=egg-mode
-  - CRATE=twitter-stream FEATURES=tweetust
+  - CRATE=twitter-stream FEATURES=runtime
+  - CRATE=twitter-stream FEATURES=runtime,tls
+#  - CRATE=twitter-stream FEATURES=runtime,tls-rustls
+  - CRATE=twitter-stream FEATURES=runtime,tls-openssl
+  - CRATE=twitter-stream FEATURES=runtime,egg-mode,tweetust
   - CRATE=twitter-stream-message
