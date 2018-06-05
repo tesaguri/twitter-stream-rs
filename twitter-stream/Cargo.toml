@@ -19,16 +19,16 @@ bytes = "0.4.4"
 cfg-if = "0.1"
 futures = "0.1.4"
 hmac = "0.6"
-hyper = "0.11"
-lazy_static = "1"
+hyper = "0.12"
 percent-encoding = "1"
 rand = "0.5"
 sha-1 = "0.7"
-tokio-core = "0.1"
+tokio = "0.1"
+tokio-timer = "0.2"
 egg-mode = { version = "0.12", optional = true }
-hyper-openssl = { version = "0.3", optional = true }
-hyper-rustls = { version = "0.12", optional = true }
-hyper-tls = { version = "0.1", optional = true }
+hyper-openssl = { version = "0.6", optional = true }
+# hyper-rustls = { version = "0.12", optional = true }
+hyper-tls = { version = "0.2", optional = true }
 native-tls = { version = "0.1", optional = true }
 oauthcli = { version = "1", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
@@ -39,9 +39,12 @@ twitter-stream-message = { version = "0.2", optional = true }
 base64 = "0.9"
 
 [features]
-default = ["tls"]
+default = ["runtime", "tls"]
 parse = ["twitter-stream-message"]
+# `runtime` feature does nothing useful for now, but this feature is
+# necessary for the crate to compile, leaving possibility for future extension.
+runtime = ["hyper/runtime"]
 tls = ["hyper-tls", "native-tls"]
 tls-openssl = ["hyper-openssl"]
-tls-rustls = ["hyper-rustls"]
+# tls-rustls = ["hyper-rustls"]
 use-tweetust = ["oauthcli", "tweetust"]

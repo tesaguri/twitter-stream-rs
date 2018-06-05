@@ -28,20 +28,15 @@ extern crate twitter_stream;
 Here is a basic example that prints public mentions @Twitter in JSON format:
 
 ```rust
-extern crate futures;
-extern crate tokio_core;
 extern crate twitter_stream;
 
-use futures::{Future, Stream};
-use tokio_core::reactor::Core;
 use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::rt::{self, Future, Stream};
 
 fn main() {
     let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-    let mut core = Core::new().unwrap();
-
-    let future = TwitterStreamBuilder::filter(&token).handle(&core.handle())
+    let future = TwitterStreamBuilder::filter(&token)
         .replies(true)
         .track(Some("@Twitter"))
         .listen()
@@ -49,8 +44,9 @@ fn main() {
         .for_each(|json| {
             println!("{}", json);
             Ok(())
-        });
+        })
+        .map_err(|e| println!("error: {}", e));
 
-    core.run(future).unwrap();
+    rt::run(future);
 }
 ```
