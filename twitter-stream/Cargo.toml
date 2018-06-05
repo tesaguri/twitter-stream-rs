@@ -33,7 +33,7 @@ native-tls = { version = "0.1", optional = true }
 oauthcli = { version = "1", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 tweetust = { version = "0.8", optional = true }
-twitter-stream-message = { version = "0.2", optional = true }
+twitter-stream-message = { version = "0.3", optional = true }
 
 [dev-dependencies]
 base64 = "0.9"
