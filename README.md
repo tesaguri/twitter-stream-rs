@@ -25,7 +25,7 @@ and this to your crate root:
 extern crate twitter_stream;
 ```
 
-Here is a basic example that prints public mentions @Twitter in JSON format:
+Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust
 extern crate twitter_stream;

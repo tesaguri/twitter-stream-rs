@@ -20,7 +20,7 @@ extern crate twitter_stream;
 
 ## Overview
 
-Here is a basic example that prints public mentions @Twitter in JSON format:
+Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust,no_run
 extern crate twitter_stream;
