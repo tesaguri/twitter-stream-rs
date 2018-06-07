@@ -56,8 +56,10 @@ extern crate cfg_if;
 #[macro_use]
 extern crate futures;
 extern crate hmac;
+extern crate http;
 extern crate hyper;
 extern crate byteorder;
+extern crate libflate;
 extern crate percent_encoding;
 extern crate rand;
 #[cfg(feature = "serde")]
@@ -87,6 +89,7 @@ pub mod message {
     pub use twitter_stream_message::*;
 }
 
+mod gzip;
 mod query_builder;
 mod token;
 
@@ -99,22 +102,26 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures::{Future, Poll, Stream};
+use http::response::Parts;
 use hyper::Request;
 use hyper::body::{Body, Payload};
 use hyper::client::{Client, ResponseFuture};
 use hyper::client::connect::Connect;
 use hyper::header::{
     HeaderValue,
+    ACCEPT_ENCODING,
     AUTHORIZATION,
+    CONTENT_ENCODING,
     CONTENT_LENGTH,
     CONTENT_TYPE,
     USER_AGENT,
 };
 
 use error::TlsError;
+use gzip::Gzip;
 use query_builder::{QueryBuilder, QueryOutcome};
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri, With};
-use util::{JoinDisplay, Lines, Timeout, TimeoutStream};
+use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 
 macro_rules! def_stream {
     (
@@ -415,7 +422,10 @@ def_stream! {
     /// A listener for Twitter Streaming API.
     /// It yields JSON strings returned from the API.
     pub struct TwitterStream {
-        inner: Lines<TimeoutStream<Body>>,
+        inner: EitherStream<
+            Lines<TimeoutStream<Body>>,
+            Lines<Gzip<TimeoutStream<Body>>>,
+        >,
     }
 
     // Constructors for `TwitterStreamBuilder`:
@@ -522,8 +532,8 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
         B::Data: Send,
     {
         let mut req = Request::builder();
-        req.method(self.method.clone());
-        // headers.insert(ACCEPT_ENCODING, "chunked, gzip");
+        req.method(self.method.clone())
+            .header(ACCEPT_ENCODING, HeaderValue::from_static("chunked,gzip"));
         if let Some(ref ua) = self.user_agent {
             req.header(USER_AGENT, &**ua);
         }
@@ -652,14 +662,23 @@ impl Future for FutureTwitterStream {
 
         match resp.poll().map_err(Error::Hyper)? {
             Async::Ready(res) => {
-                let status = res.status();
+                let (Parts { status, headers, .. }, body) = res.into_parts();
+
                 if StatusCode::OK != status {
                     return Err(Error::Http(status));
                 }
 
-                let body = timeout.take().for_stream(res.into_body());
+                let body = timeout.take().for_stream(body);
+                let gzip = headers.get_all(CONTENT_ENCODING)
+                    .iter()
+                    .any(|e| e == "gzip");
+                let inner = if gzip {
+                    EitherStream::B(Lines::new(Gzip::new(body)))
+                } else {
+                    EitherStream::A(Lines::new(body))
+                };
 
-                Ok(TwitterStream { inner: Lines::new(body) }.into())
+                Ok(TwitterStream { inner }.into())
             },
             Async::NotReady => {
                 match timeout.poll() {

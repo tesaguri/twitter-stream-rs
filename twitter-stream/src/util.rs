@@ -75,6 +75,11 @@ macro_rules! string_enums {
     }
 }
 
+pub enum EitherStream<A, B> {
+    A(A),
+    B(B),
+}
+
 pub struct Timeout<N=SystemNow> {
     inner: Option<TimeoutInner<N>>,
 }
@@ -103,6 +108,20 @@ pub struct Lines<B> where B: Stream {
 /// Represents an infallible operation in `default_connector::new`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum Never {}
+
+impl<A, B> Stream for EitherStream<A, B>
+    where A: Stream, B: Stream<Item=A::Item, Error=A::Error>
+{
+    type Item = A::Item;
+    type Error = A::Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        match self {
+            EitherStream::A(ref mut a) => a.poll(),
+            EitherStream::B(ref mut b) => b.poll(),
+        }
+    }
+}
 
 impl Timeout {
     pub fn new(dur: Duration) -> Self {
