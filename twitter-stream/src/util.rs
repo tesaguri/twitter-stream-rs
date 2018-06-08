@@ -6,7 +6,8 @@ use bytes::Bytes;
 use futures::{Async, Future, Poll, Stream};
 use futures::stream::Fuse;
 use tokio_timer::Delay;
-use tokio_timer::timer::{Now, SystemNow};
+
+use tokio_timer::clock::Clock;
 
 use error::{Error, HyperError};
 
@@ -80,21 +81,21 @@ pub enum EitherStream<A, B> {
     B(B),
 }
 
-pub struct Timeout<N=SystemNow> {
-    inner: Option<TimeoutInner<N>>,
+pub struct Timeout {
+    inner: Option<TimeoutInner>,
 }
 
-struct TimeoutInner<N=SystemNow> {
+struct TimeoutInner {
     dur: Duration,
     timer: Delay,
-    now: N,
+    clock: Clock,
 }
 
 /// Adds a timeout to a `Stream`.
 /// Inspired by `tokio_timer::TimeoutStream` (v0.1).
-pub struct TimeoutStream<S, N=SystemNow> {
+pub struct TimeoutStream<S> {
     stream: S,
-    timeout: Timeout<N>,
+    timeout: Timeout,
 }
 
 pub struct JoinDisplay<'a, D: 'a, Sep: ?Sized+'a>(pub &'a [D], pub &'a Sep);
@@ -125,32 +126,32 @@ impl<A, B> Stream for EitherStream<A, B>
 
 impl Timeout {
     pub fn new(dur: Duration) -> Self {
-        Timeout::with_now(SystemNow::new(), dur)
+        Timeout::with_clock(Clock::system(), dur)
     }
 }
 
-impl<N> Timeout<N> {
+impl Timeout {
     pub fn cancel(&mut self) {
         self.inner = None;
     }
 }
 
-impl<N: Now> Timeout<N> {
+impl Timeout {
     pub fn never() -> Self {
         Timeout { inner: None }
     }
 
-    fn with_now(mut now: N, dur: Duration) -> Self {
+    fn with_clock(clock: Clock, dur: Duration) -> Self {
         Timeout {
             inner: Some(TimeoutInner {
-                dur, timer: Delay::new(now.now() + dur), now
+                dur, timer: Delay::new(clock.now() + dur), clock
             }),
         }
     }
 
     pub fn reset(&mut self) {
         if let Some(ref mut inner) = self.inner {
-            inner.timer.reset(inner.now.now() + inner.dur)
+            inner.timer.reset(inner.clock.now() + inner.dur)
         }
     }
 
@@ -158,13 +159,13 @@ impl<N: Now> Timeout<N> {
         Timeout { inner: self.inner.take() }
     }
 
-    pub fn for_stream<S>(mut self, stream: S) -> TimeoutStream<S, N> {
+    pub fn for_stream<S>(mut self, stream: S) -> TimeoutStream<S> {
         self.reset();
         TimeoutStream { stream, timeout: self }
     }
 }
 
-impl<N> Future for Timeout<N> {
+impl Future for Timeout {
     type Item = ();
     type Error = Never;
 
