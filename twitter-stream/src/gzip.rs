@@ -61,14 +61,14 @@ impl<S: Stream> StreamRead<S> where S::Item: Buf+Default {
 
 impl<S: Stream> Read for StreamRead<S> where S::Item: Buf {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if ! self.buf.get_ref().has_remaining() {
+        while ! self.buf.get_ref().has_remaining() {
             match self.body.poll() {
                 Ok(Async::Ready(Some(data))) => self.buf = data.reader(),
                 Ok(Async::Ready(None)) => return Ok(0),
                 Ok(Async::NotReady) => return Err(ErrorKind::WouldBlock.into()),
                 Err(e) => {
                     self.error = Some(e);
-                    return Err(ErrorKind::Other.into())
+                    return Err(ErrorKind::Other.into());
                 },
             }
         }
@@ -120,5 +120,33 @@ impl<R: Read> Stream for ReadStream<R> {
 
 #[cfg(test)]
 mod tests {
-    // TODO
+    use std::io::Cursor;
+
+    use bytes::Bytes;
+    use futures::{stream, Future};
+
+    use super::*;
+
+    #[test]
+    fn identity() {
+        macro_rules! assert_id {
+            ($($elm:expr),*) => {{
+                let elms = [$(Bytes::from(&$elm[..])),*];
+                assert_eq!(
+                    *ReadStream::new(StreamRead {
+                        body: stream::iter_ok::<_,()>(
+                            elms.iter().cloned().map(Cursor::new)
+                        ),
+                        buf: Cursor::new(Bytes::new()).reader(),
+                        error: None,
+                    }).concat2().wait().unwrap(),
+                    *elms.concat(),
+                );
+            }};
+        }
+        assert_id!();
+        assert_id!([]);
+        assert_id!([], [0], [], [], [1, 2]);
+        assert_id!([0; BUF_SIZE+1], [1; BUF_SIZE-1], [2; BUF_SIZE*5/2]);
+    }
 }
