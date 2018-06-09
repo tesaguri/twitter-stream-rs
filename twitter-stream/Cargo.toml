@@ -29,7 +29,7 @@ tokio = "0.1"
 tokio-timer = "0.2.2"
 egg-mode = { version = "0.12", optional = true }
 hyper-openssl = { version = "0.6", optional = true }
-# hyper-rustls = { version = "0.12", optional = true }
+hyper-rustls = { version = "0.13", optional = true }
 hyper-tls = { version = "0.2", optional = true }
 native-tls = { version = "0.1", optional = true }
 oauthcli = { version = "1", optional = true }
@@ -48,5 +48,5 @@ parse = ["twitter-stream-message"]
 runtime = ["hyper/runtime"]
 tls = ["hyper-tls", "native-tls"]
 tls-openssl = ["hyper-openssl"]
-# tls-rustls = ["hyper-rustls"]
+tls-rustls = ["hyper-rustls"]
 use-tweetust = ["oauthcli", "tweetust"]

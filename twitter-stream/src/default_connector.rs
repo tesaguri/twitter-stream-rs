@@ -1,3 +1,4 @@
+use hyper::client::HttpConnector;
 
 cfg_if! {
     if #[cfg(feature = "tls")] {
@@ -6,7 +7,6 @@ cfg_if! {
 
         pub use self::native_tls::Error;
 
-        use hyper::client::HttpConnector;
         use self::hyper_tls::HttpsConnector;
 
         pub fn new() -> Result<HttpsConnector<HttpConnector>, Error> {
@@ -19,15 +19,14 @@ cfg_if! {
 
         use self::hyper_rustls::HttpsConnector;
 
-        pub fn new(h: &::tokio_core::reactor::Handle) -> Result<HttpsConnector, Error> {
-            Ok(HttpsConnector::new(1, h))
+        pub fn new() -> Result<HttpsConnector<HttpConnector>, Error> {
+            Ok(HttpsConnector::new(1))
         }
     } else if #[cfg(feature = "tls-openssl")] {
         extern crate hyper_openssl;
 
         pub use self::hyper_openssl::openssl::error::ErrorStack as Error;
 
-        use hyper::client::HttpConnector;
         use self::hyper_openssl::HttpsConnector;
 
         pub fn new() -> Result<HttpsConnector<HttpConnector>, Error> {
@@ -35,8 +34,6 @@ cfg_if! {
         }
     } else {
         pub use util::Never as Error;
-
-        use hyper::client::HttpConnector;
 
         #[cold]
         pub fn new() -> Result<HttpConnector, Error> {
