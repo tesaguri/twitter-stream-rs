@@ -486,7 +486,6 @@ where
     /// to a `Stream` yielding JSON messages from the API.
     ///
     /// You need to call `handle` method before calling this method.
-    #[allow(deprecated)]
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
             inner: Ok(FutureTwitterStreamInner {
