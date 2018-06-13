@@ -68,8 +68,6 @@ extern crate serde;
 extern crate sha1;
 extern crate tokio;
 extern crate tokio_timer;
-#[cfg(feature = "parse")]
-extern crate twitter_stream_message;
 
 #[macro_use]
 mod util;
@@ -77,17 +75,6 @@ mod util;
 pub mod error;
 pub mod rt;
 pub mod types;
-
-/// Exports `twitter_stream_message` crate for convenience.
-/// This module requires `parse` feature flag to be enabled.
-#[cfg(feature = "parse")]
-#[deprecated(
-    since = "0.6.0",
-    note = "use `extern crate twitter_stream_message;` instead",
-)]
-pub mod message {
-    pub use twitter_stream_message::*;
-}
 
 mod default_connector;
 mod gzip;
@@ -97,7 +84,7 @@ mod token;
 pub use token::Token;
 pub use error::Error;
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
@@ -115,7 +102,6 @@ use hyper::header::{
     CONTENT_ENCODING,
     CONTENT_LENGTH,
     CONTENT_TYPE,
-    USER_AGENT,
 };
 
 use error::TlsError;
@@ -134,7 +120,6 @@ macro_rules! def_stream {
                 $(#[$setter_attr:meta])*
                 $setter:ident: $s_ty:ty = $default:expr
             ),*;
-            $($custom_setter:ident: $c_ty:ty = $c_default:expr),*;
         }
 
         $(#[$future_stream_attr:meta])*
@@ -159,7 +144,6 @@ macro_rules! def_stream {
             $client: $cli_ty,
             $($arg: $a_ty,)*
             $($(#[$setter_attr])* $setter: $s_ty,)*
-            $($custom_setter: $c_ty,)*
         }
 
         $(#[$future_stream_attr])*
@@ -201,7 +185,6 @@ macro_rules! def_stream {
                     endpoint,
                     token,
                     $($setter: $default,)*
-                    $($custom_setter: $c_default,)*
                 }
             }
         }
@@ -223,7 +206,6 @@ macro_rules! def_stream {
                     $client: client,
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
-                    $($custom_setter: self.$custom_setter,)*
                 }
             }
 
@@ -233,7 +215,6 @@ macro_rules! def_stream {
                     $client: &(),
                     $($arg: self.$arg,)*
                     $($setter: self.$setter,)*
-                    $($custom_setter: self.$custom_setter,)*
                 }
             }
 
@@ -247,13 +228,6 @@ macro_rules! def_stream {
             /// Reset the API endpoint URI to be connected.
             pub fn endpoint(&mut self, endpoint: Uri) -> &mut Self {
                 self.endpoint = endpoint;
-                self
-            }
-
-            /// Reset the API endpoint URI to be connected.
-            #[deprecated(since = "0.6.0", note = "Use `endpoint` instead")]
-            pub fn end_point(&mut self, end_point: Uri) -> &mut Self {
-                self.endpoint = end_point;
                 self
             }
 
@@ -271,22 +245,11 @@ macro_rules! def_stream {
                     self
                 }
             )*
-
-            /// Set a user agent string to be sent when connectiong to
-            /// the Stream.
-            #[deprecated(since = "0.6.0", note = "Will be removed in 0.7")]
-            pub fn user_agent<U>(&mut self, user_agent: Option<U>) -> &mut Self
-                where U: Into<Cow<'static, str>>
-            {
-                self.user_agent = user_agent.map(Into::into);
-                self
-            }
         }
 
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                #[allow(deprecated)]
                 pub fn $constructor<C, A>(token: &Token<C, A>) -> $FS
                     where C: Borrow<str>, A: Borrow<str>
                 {
@@ -407,10 +370,6 @@ def_stream! {
         replies: bool = false;
 
         // stringify_friend_ids: bool;
-
-        // Fields whose setters are manually defined elsewhere:
-
-        user_agent: Option<Cow<'static, str>> = None;
     }
 
     /// A future returned by constructor methods
@@ -447,23 +406,6 @@ def_stream! {
     -
     /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
     pub fn sample(GET, "https://stream.twitter.com/1.1/statuses/sample.json");
-
-    /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/get/user
-    #[deprecated(
-        since = "0.6.0",
-        note = "The User stream has been deprecated and will be unavailable",
-    )]
-    -
-    /// A shorthand for `TwitterStreamBuilder::user().listen()`.
-    #[deprecated(
-        since = "0.6.0",
-        note = "The User stream has been deprecated and will be unavailable",
-    )]
-    pub fn user(GET, "https://userstream.twitter.com/1.1/user.json");
 }
 
 struct FutureTwitterStreamInner {
@@ -529,9 +471,6 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
         let mut req = Request::builder();
         req.method(self.method.clone())
             .header(ACCEPT_ENCODING, HeaderValue::from_static("chunked,gzip"));
-        if let Some(ref ua) = self.user_agent {
-            req.header(USER_AGENT, &**ua);
-        }
 
         let req = if RequestMethod::POST == self.method {
             let query = QueryBuilder::new_form(
@@ -733,7 +672,6 @@ mod tests {
             count: Some(10),
             with: Some(With::User),
             replies: true,
-            user_agent: None,
         }.build_query(QueryBuilder::new_form("", "", "", &endpoint));
         // `QueryBuilder::check_dictionary_order` will panic
         // if the insertion order of query pairs is incorrect.
