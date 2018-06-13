@@ -484,8 +484,6 @@ where
 {
     /// Start listening on a Stream, returning a `Future` which resolves
     /// to a `Stream` yielding JSON messages from the API.
-    ///
-    /// You need to call `handle` method before calling this method.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
             inner: Ok(FutureTwitterStreamInner {
@@ -503,8 +501,6 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
 {
     /// Start listening on a Stream, returning a `Future` which resolves
     /// to a `Stream` yielding JSON messages from the API.
-    ///
-    /// You need to call `handle` method before calling this method.
     pub fn listen(&self) -> FutureTwitterStream {
         FutureTwitterStream {
             inner: default_connector::new()
