@@ -1,5 +1,5 @@
 /*!
-# Twitter Stream
+# Twitter tream
 
 A library for listening on Twitter Streaming API.
 
@@ -25,16 +25,13 @@ Here is a basic example that prints public mentions to @Twitter in JSON format:
 ```rust,no_run
 extern crate twitter_stream;
 
-use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::{Token, TwitterStream};
 use twitter_stream::rt::{self, Future, Stream};
 
 # fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let future = TwitterStreamBuilder::filter(&token)
-    .replies(true)
-    .track(Some("@Twitter"))
-    .listen()
+let future = TwitterStream::filter(&token, "@Twitter")
     .flatten_stream()
     .for_each(|json| {
         println!("{}", json);
@@ -110,7 +107,7 @@ use query_builder::{QueryBuilder, QueryOutcome};
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri, With};
 use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 
-macro_rules! def_stream {
+macro_rules! def_builder {
     (
         $(#[$builder_attr:meta])*
         pub struct $B:ident<$lifetime:tt, $T:ident, $Cli:ident> {
@@ -121,23 +118,6 @@ macro_rules! def_stream {
                 $setter:ident: $s_ty:ty = $default:expr
             ),*;
         }
-
-        $(#[$future_stream_attr:meta])*
-        pub struct $FS:ident {
-            $($fs_field:ident: $fsf_ty:ty,)*
-        }
-
-        $(#[$stream_attr:meta])*
-        pub struct $S:ident {
-            $($s_field:ident: $sf_ty:ty,)*
-        }
-
-        $(
-            $(#[$constructor_attr:meta])*
-            -
-            $(#[$s_constructor_attr:meta])*
-            pub fn $constructor:ident($Method:ident, $endpoint:expr);
-        )*
     ) => {
         $(#[$builder_attr])*
         pub struct $B<$lifetime, $T: $lifetime, $Cli: $lifetime> {
@@ -146,31 +126,43 @@ macro_rules! def_stream {
             $($(#[$setter_attr])* $setter: $s_ty,)*
         }
 
-        $(#[$future_stream_attr])*
-        pub struct $FS {
-            $($fs_field: $fsf_ty,)*
-        }
-
-        $(#[$stream_attr])*
-        pub struct $S {
-            $($s_field: $sf_ty,)*
-        }
-
         impl<$lifetime, C, A> $B<$lifetime, Token<C, A>, ()>
             where C: Borrow<str>, A: Borrow<str>
         {
-            $(
-                $(#[$constructor_attr])*
-                pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
-                    $B::custom(
-                        RequestMethod::$Method,
-                        Uri::from_shared(
-                            Bytes::from_static($endpoint.as_bytes())
-                        ).unwrap(),
-                        token,
-                    )
-                }
-            )*
+            /// Create a builder for `POST statuses/filter` endpoint.
+            ///
+            /// See the [Twitter Developer Documentation][1]
+            /// for more information.
+            ///
+            /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
+            pub fn filter(token: &$lifetime Token<C, A>, track: &$lifetime str)
+                -> Self
+            {
+                let mut ret = Self::custom(
+                    RequestMethod::POST,
+                    Uri::from_shared(Bytes::from_static(
+                        b"https://stream.twitter.com/1.1/statuses/filter.json"
+                    )).unwrap(),
+                    token,
+                );
+                ret.track(Some(track));
+                ret
+            }
+
+            /// Create a builder for `GET statuses/sample` endpoint.
+            ///
+            /// See the [Twitter Developer Documentation][1] for more information.
+            ///
+            /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
+            pub fn sample(token: &$lifetime Token<C, A>) -> Self {
+                Self::custom(
+                    RequestMethod::GET,
+                    Uri::from_shared(Bytes::from_static(
+                        b"https://stream.twitter.com/1.1/statuses/sample.json"
+                    )).unwrap(),
+                    token,
+                )
+            }
 
             /// Constructs a builder for a Stream at a custom endpoint.
             pub fn custom(
@@ -246,21 +238,10 @@ macro_rules! def_stream {
                 }
             )*
         }
-
-        impl $S {
-            $(
-                $(#[$s_constructor_attr])*
-                pub fn $constructor<C, A>(token: &Token<C, A>) -> $FS
-                    where C: Borrow<str>, A: Borrow<str>
-                {
-                    $B::$constructor(token).listen()
-                }
-            )*
-        }
     };
 }
 
-def_stream! {
+def_builder! {
     /// A builder for `TwitterStream`.
     ///
     /// ## Example
@@ -371,46 +352,42 @@ def_stream! {
 
         // stringify_friend_ids: bool;
     }
+}
 
-    /// A future returned by constructor methods
-    /// which resolves to a `TwitterStream`.
-    pub struct FutureTwitterStream {
-        inner: Result<FutureTwitterStreamInner, Option<TlsError>>,
-    }
+/// A future returned by constructor methods
+/// which resolves to a `TwitterStream`.
+pub struct FutureTwitterStream {
+    inner: Result<FutureTwitterStreamInner, Option<TlsError>>,
+}
 
-    /// A listener for Twitter Streaming API.
-    /// It yields JSON strings returned from the API.
-    pub struct TwitterStream {
-        inner: EitherStream<
-            Lines<TimeoutStream<Body>>,
-            Lines<Gzip<TimeoutStream<Body>>>,
-        >,
-    }
-
-    // Constructors for `TwitterStreamBuilder`:
-
-    /// Create a builder for `POST statuses/filter` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
-    -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
-    pub fn filter(POST, "https://stream.twitter.com/1.1/statuses/filter.json");
-
-    /// Create a builder for `GET statuses/sample` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
-    -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
-    pub fn sample(GET, "https://stream.twitter.com/1.1/statuses/sample.json");
+/// A listener for Twitter Streaming API.
+/// It yields JSON strings returned from the API.
+pub struct TwitterStream {
+    inner: EitherStream<
+        Lines<TimeoutStream<Body>>,
+        Lines<Gzip<TimeoutStream<Body>>>,
+    >,
 }
 
 struct FutureTwitterStreamInner {
     resp: ResponseFuture,
     timeout: Timeout,
+}
+
+impl TwitterStream {
+    /// A shorthand for `TwitterStreamBuilder::filter(token, track).listen()`.
+    pub fn filter<C, A>(token: &Token<C, A>, track: &str) -> FutureTwitterStream
+        where C: Borrow<str>, A: Borrow<str>
+    {
+        TwitterStreamBuilder::filter(token, track).listen()
+    }
+
+    /// A shorthand for `TwitterStreamBuilder::sample(token ).listen()`.
+    pub fn sample<C, A>(token: &Token<C, A>) -> FutureTwitterStream
+        where C: Borrow<str>, A: Borrow<str>
+    {
+        TwitterStreamBuilder::sample(token).listen()
+    }
 }
 
 impl<'a, C, A, Conn, B> TwitterStreamBuilder<'a, Token<C, A>, Client<Conn, B>>
