@@ -311,9 +311,8 @@ def_stream! {
     /// # fn main() {
     /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
     ///
-    /// let future = TwitterStreamBuilder::user(&token)
+    /// let future = TwitterStreamBuilder::sample(&token)
     ///     .timeout(None)
-    ///     .replies(true)
     ///     .listen()
     ///     .flatten_stream()
     ///     .for_each(|json| {

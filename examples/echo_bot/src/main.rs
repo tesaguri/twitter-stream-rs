@@ -5,11 +5,13 @@ extern crate twitter_stream_message;
 
 use std::fs::File;
 use std::path::PathBuf;
-use twitter_stream::{Error, Token, TwitterStream};
+use twitter_stream::{Error, Token, TwitterStreamBuilder};
 use twitter_stream::rt::{self, Future, Stream};
 use twitter_stream_message::StreamMessage;
 
 fn main() {
+    const TRACK: &str = "@NAME_OF_YOUR_ACCOUNT";
+
     // `credential.json` must have the following form:
     // {"consumer_key": "...", "consumer_secret": "...", "access_key": "...", "access_secret": "..."}
 
@@ -20,7 +22,10 @@ fn main() {
     let credential = File::open(credential_path).unwrap();
     let token: Token = json::from_reader(credential).unwrap();
 
-    let stream = TwitterStream::user(&token).flatten_stream();
+    let stream = TwitterStreamBuilder::filter(&token)
+        .track(Some(TRACK))
+        .listen()
+        .flatten_stream();
     let rest = tweetust::TwitterClient::new(token, tweetust::DefaultHttpHandler::with_https_connector().unwrap());
 
     // Information of the authenticated user:
