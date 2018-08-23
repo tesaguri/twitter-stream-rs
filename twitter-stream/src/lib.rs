@@ -104,7 +104,7 @@ use hyper::header::{
 use error::TlsError;
 use gzip::Gzip;
 use query_builder::{QueryBuilder, QueryOutcome};
-use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri, With};
+use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri};
 use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 
 macro_rules! def_builder {
@@ -338,19 +338,7 @@ def_builder! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#count
-        count: Option<i32> = None,
-
-        /// Set types of messages delivered to User and Site Streams clients.
-        with: Option<With> = None,
-
-        /// Set whether to receive all @replies.
-        ///
-        /// See the [Twitter Developer Documentation][1] for more information.
-        ///
-        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#replies
-        replies: bool = false;
-
-        // stringify_friend_ids: bool;
+        count: Option<i32> = None;
     }
 }
 
@@ -534,25 +522,13 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
         query.append_oauth_params(
             self.token.consumer_key.borrow(),
             self.token.access_key.borrow(),
-            ! (self.replies || self.stall_warnings
-                || self.track.is_some() || self.with.is_some())
+            ! (self.stall_warnings || self.track.is_some()),
         );
-        if self.replies {
-            query.append_encoded("replies", "all", "all",
-                ! (self.stall_warnings
-                    || self.track.is_some() || self.with.is_some())
-            );
-        }
         if self.stall_warnings {
-            query.append_encoded("stall_warnings", "true", "true",
-                ! (self.track.is_some() || self.with.is_some())
-            );
+            query.append_encoded("stall_warnings", "true", "true", ! self.track.is_some());
         }
         if let Some(s) = self.track {
-            query.append("track", s, ! self.with.is_some());
-        }
-        if let Some(ref w) = self.with {
-            query.append("with", w.as_ref(), true);
+            query.append("track", s, true);
         }
 
         query.build()
@@ -647,8 +623,6 @@ mod tests {
             track: Some("\"User Stream\" to:TwitterDev"),
             locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
             count: Some(10),
-            with: Some(With::User),
-            replies: true,
         }.build_query(QueryBuilder::new_form("", "", "", &endpoint));
         // `QueryBuilder::check_dictionary_order` will panic
         // if the insertion order of query pairs is incorrect.

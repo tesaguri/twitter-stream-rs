@@ -19,19 +19,6 @@ string_enums! {
         Medium("medium");
         Custom(_),
     }
-
-    /// A value for `with` parameter for User and Site Streams.
-    #[derive(Clone, Debug)]
-    pub enum With {
-        /// Instruct the stream to send messages only from the user associated with that stream.
-        /// The default for Site Streams.
-        User("user"),
-        /// Instruct the stream to send messages from accounts the user follows as well, equivalent
-        /// to the user’s home timeline. The default for User Streams.
-        Following("following");
-        /// Custom value.
-        Custom(_),
-    }
 }
 
 /// A string type returned by `TwitterStream`.
