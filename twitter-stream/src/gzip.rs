@@ -43,7 +43,7 @@ impl<S: Stream<Error=Error>> Stream for Gzip<S> where S::Item: Buf {
             {
                 Err(e)
             } else {
-                Err(Error::Custom(e.into()))
+                Err(Error::Gzip(e))
             }
         }
     }

@@ -1,5 +1,5 @@
 /*!
-# Twitter Stream
+# Twitter tream
 
 A library for listening on Twitter Streaming API.
 
@@ -25,16 +25,13 @@ Here is a basic example that prints public mentions to @Twitter in JSON format:
 ```rust,no_run
 extern crate twitter_stream;
 
-use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::{Token, TwitterStream};
 use twitter_stream::rt::{self, Future, Stream};
 
 # fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let future = TwitterStreamBuilder::filter(&token)
-    .replies(true)
-    .track(Some("@Twitter"))
-    .listen()
+let future = TwitterStream::filter(&token, "@Twitter")
     .flatten_stream()
     .for_each(|json| {
         println!("{}", json);
@@ -68,8 +65,6 @@ extern crate serde;
 extern crate sha1;
 extern crate tokio;
 extern crate tokio_timer;
-#[cfg(feature = "parse")]
-extern crate twitter_stream_message;
 
 #[macro_use]
 mod util;
@@ -77,17 +72,6 @@ mod util;
 pub mod error;
 pub mod rt;
 pub mod types;
-
-/// Exports `twitter_stream_message` crate for convenience.
-/// This module requires `parse` feature flag to be enabled.
-#[cfg(feature = "parse")]
-#[deprecated(
-    since = "0.6.0",
-    note = "use `extern crate twitter_stream_message;` instead",
-)]
-pub mod message {
-    pub use twitter_stream_message::*;
-}
 
 mod default_connector;
 mod gzip;
@@ -97,7 +81,7 @@ mod token;
 pub use token::Token;
 pub use error::Error;
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
@@ -115,78 +99,72 @@ use hyper::header::{
     CONTENT_ENCODING,
     CONTENT_LENGTH,
     CONTENT_TYPE,
-    USER_AGENT,
 };
 
 use error::TlsError;
 use gzip::Gzip;
 use query_builder::{QueryBuilder, QueryOutcome};
-use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri, With};
+use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri};
 use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 
-macro_rules! def_stream {
+macro_rules! def_builder {
     (
         $(#[$builder_attr:meta])*
         pub struct $B:ident<$lifetime:tt, $T:ident, $Cli:ident> {
             $client:ident: $cli_ty:ty = $cli_default:expr;
             $($arg:ident: $a_ty:ty),*;
-            $(
-                $(#[$setter_attr:meta])*
-                $setter:ident: $s_ty:ty = $default:expr
-            ),*;
-            $($custom_setter:ident: $c_ty:ty = $c_default:expr),*;
+            $($setters:tt)*
         }
-
-        $(#[$future_stream_attr:meta])*
-        pub struct $FS:ident {
-            $($fs_field:ident: $fsf_ty:ty,)*
-        }
-
-        $(#[$stream_attr:meta])*
-        pub struct $S:ident {
-            $($s_field:ident: $sf_ty:ty,)*
-        }
-
-        $(
-            $(#[$constructor_attr:meta])*
-            -
-            $(#[$s_constructor_attr:meta])*
-            pub fn $constructor:ident($Method:ident, $endpoint:expr);
-        )*
     ) => {
         $(#[$builder_attr])*
         pub struct $B<$lifetime, $T: $lifetime, $Cli: $lifetime> {
             $client: $cli_ty,
             $($arg: $a_ty,)*
-            $($(#[$setter_attr])* $setter: $s_ty,)*
-            $($custom_setter: $c_ty,)*
+            inner: BuilderInner<$lifetime>,
         }
 
-        $(#[$future_stream_attr])*
-        pub struct $FS {
-            $($fs_field: $fsf_ty,)*
-        }
-
-        $(#[$stream_attr])*
-        pub struct $S {
-            $($s_field: $sf_ty,)*
+        def_builder_inner! {
+            $(#[$builder_attr])*
+            struct BuilderInner<$lifetime> { $($setters)* }
         }
 
         impl<$lifetime, C, A> $B<$lifetime, Token<C, A>, ()>
             where C: Borrow<str>, A: Borrow<str>
         {
-            $(
-                $(#[$constructor_attr])*
-                pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
-                    $B::custom(
-                        RequestMethod::$Method,
-                        Uri::from_shared(
-                            Bytes::from_static($endpoint.as_bytes())
-                        ).unwrap(),
-                        token,
-                    )
-                }
-            )*
+            /// Create a builder for `POST statuses/filter` endpoint.
+            ///
+            /// See the [Twitter Developer Documentation][1]
+            /// for more information.
+            ///
+            /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
+            pub fn filter(token: &$lifetime Token<C, A>, track: &$lifetime str)
+                -> Self
+            {
+                let mut ret = Self::custom(
+                    RequestMethod::POST,
+                    Uri::from_shared(Bytes::from_static(
+                        b"https://stream.twitter.com/1.1/statuses/filter.json"
+                    )).unwrap(),
+                    token,
+                );
+                ret.track(track);
+                ret
+            }
+
+            /// Create a builder for `GET statuses/sample` endpoint.
+            ///
+            /// See the [Twitter Developer Documentation][1] for more information.
+            ///
+            /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
+            pub fn sample(token: &$lifetime Token<C, A>) -> Self {
+                Self::custom(
+                    RequestMethod::GET,
+                    Uri::from_shared(Bytes::from_static(
+                        b"https://stream.twitter.com/1.1/statuses/sample.json"
+                    )).unwrap(),
+                    token,
+                )
+            }
 
             /// Constructs a builder for a Stream at a custom endpoint.
             pub fn custom(
@@ -200,8 +178,7 @@ macro_rules! def_stream {
                     method,
                     endpoint,
                     token,
-                    $($setter: $default,)*
-                    $($custom_setter: $c_default,)*
+                    inner: BuilderInner::new(),
                 }
             }
         }
@@ -222,8 +199,7 @@ macro_rules! def_stream {
                 $B {
                     $client: client,
                     $($arg: self.$arg,)*
-                    $($setter: self.$setter,)*
-                    $($custom_setter: self.$custom_setter,)*
+                    inner: self.inner,
                 }
             }
 
@@ -232,8 +208,7 @@ macro_rules! def_stream {
                 $B {
                     $client: &(),
                     $($arg: self.$arg,)*
-                    $($setter: self.$setter,)*
-                    $($custom_setter: self.$custom_setter,)*
+                    inner: self.inner,
                 }
             }
 
@@ -250,13 +225,6 @@ macro_rules! def_stream {
                 self
             }
 
-            /// Reset the API endpoint URI to be connected.
-            #[deprecated(since = "0.6.0", note = "Use `endpoint` instead")]
-            pub fn end_point(&mut self, end_point: Uri) -> &mut Self {
-                self.endpoint = end_point;
-                self
-            }
-
             /// Reset the token to be used to log into Twitter.
             pub fn token(&mut self, token: &$lifetime Token<C, A>) -> &mut Self
             {
@@ -264,40 +232,48 @@ macro_rules! def_stream {
                 self
             }
 
-            $(
-                $(#[$setter_attr])*
-                pub fn $setter(&mut self, $setter: $s_ty) -> &mut Self {
-                    self.$setter = $setter;
-                    self
-                }
-            )*
-
-            /// Set a user agent string to be sent when connectiong to
-            /// the Stream.
-            #[deprecated(since = "0.6.0", note = "Will be removed in 0.7")]
-            pub fn user_agent<U>(&mut self, user_agent: Option<U>) -> &mut Self
-                where U: Into<Cow<'static, str>>
-            {
-                self.user_agent = user_agent.map(Into::into);
-                self
-            }
-        }
-
-        impl $S {
-            $(
-                $(#[$s_constructor_attr])*
-                #[allow(deprecated)]
-                pub fn $constructor<C, A>(token: &Token<C, A>) -> $FS
-                    where C: Borrow<str>, A: Borrow<str>
-                {
-                    $B::$constructor(token).listen()
-                }
-            )*
+            def_setters! { $($setters)* }
         }
     };
 }
 
-def_stream! {
+macro_rules! def_builder_inner {
+    (
+        $(#[$attr:meta])*
+        struct $BI:ident<$lifetime:tt> {
+            $($(#[$field_attr:meta])* $field:ident: $t:ty = $default:expr,)*
+        }
+    ) => {
+        $(#[$attr])*
+        struct $BI<$lifetime> { $($(#[$field_attr])* $field: $t),* }
+        impl<'a> $BI<'a> { fn new() -> Self { $BI { $($field: $default),* } } }
+    }
+}
+
+macro_rules! def_setters {
+    (
+        $(#[$attr:meta])* $setter:ident: Option<$t:ty> = $_default:expr,
+        $($rest:tt)*
+    ) => {
+        $(#[$attr])*
+        pub fn $setter(&mut self, $setter: impl Into<Option<$t>>) -> &mut Self {
+            self.inner.$setter = $setter.into();
+            self
+        }
+        def_setters! { $($rest)* }
+    };
+    ($(#[$attr:meta])* $setter:ident: $t:ty = $_default:expr, $($rest:tt)*) => {
+        $(#[$attr])*
+        pub fn $setter(&mut self, $setter: $t) -> &mut Self {
+            self.inner.$setter = $setter;
+            self
+        }
+        def_setters! { $($rest)* }
+    };
+    () => {};
+}
+
+def_builder! {
     /// A builder for `TwitterStream`.
     ///
     /// ## Example
@@ -353,7 +329,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#filter-level
-        filter_level: FilterLevel = FilterLevel::None,
+        filter_level: Option<FilterLevel> = None,
 
         /// Set a comma-separated language identifiers to receive Tweets
         /// written in the specified languages only.
@@ -395,80 +371,43 @@ def_stream! {
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#count
         count: Option<i32> = None,
-
-        /// Set types of messages delivered to User and Site Streams clients.
-        with: Option<With> = None,
-
-        /// Set whether to receive all @replies.
-        ///
-        /// See the [Twitter Developer Documentation][1] for more information.
-        ///
-        /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#replies
-        replies: bool = false;
-
-        // stringify_friend_ids: bool;
-
-        // Fields whose setters are manually defined elsewhere:
-
-        user_agent: Option<Cow<'static, str>> = None;
     }
+}
 
-    /// A future returned by constructor methods
-    /// which resolves to a `TwitterStream`.
-    pub struct FutureTwitterStream {
-        inner: Result<FutureTwitterStreamInner, Option<TlsError>>,
-    }
+/// A future returned by constructor methods
+/// which resolves to a `TwitterStream`.
+pub struct FutureTwitterStream {
+    inner: Result<FutureTwitterStreamInner, Option<TlsError>>,
+}
 
-    /// A listener for Twitter Streaming API.
-    /// It yields JSON strings returned from the API.
-    pub struct TwitterStream {
-        inner: EitherStream<
-            Lines<TimeoutStream<Body>>,
-            Lines<Gzip<TimeoutStream<Body>>>,
-        >,
-    }
-
-    // Constructors for `TwitterStreamBuilder`:
-
-    /// Create a builder for `POST statuses/filter` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
-    -
-    /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
-    pub fn filter(POST, "https://stream.twitter.com/1.1/statuses/filter.json");
-
-    /// Create a builder for `GET statuses/sample` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
-    -
-    /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
-    pub fn sample(GET, "https://stream.twitter.com/1.1/statuses/sample.json");
-
-    /// Create a builder for `GET user` endpoint (a.k.a. User Stream).
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/get/user
-    #[deprecated(
-        since = "0.6.0",
-        note = "The User stream has been deprecated and will be unavailable",
-    )]
-    -
-    /// A shorthand for `TwitterStreamBuilder::user().listen()`.
-    #[deprecated(
-        since = "0.6.0",
-        note = "The User stream has been deprecated and will be unavailable",
-    )]
-    pub fn user(GET, "https://userstream.twitter.com/1.1/user.json");
+/// A listener for Twitter Streaming API.
+/// It yields JSON strings returned from the API.
+pub struct TwitterStream {
+    inner: EitherStream<
+        Lines<TimeoutStream<Body>>,
+        Lines<Gzip<TimeoutStream<Body>>>,
+    >,
 }
 
 struct FutureTwitterStreamInner {
     resp: ResponseFuture,
     timeout: Timeout,
+}
+
+impl TwitterStream {
+    /// A shorthand for `TwitterStreamBuilder::filter(token, track).listen()`.
+    pub fn filter<C, A>(token: &Token<C, A>, track: &str) -> FutureTwitterStream
+        where C: Borrow<str>, A: Borrow<str>
+    {
+        TwitterStreamBuilder::filter(token, track).listen()
+    }
+
+    /// A shorthand for `TwitterStreamBuilder::sample(token ).listen()`.
+    pub fn sample<C, A>(token: &Token<C, A>) -> FutureTwitterStream
+        where C: Borrow<str>, A: Borrow<str>
+    {
+        TwitterStreamBuilder::sample(token).listen()
+    }
 }
 
 impl<'a, C, A, Conn, B> TwitterStreamBuilder<'a, Token<C, A>, Client<Conn, B>>
@@ -487,7 +426,7 @@ where
         FutureTwitterStream {
             inner: Ok(FutureTwitterStreamInner {
                 resp: self.connect(self.client),
-                timeout: self.timeout
+                timeout: self.inner.timeout
                     .map(Timeout::new)
                     .unwrap_or_else(Timeout::never),
             }),
@@ -505,7 +444,7 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
             inner: default_connector::new()
                 .map(|c| FutureTwitterStreamInner {
                     resp: self.connect::<_, Body>(&Client::builder().build(c)),
-                    timeout: self.timeout
+                    timeout: self.inner.timeout
                         .map(Timeout::new)
                         .unwrap_or_else(Timeout::never),
                 })
@@ -529,9 +468,6 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
         let mut req = Request::builder();
         req.method(self.method.clone())
             .header(ACCEPT_ENCODING, HeaderValue::from_static("chunked,gzip"));
-        if let Some(ref ua) = self.user_agent {
-            req.header(USER_AGENT, &**ua);
-        }
 
         let req = if RequestMethod::POST == self.method {
             let query = QueryBuilder::new_form(
@@ -571,13 +507,14 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
     fn build_query(&self, mut query: QueryBuilder) -> QueryOutcome {
         const COMMA: &str = "%2C";
         const COMMA_DOUBLE_ENCODED: &str = "%252C";
-        if let Some(n) = self.count {
+        let this = &self.inner;
+        if let Some(n) = this.count {
             query.append_encoded("count", n, n, false);
         }
-        if self.filter_level != FilterLevel::None {
-            query.append("filter_level", self.filter_level.as_ref(), false);
+        if let Some(ref fl) = this.filter_level {
+            query.append("filter_level", fl.as_ref(), false);
         }
-        if let Some(ids) = self.follow {
+        if let Some(ids) = this.follow {
             query.append_encoded(
                 "follow",
                 JoinDisplay(ids, COMMA),
@@ -585,10 +522,10 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
                 false,
             );
         }
-        if let Some(s) = self.language {
+        if let Some(s) = this.language {
             query.append("language", s, false);
         }
-        if let Some(locs) = self.locations {
+        if let Some(locs) = this.locations {
             struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
             impl<'a, D: Display> Display for LocationsDisplay<'a, D> {
                 fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -618,25 +555,13 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
         query.append_oauth_params(
             self.token.consumer_key.borrow(),
             self.token.access_key.borrow(),
-            ! (self.replies || self.stall_warnings
-                || self.track.is_some() || self.with.is_some())
+            ! (this.stall_warnings || this.track.is_some()),
         );
-        if self.replies {
-            query.append_encoded("replies", "all", "all",
-                ! (self.stall_warnings
-                    || self.track.is_some() || self.with.is_some())
-            );
+        if this.stall_warnings {
+            query.append_encoded("stall_warnings", "true", "true", ! this.track.is_some());
         }
-        if self.stall_warnings {
-            query.append_encoded("stall_warnings", "true", "true",
-                ! (self.track.is_some() || self.with.is_some())
-            );
-        }
-        if let Some(s) = self.track {
-            query.append("track", s, ! self.with.is_some());
-        }
-        if let Some(ref w) = self.with {
-            query.append("with", w.as_ref(), true);
+        if let Some(s) = this.track {
+            query.append("track", s, true);
         }
 
         query.build()
@@ -723,17 +648,16 @@ mod tests {
             method: RequestMethod::GET,
             endpoint: endpoint.clone(),
             token: &Token::new("", "", "", ""),
-            timeout: None,
-            stall_warnings: true,
-            filter_level: FilterLevel::Low,
-            language: Some("en"),
-            follow: Some(&[12]),
-            track: Some("\"User Stream\" to:TwitterDev"),
-            locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
-            count: Some(10),
-            with: Some(With::User),
-            replies: true,
-            user_agent: None,
+            inner: BuilderInner {
+                timeout: None,
+                stall_warnings: true,
+                filter_level: Some(FilterLevel::Low),
+                language: Some("en"),
+                follow: Some(&[12]),
+                track: Some("\"User Stream\" to:TwitterDev"),
+                locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
+                count: Some(10),
+            },
         }.build_query(QueryBuilder::new_form("", "", "", &endpoint));
         // `QueryBuilder::check_dictionary_order` will panic
         // if the insertion order of query pairs is incorrect.

@@ -5,6 +5,7 @@ pub use hyper::Error as HyperError;
 
 use std::error::{self, Error as _Error};
 use std::fmt::{self, Display, Formatter};
+use std::io;
 use std::str::Utf8Error;
 
 use types::StatusCode;
@@ -12,6 +13,8 @@ use types::StatusCode;
 /// An error occurred while trying to connect to a Stream.
 #[derive(Debug)]
 pub enum Error {
+    /// An error occured while decoding gzip stream from the server.
+    Gzip(io::Error),
     /// An HTTP error from the Stream.
     Http(StatusCode),
     /// An error from the `hyper` crate.
@@ -39,6 +42,7 @@ impl error::Error for Error {
         use Error::*;
 
         match *self {
+            Gzip(ref e) => e.description(),
             Http(ref status) => status.canonical_reason()
                 .unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
@@ -53,6 +57,7 @@ impl error::Error for Error {
         use Error::*;
 
         match *self {
+            Gzip(ref e) => Some(e),
             Http(_) | TimedOut => None,
             Hyper(ref e) => Some(e),
             Tls(ref e) => Some(e),
@@ -67,6 +72,7 @@ impl Display for Error {
         use Error::*;
 
         match *self {
+            Gzip(ref e) => Display::fmt(e, f),
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
             TimedOut => Display::fmt(self.description(), f),
