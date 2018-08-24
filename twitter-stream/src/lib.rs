@@ -113,17 +113,19 @@ macro_rules! def_builder {
         pub struct $B:ident<$lifetime:tt, $T:ident, $Cli:ident> {
             $client:ident: $cli_ty:ty = $cli_default:expr;
             $($arg:ident: $a_ty:ty),*;
-            $(
-                $(#[$setter_attr:meta])*
-                $setter:ident: $s_ty:ty = $default:expr
-            ),*;
+            $($setters:tt)*
         }
     ) => {
         $(#[$builder_attr])*
         pub struct $B<$lifetime, $T: $lifetime, $Cli: $lifetime> {
             $client: $cli_ty,
             $($arg: $a_ty,)*
-            $($(#[$setter_attr])* $setter: $s_ty,)*
+            inner: BuilderInner<$lifetime>,
+        }
+
+        def_builder_inner! {
+            $(#[$builder_attr])*
+            struct BuilderInner<$lifetime> { $($setters)* }
         }
 
         impl<$lifetime, C, A> $B<$lifetime, Token<C, A>, ()>
@@ -145,7 +147,7 @@ macro_rules! def_builder {
                     )).unwrap(),
                     token,
                 );
-                ret.track(Some(track));
+                ret.track(track);
                 ret
             }
 
@@ -176,7 +178,7 @@ macro_rules! def_builder {
                     method,
                     endpoint,
                     token,
-                    $($setter: $default,)*
+                    inner: BuilderInner::new(),
                 }
             }
         }
@@ -197,7 +199,7 @@ macro_rules! def_builder {
                 $B {
                     $client: client,
                     $($arg: self.$arg,)*
-                    $($setter: self.$setter,)*
+                    inner: self.inner,
                 }
             }
 
@@ -206,7 +208,7 @@ macro_rules! def_builder {
                 $B {
                     $client: &(),
                     $($arg: self.$arg,)*
-                    $($setter: self.$setter,)*
+                    inner: self.inner,
                 }
             }
 
@@ -230,15 +232,45 @@ macro_rules! def_builder {
                 self
             }
 
-            $(
-                $(#[$setter_attr])*
-                pub fn $setter(&mut self, $setter: $s_ty) -> &mut Self {
-                    self.$setter = $setter;
-                    self
-                }
-            )*
+            def_setters! { $($setters)* }
         }
     };
+}
+
+macro_rules! def_builder_inner {
+    (
+        $(#[$attr:meta])*
+        struct $BI:ident<$lifetime:tt> {
+            $($(#[$field_attr:meta])* $field:ident: $t:ty = $default:expr,)*
+        }
+    ) => {
+        $(#[$attr])*
+        struct $BI<$lifetime> { $($(#[$field_attr])* $field: $t),* }
+        impl<'a> $BI<'a> { fn new() -> Self { $BI { $($field: $default),* } } }
+    }
+}
+
+macro_rules! def_setters {
+    (
+        $(#[$attr:meta])* $setter:ident: Option<$t:ty> = $_default:expr,
+        $($rest:tt)*
+    ) => {
+        $(#[$attr])*
+        pub fn $setter(&mut self, $setter: impl Into<Option<$t>>) -> &mut Self {
+            self.inner.$setter = $setter.into();
+            self
+        }
+        def_setters! { $($rest)* }
+    };
+    ($(#[$attr:meta])* $setter:ident: $t:ty = $_default:expr, $($rest:tt)*) => {
+        $(#[$attr])*
+        pub fn $setter(&mut self, $setter: $t) -> &mut Self {
+            self.inner.$setter = $setter;
+            self
+        }
+        def_setters! { $($rest)* }
+    };
+    () => {};
 }
 
 def_builder! {
@@ -297,7 +329,7 @@ def_builder! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#filter-level
-        filter_level: FilterLevel = FilterLevel::None,
+        filter_level: Option<FilterLevel> = None,
 
         /// Set a comma-separated language identifiers to receive Tweets
         /// written in the specified languages only.
@@ -338,7 +370,7 @@ def_builder! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#count
-        count: Option<i32> = None;
+        count: Option<i32> = None,
     }
 }
 
@@ -394,7 +426,7 @@ where
         FutureTwitterStream {
             inner: Ok(FutureTwitterStreamInner {
                 resp: self.connect(self.client),
-                timeout: self.timeout
+                timeout: self.inner.timeout
                     .map(Timeout::new)
                     .unwrap_or_else(Timeout::never),
             }),
@@ -412,7 +444,7 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
             inner: default_connector::new()
                 .map(|c| FutureTwitterStreamInner {
                     resp: self.connect::<_, Body>(&Client::builder().build(c)),
-                    timeout: self.timeout
+                    timeout: self.inner.timeout
                         .map(Timeout::new)
                         .unwrap_or_else(Timeout::never),
                 })
@@ -475,13 +507,14 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
     fn build_query(&self, mut query: QueryBuilder) -> QueryOutcome {
         const COMMA: &str = "%2C";
         const COMMA_DOUBLE_ENCODED: &str = "%252C";
-        if let Some(n) = self.count {
+        let this = &self.inner;
+        if let Some(n) = this.count {
             query.append_encoded("count", n, n, false);
         }
-        if self.filter_level != FilterLevel::None {
-            query.append("filter_level", self.filter_level.as_ref(), false);
+        if let Some(ref fl) = this.filter_level {
+            query.append("filter_level", fl.as_ref(), false);
         }
-        if let Some(ids) = self.follow {
+        if let Some(ids) = this.follow {
             query.append_encoded(
                 "follow",
                 JoinDisplay(ids, COMMA),
@@ -489,10 +522,10 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
                 false,
             );
         }
-        if let Some(s) = self.language {
+        if let Some(s) = this.language {
             query.append("language", s, false);
         }
-        if let Some(locs) = self.locations {
+        if let Some(locs) = this.locations {
             struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
             impl<'a, D: Display> Display for LocationsDisplay<'a, D> {
                 fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -522,12 +555,12 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
         query.append_oauth_params(
             self.token.consumer_key.borrow(),
             self.token.access_key.borrow(),
-            ! (self.stall_warnings || self.track.is_some()),
+            ! (this.stall_warnings || this.track.is_some()),
         );
-        if self.stall_warnings {
-            query.append_encoded("stall_warnings", "true", "true", ! self.track.is_some());
+        if this.stall_warnings {
+            query.append_encoded("stall_warnings", "true", "true", ! this.track.is_some());
         }
-        if let Some(s) = self.track {
+        if let Some(s) = this.track {
             query.append("track", s, true);
         }
 
@@ -615,14 +648,16 @@ mod tests {
             method: RequestMethod::GET,
             endpoint: endpoint.clone(),
             token: &Token::new("", "", "", ""),
-            timeout: None,
-            stall_warnings: true,
-            filter_level: FilterLevel::Low,
-            language: Some("en"),
-            follow: Some(&[12]),
-            track: Some("\"User Stream\" to:TwitterDev"),
-            locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
-            count: Some(10),
+            inner: BuilderInner {
+                timeout: None,
+                stall_warnings: true,
+                filter_level: Some(FilterLevel::Low),
+                language: Some("en"),
+                follow: Some(&[12]),
+                track: Some("\"User Stream\" to:TwitterDev"),
+                locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
+                count: Some(10),
+            },
         }.build_query(QueryBuilder::new_form("", "", "", &endpoint));
         // `QueryBuilder::check_dictionary_order` will panic
         // if the insertion order of query pairs is incorrect.
