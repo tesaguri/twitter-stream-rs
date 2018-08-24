@@ -9,7 +9,7 @@ Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-twitter-stream = "0.6"
+twitter-stream = "0.7"
 ```
 
 and this to your crate root:
