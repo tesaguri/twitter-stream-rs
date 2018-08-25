@@ -14,7 +14,6 @@ matrix:
     - rust: 1.26.0
 script:
   - |
-    cd $CRATE
     if [ -z "$FEATURES" ] || [ "$FEATURES" = runtime ]; then
       cargo build --verbose --no-default-features --features=$FEATURES &&
       cargo test --verbose --no-default-features --features=$FEATURES
@@ -22,9 +21,8 @@ script:
       cargo check --verbose --no-default-features --features=$FEATURES
     fi
 env:
-  - CRATE=twitter-stream FEATURES=runtime
-  - CRATE=twitter-stream FEATURES=runtime,tls
-#  - CRATE=twitter-stream FEATURES=runtime,tls-rustls
-  - CRATE=twitter-stream FEATURES=runtime,tls-openssl
-  - CRATE=twitter-stream FEATURES=runtime,egg-mode,tweetust
-  - CRATE=twitter-stream-message
+  - FEATURES=runtime
+  - FEATURES=runtime,tls
+#  - FEATURES=runtime,tls-rustls
+  - FEATURES=runtime,tls-openssl
+  - FEATURES=runtime,egg-mode,tweetust
