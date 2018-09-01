@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-twitter-stream = "0.7"
+twitter-stream = "0.8"
 ```
 
 and this to your crate root:
