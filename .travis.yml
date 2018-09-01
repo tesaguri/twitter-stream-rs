@@ -23,6 +23,6 @@ script:
 env:
   - FEATURES=runtime
   - FEATURES=runtime,tls
-#  - FEATURES=runtime,tls-rustls
+  - FEATURES=runtime,tls-rustls
   - FEATURES=runtime,tls-openssl
   - FEATURES=runtime,egg-mode,tweetust
