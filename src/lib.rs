@@ -165,9 +165,7 @@ macro_rules! def_stream {
                 pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
                     $B::custom(
                         RequestMethod::$Method,
-                        Uri::from_shared(
-                            Bytes::from_static($endpoint.as_bytes())
-                        ).unwrap(),
+                        Uri::from_static($endpoint),
                         token,
                     )
                 }
