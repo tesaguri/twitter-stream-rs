@@ -215,8 +215,8 @@ impl<'a> Display for Base64PercentEncode<'a> {
         assert_eq!(self.0.len(), 20);
 
         macro_rules! write_enc {
-            ($bytes:expr, $shl:expr) => {{
-                f.write_str(ENCODE[(($bytes >> $shl) & 0b11_1111) as usize])?;
+            ($bytes:expr, $shr:expr) => {{
+                f.write_str(ENCODE[(($bytes >> $shr) & 0b11_1111) as usize])?;
             }};
         }
 
