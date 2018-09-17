@@ -15,16 +15,25 @@ pub struct Token<C=String, A=String> {
     pub access_secret: A,
 }
 
-impl<C, A> Token<C, A> {
+impl<C: Borrow<str>, A: Borrow<str>> Token<C, A> {
     pub fn new(
         consumer_key: C,
         consumer_secret: C,
         access_key: A,
         access_secret: A,
     ) -> Self
-        where C: Borrow<str>, A: Borrow<str>
     {
         Token { consumer_key, consumer_secret, access_key, access_secret }
+    }
+
+    /// Borrow token strings from `self` and make a new `Token` with them.
+    pub fn borrowed(&self) -> Token<&str, &str> {
+        Token::new(
+            self.consumer_key.borrow(),
+            self.consumer_secret.borrow(),
+            self.access_key.borrow(),
+            self.access_secret.borrow(),
+        )
     }
 }
 
