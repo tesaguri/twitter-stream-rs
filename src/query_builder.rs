@@ -15,7 +15,7 @@ pub struct QueryBuilder {
     header: String,
     query: String,
     mac: MacWrite<Hmac<Sha1>>,
-    will_append_question_mark: bool,
+    next_append: Append,
     #[cfg(debug_assertions)]
     prev_key: String,
 }
@@ -25,6 +25,14 @@ pub struct QueryOutcome {
     pub header: String,
     /// A URI with query string or a x-www-form-urlencoded string.
     pub query: String,
+}
+
+bitflags! {
+    struct Append: u8 {
+        const QUESTION  = 0b001;
+        const AMPERSAND = 0b010;
+        const COMMA     = 0b100;
+    }
 }
 
 struct Base64PercentEncode<'a>(&'a [u8]);
@@ -93,37 +101,37 @@ impl QueryBuilder {
         }
         write!(mac, "{}&{}&", method, PercentEncodeUri(uri)).unwrap();
 
+        let next_append = if q { Append::QUESTION } else { Append::empty() };
+
         #[cfg(debug_assertions)] {
             QueryBuilder {
-                header, query, mac, will_append_question_mark: q,
+                header, query, mac, next_append,
                 prev_key: String::new(),
             }
         } #[cfg(not(debug_assertions))] {
-            QueryBuilder { header, query, mac, will_append_question_mark: q }
+            QueryBuilder { header, query, mac, next_append }
         }
     }
 
-    pub fn append(&mut self, k: &str, v: &str, end: bool) {
+    pub fn append(&mut self, k: &str, v: &str) {
         self.check_dictionary_order(k);
-        self.append_question_mark();
+        self.append_delim();
         write!(self.query, "{}={}", k, percent_encode(v)).unwrap();
-        self.mac_input(k, v, end);
-        if ! end { self.query.push('&'); }
+        self.mac_input(k, v);
     }
 
     /// `v` is used to make query string and `w` is used to make the signature.
     /// `v` should be percent encoded and `w` should be percent encoded twice.
-    pub fn append_encoded<V, W>(&mut self, k: &str, v: V, w: W, end: bool)
+    pub fn append_encoded<V, W>(&mut self, k: &str, v: V, w: W)
         where V: Display, W: Display
     {
         self.check_dictionary_order(k);
-        self.append_question_mark();
+        self.append_delim();
         write!(self.query, "{}={}", k, v).unwrap();
-        self.mac_input_encoded(k, w, end);
-        if ! end { self.query.push('&'); }
+        self.mac_input_encoded(k, w);
     }
 
-    pub fn append_oauth_params(&mut self, ck: &str, ak: &str, end: bool) {
+    pub fn append_oauth_params(&mut self, ck: &str, ak: &str) {
         let nonce = Alphanumeric.sample_iter(&mut thread_rng())
             .take(32)
             .collect::<String>();
@@ -131,7 +139,7 @@ impl QueryBuilder {
             Ok(d) => d.as_secs(),
             #[cold] Err(_) => 0,
         };
-        self.append_oauth_params_(ck, ak, &nonce, timestamp, end);
+        self.append_oauth_params_(ck, ak, &nonce, timestamp);
     }
 
     fn append_oauth_params_(
@@ -140,46 +148,50 @@ impl QueryBuilder {
         ak: &str,
         nonce: &str,
         timestamp: u64,
-        end: bool,
     ) {
-        self.append_to_header("oauth_consumer_key", ck, false);
-        self.append_to_header_encoded("oauth_nonce", &*nonce, false);
-        self.append_to_header_encoded(
-            "oauth_signature_method", "HMAC-SHA1", false
-        );
-        self.append_to_header_encoded("oauth_timestamp", timestamp, false);
-        self.append_to_header("oauth_token", ak, false);
-        self.append_to_header_encoded("oauth_version", "1.0", end);
+        self.append_to_header("oauth_consumer_key", ck);
+        self.append_to_header_encoded("oauth_nonce", &*nonce);
+        self.append_to_header_encoded("oauth_signature_method", "HMAC-SHA1");
+        self.append_to_header_encoded("oauth_timestamp", timestamp);
+        self.append_to_header("oauth_token", ak);
+        self.append_to_header_encoded("oauth_version", "1.0");
     }
 
-    fn append_to_header(&mut self, k: &str, v: &str, end: bool) {
+    fn append_to_header(&mut self, k: &str, v: &str) {
         self.check_dictionary_order(k);
         write!(self.header, r#"{}="{}","#, k, percent_encode(v)).unwrap();
-        self.mac_input(k, v, end);
+        self.mac_input(k, v);
     }
 
-    fn append_to_header_encoded<V: Display>(&mut self, k: &str, v: V, end: bool)
-    {
+    fn append_to_header_encoded<V: Display>(&mut self, k: &str, v: V) {
         self.check_dictionary_order(k);
         write!(self.header, r#"{}="{}","#, k, v).unwrap();
-        self.mac_input_encoded(k, v, end);
+        self.mac_input_encoded(k, v);
     }
 
-    fn append_question_mark(&mut self) {
-        if self.will_append_question_mark {
+    fn append_delim(&mut self) {
+        if self.next_append.contains(Append::QUESTION) {
             self.query.push('?');
-            self.will_append_question_mark = false;
+            self.next_append.remove(Append::QUESTION);
+        }
+        if self.next_append.contains(Append::AMPERSAND) {
+            self.query.push('&');
+        } else {
+            self.next_append.insert(Append::AMPERSAND);
         }
     }
 
-    fn mac_input(&mut self, k: &str, v: &str, end: bool) {
-        write!(self.mac, "{}%3D{}", k, DoublePercentEncode(v)).unwrap();
-        if ! end { self.mac.write_str("%26").unwrap(); }
+    fn mac_input(&mut self, k: &str, v: &str) {
+        self.mac_input_encoded(k, DoublePercentEncode(v));
     }
 
-    fn mac_input_encoded<V: Display>(&mut self, k: &str, v: V, end: bool) {
+    fn mac_input_encoded<V: Display>(&mut self, k: &str, v: V) {
+        if self.next_append.contains(Append::COMMA) {
+            self.mac.write_str("%26").unwrap();
+        } else {
+            self.next_append.insert(Append::COMMA);
+        }
         write!(self.mac, "{}%3D{}", k, v).unwrap();
-        if ! end { self.mac.write_str("%26").unwrap(); }
     }
 
     fn check_dictionary_order(&mut self, _k: &str) {
@@ -433,8 +445,8 @@ mod tests {
 
         let mut qb = QueryBuilder::new(CS, AS, method, &ep);
 
-        qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP, false);
-        qb.append_encoded("stall_warnings", "true", "true", true);
+        qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP);
+        qb.append_encoded("stall_warnings", "true", "true");
 
         let QueryOutcome { header, query: uri } = qb.build();
         assert_eq!(uri, expected_uri);
@@ -461,9 +473,9 @@ mod tests {
 
         let mut qb = QueryBuilder::new_form(CS, AS, method, &ep);
 
-        qb.append_encoded("include_entities", "true", "true", false);
-        qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP, false);
-        qb.append("status", status, true);
+        qb.append_encoded("include_entities", "true", "true");
+        qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP);
+        qb.append("status", status);
 
         let QueryOutcome { header, query } = qb.build();
         assert_eq!(query, expected_query);

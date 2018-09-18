@@ -49,6 +49,8 @@ rt::run(future);
 #[cfg(not(feature = "runtime"))]
 compile_error!("`runtime` feature must be enabled for now.");
 
+#[macro_use]
+extern crate bitflags;
 extern crate bytes;
 #[macro_use]
 extern crate cfg_if;
@@ -529,21 +531,20 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
         const COMMA_DOUBLE_ENCODED: &str = "%252C";
         let this = &self.inner;
         if let Some(n) = this.count {
-            query.append_encoded("count", n, n, false);
+            query.append_encoded("count", n, n);
         }
         if let Some(ref fl) = this.filter_level {
-            query.append("filter_level", fl.as_ref(), false);
+            query.append("filter_level", fl.as_ref());
         }
         if let Some(ids) = this.follow {
             query.append_encoded(
                 "follow",
                 JoinDisplay(ids, COMMA),
                 JoinDisplay(ids, COMMA_DOUBLE_ENCODED),
-                false,
             );
         }
         if let Some(s) = this.language {
-            query.append("language", s, false);
+            query.append("language", s);
         }
         if let Some(locs) = this.locations {
             struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
@@ -569,19 +570,17 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
                 "locations",
                 LocationsDisplay(locs, COMMA),
                 LocationsDisplay(locs, COMMA_DOUBLE_ENCODED),
-                false,
             );
         }
         query.append_oauth_params(
             self.token.consumer_key.borrow(),
             self.token.access_key.borrow(),
-            ! (this.stall_warnings || this.track.is_some()),
         );
         if this.stall_warnings {
-            query.append_encoded("stall_warnings", "true", "true", ! this.track.is_some());
+            query.append_encoded("stall_warnings", "true", "true");
         }
         if let Some(s) = this.track {
-            query.append("track", s, true);
+            query.append("track", s);
         }
 
         query.build()

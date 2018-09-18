@@ -14,6 +14,7 @@ A library for listening on Twitter Streaming API.
 """
 
 [dependencies]
+bitflags = "1"
 byteorder = { version = "1.2.3", features = ["i128"] }
 bytes = "0.4.4"
 cfg-if = "0.1"
