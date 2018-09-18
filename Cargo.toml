@@ -26,6 +26,7 @@ libflate = "0.1.15"
 percent-encoding = "1"
 rand = "0.5"
 sha-1 = "0.7"
+string = "0.1"
 tokio = "0.1"
 tokio-timer = "0.2.2"
 egg-mode = { version = "0.12", optional = true }

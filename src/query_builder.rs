@@ -132,9 +132,14 @@ impl QueryBuilder {
     }
 
     pub fn append_oauth_params(&mut self, ck: &str, ak: &str) {
-        let nonce = Alphanumeric.sample_iter(&mut thread_rng())
-            .take(32)
-            .collect::<String>();
+        let nonce = unsafe {
+            let mut buf = [0; 32];
+            Alphanumeric.sample_iter(&mut thread_rng())
+                .zip(&mut buf)
+                .for_each(|(c, r)| *r = c as u8);
+            debug_assert!(buf.is_ascii());
+            ::string::String::<[u8; 32]>::from_utf8_unchecked(buf)
+        };
         let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(d) => d.as_secs(),
             #[cold] Err(_) => 0,
@@ -150,7 +155,7 @@ impl QueryBuilder {
         timestamp: u64,
     ) {
         self.append_to_header("oauth_consumer_key", ck);
-        self.append_to_header_encoded("oauth_nonce", &*nonce);
+        self.append_to_header_encoded("oauth_nonce", nonce);
         self.append_to_header_encoded("oauth_signature_method", "HMAC-SHA1");
         self.append_to_header_encoded("oauth_timestamp", timestamp);
         self.append_to_header("oauth_token", ak);

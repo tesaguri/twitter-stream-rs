@@ -67,6 +67,7 @@ extern crate rand;
 #[macro_use]
 extern crate serde;
 extern crate sha1;
+extern crate string;
 extern crate tokio;
 extern crate tokio_timer;
 
