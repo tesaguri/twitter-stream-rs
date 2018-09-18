@@ -142,7 +142,6 @@ impl QueryBuilder {
         timestamp: u64,
         end: bool,
     ) {
-        self.append_question_mark();
         self.append_to_header("oauth_consumer_key", ck, false);
         self.append_to_header_encoded("oauth_nonce", &*nonce, false);
         self.append_to_header_encoded(
