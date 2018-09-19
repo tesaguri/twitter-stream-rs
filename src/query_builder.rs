@@ -433,57 +433,73 @@ mod tests {
 
     #[test]
     fn query_builder() {
-        let method = "GET";
-        let ep = "https://stream.twitter.com/1.1/statuses/sample.json"
-            .parse().unwrap();
-        let expected_header = "\
-            OAuth \
-            oauth_consumer_key=\"xvz1evFS4wEEPTGEFPHBog\",\
-            oauth_nonce=\"kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg\",\
-            oauth_signature_method=\"HMAC-SHA1\",\
-            oauth_timestamp=\"1318622958\",\
-            oauth_token=\"370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb\",\
-            oauth_version=\"1.0\",\
-            oauth_signature=\"OGQqcy4l5xWBFX7t0DrkP5%2FD0rM%3D\"\
-        ";
-        let expected_uri = "https://stream.twitter.com/1.1/statuses/sample.json?stall_warnings=true";
+        macro_rules! test {
+            ($((
+                $method:expr, $ep:expr,
+                $ck:expr, $ak:expr, $cs:expr, $as_:expr,
+                $nonce:expr, $timestamp:expr,
+                { $($query1:tt)* }, { $($query2:tt)* } $(,)*
+            ) -> ($expected_sign:expr, $expected_query:expr $(,)*);)*) => {$(
+                let ep = Uri::from_static($ep);
+                let mut qb = if $method == "POST" {
+                    QueryBuilder::new_form($cs, $as_, $method, &ep)
+                } else {
+                    QueryBuilder::new($cs, $as_, $method, &ep)
+                };
 
-        let mut qb = QueryBuilder::new(CS, AS, method, &ep);
+                test_inner! { qb; $($query1)* }
+                qb.append_oauth_params_($ck, $ak, $nonce, $timestamp);
+                test_inner! { qb; $($query2)* }
 
-        qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP);
-        qb.append_encoded("stall_warnings", "true", "true");
+                let QueryOutcome { header, query } = qb.build();
+                assert_eq!(
+                    header,
+                    format!("\
+                        OAuth \
+                        oauth_consumer_key=\"{}\",\
+                        oauth_nonce=\"{}\",\
+                        oauth_signature_method=\"HMAC-SHA1\",\
+                        oauth_timestamp=\"{}\",\
+                        oauth_token=\"{}\",\
+                        oauth_version=\"1.0\",\
+                        oauth_signature=\"{}\"\
+                    ", $ck, $nonce, $timestamp, $ak, $expected_sign)
+                );
+                assert_eq!(query, $expected_query);
+            )*};
+        }
 
-        let QueryOutcome { header, query: uri } = qb.build();
-        assert_eq!(uri, expected_uri);
-        assert_eq!(header, expected_header);
-    }
+        macro_rules! test_inner {
+            ($qb:ident; encoded $key:ident: $v:expr, $w:expr, $($rest:tt)*) => {
+                $qb.append_encoded(stringify!($key), $v, $w);
+                test_inner! { $qb; $($rest)* }
+            };
+            ($qb:ident; $key:ident: $v:expr, $($rest:tt)*) => {
+                $qb.append(stringify!($key), $v);
+                test_inner! { $qb; $($rest)* }
+            };
+            ($_qb:ident;) => ();
+        }
 
-    #[test]
-    fn query_builder_form() {
-        let method = "POST";
-        let ep = "https://api.twitter.com/1.1/statuses/update.json"
-            .parse().unwrap();
-        let status = "Hello Ladies + Gentlemen, a signed OAuth request!";
-        let expected_header = "\
-            OAuth \
-            oauth_consumer_key=\"xvz1evFS4wEEPTGEFPHBog\",\
-            oauth_nonce=\"kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg\",\
-            oauth_signature_method=\"HMAC-SHA1\",\
-            oauth_timestamp=\"1318622958\",\
-            oauth_token=\"370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb\",\
-            oauth_version=\"1.0\",\
-            oauth_signature=\"hCtSmYh%2BiHYCEqBWrE7C7hYmtUk%3D\"\
-        ";
-        let expected_query = "include_entities=true&status=Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21";
-
-        let mut qb = QueryBuilder::new_form(CS, AS, method, &ep);
-
-        qb.append_encoded("include_entities", "true", "true");
-        qb.append_oauth_params_(CK, AK, NONCE, TIMESTAMP);
-        qb.append("status", status);
-
-        let QueryOutcome { header, query } = qb.build();
-        assert_eq!(query, expected_query);
-        assert_eq!(header, expected_header);
+        test! {
+            (
+                "GET", "https://stream.twitter.com/1.1/statuses/sample.json",
+                CK, AK, CS, AS, NONCE, TIMESTAMP,
+                {}, { encoded stall_warnings: "true", "true", },
+            ) -> (
+                "OGQqcy4l5xWBFX7t0DrkP5%2FD0rM%3D",
+                "https://stream.twitter.com/1.1/statuses/sample.json?stall_warnings=true",
+            );
+            (
+                "POST", "https://api.twitter.com/1.1/statuses/update.json",
+                CK, AK, CS, AS, NONCE, TIMESTAMP,
+                { encoded include_entities: "true", "true", },
+                { status: "Hello Ladies + Gentlemen, a signed OAuth request!", },
+            ) -> (
+                "hCtSmYh%2BiHYCEqBWrE7C7hYmtUk%3D",
+                "include_entities=true&\
+                    status=Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21",
+            );
+        }
     }
 }
