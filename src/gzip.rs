@@ -8,11 +8,17 @@ use libflate::non_blocking::gzip;
 
 use Error;
 
-pub struct Gzip<S> where S: Stream {
+pub struct Gzip<S>
+where
+    S: Stream,
+{
     inner: ReadStream<gzip::Decoder<StreamRead<S>>>,
 }
 
-struct StreamRead<S> where S: Stream {
+struct StreamRead<S>
+where
+    S: Stream,
+{
     body: S,
     buf: Reader<S::Item>,
     error: Option<S::Error>,
@@ -23,33 +29,40 @@ struct ReadStream<R> {
     buf: BytesMut,
 }
 
-impl<S: Stream> Gzip<S> where S::Item: Buf+Default {
+impl<S: Stream> Gzip<S>
+where
+    S::Item: Buf + Default,
+{
     pub fn new(body: S) -> Self {
         Gzip {
-            inner: ReadStream::new(gzip::Decoder::new(StreamRead::new(body)))
+            inner: ReadStream::new(gzip::Decoder::new(StreamRead::new(body))),
         }
     }
 }
 
-impl<S: Stream<Error=Error>> Stream for Gzip<S> where S::Item: Buf {
+impl<S: Stream<Error = Error>> Stream for Gzip<S>
+where
+    S::Item: Buf,
+{
     type Item = Chunk;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Chunk>, Error> {
         match self.inner.poll() {
             Ok(async) => Ok(async),
-            Err(e) => if let Some(e) =
-                self.inner.inner.as_inner_mut().error.take()
-            {
+            Err(e) => if let Some(e) = self.inner.inner.as_inner_mut().error.take() {
                 Err(e)
             } else {
                 Err(Error::Gzip(e))
-            }
+            },
         }
     }
 }
 
-impl<S: Stream> StreamRead<S> where S::Item: Buf+Default {
+impl<S: Stream> StreamRead<S>
+where
+    S::Item: Buf + Default,
+{
     pub fn new(body: S) -> Self {
         StreamRead {
             body,
@@ -59,9 +72,12 @@ impl<S: Stream> StreamRead<S> where S::Item: Buf+Default {
     }
 }
 
-impl<S: Stream> Read for StreamRead<S> where S::Item: Buf {
+impl<S: Stream> Read for StreamRead<S>
+where
+    S::Item: Buf,
+{
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        while ! self.buf.get_ref().has_remaining() {
+        while !self.buf.get_ref().has_remaining() {
             match self.body.poll() {
                 Ok(Async::Ready(Some(data))) => self.buf = data.reader(),
                 Ok(Async::Ready(None)) => return Ok(0),
@@ -69,7 +85,7 @@ impl<S: Stream> Read for StreamRead<S> where S::Item: Buf {
                 Err(e) => {
                     self.error = Some(e);
                     return Err(ErrorKind::Other.into());
-                },
+                }
             }
         }
         self.buf.read(buf)
@@ -94,7 +110,7 @@ impl<R: Read> Stream for ReadStream<R> {
     // This is almost a copy-and-paste from `reqwest` crate:
     // https://github.com/seanmonstar/reqwest/blob/fe8c7a2/src/async_impl/decoder.rs#L179-L214
     fn poll(&mut self) -> Poll<Option<Chunk>, io::Error> {
-        if ! self.buf.has_remaining_mut() {
+        if !self.buf.has_remaining_mut() {
             self.buf.reserve(BUF_SIZE);
         }
 
@@ -106,13 +122,13 @@ impl<R: Read> Stream for ReadStream<R> {
         match read {
             Ok(0) => Ok(None.into()),
             Ok(amt) => {
-                unsafe { self.buf.advance_mut(amt); }
+                unsafe {
+                    self.buf.advance_mut(amt);
+                }
                 let chunk = Chunk::from(self.buf.split_to(amt).freeze());
                 Ok(Some(chunk).into())
-            },
-            Err(ref e) if ErrorKind::WouldBlock == e.kind() => {
-                Ok(Async::NotReady)
-            },
+            }
+            Err(ref e) if ErrorKind::WouldBlock == e.kind() => Ok(Async::NotReady),
             Err(e) => Err(e),
         }
     }
@@ -147,6 +163,6 @@ mod tests {
         assert_id!();
         assert_id!([]);
         assert_id!([], [0], [], [], [1, 2]);
-        assert_id!([0; BUF_SIZE+1], [1; BUF_SIZE-1], [2; BUF_SIZE*5/2]);
+        assert_id!([0; BUF_SIZE + 1], [1; BUF_SIZE - 1], [2; BUF_SIZE * 5 / 2]);
     }
 }

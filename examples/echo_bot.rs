@@ -26,30 +26,45 @@ fn main() {
         .track(Some(TRACK))
         .listen()
         .flatten_stream();
-    let rest = tweetust::TwitterClient::new(token, tweetust::DefaultHttpHandler::with_https_connector().unwrap());
+    let rest = tweetust::TwitterClient::new(
+        token,
+        tweetust::DefaultHttpHandler::with_https_connector().unwrap(),
+    );
 
     // Information of the authenticated user:
-    let user = rest.account().verify_credentials().execute().unwrap().object;
+    let user = rest.account()
+        .verify_credentials()
+        .execute()
+        .unwrap()
+        .object;
 
-    let bot = stream.for_each(move |json| {
-        if let Ok(StreamMessage::Tweet(tweet)) = StreamMessage::from_str(&json) {
-            if tweet.user.id != user.id as u64
-                && tweet.entities.user_mentions.iter().any(|mention| mention.id == user.id as u64)
-            {
-                println!("On {}, @{} tweeted: {:?}", tweet.created_at, tweet.user.screen_name, tweet.text);
+    let bot = stream
+        .for_each(move |json| {
+            if let Ok(StreamMessage::Tweet(tweet)) = StreamMessage::from_str(&json) {
+                if tweet.user.id != user.id as u64
+                    && tweet
+                        .entities
+                        .user_mentions
+                        .iter()
+                        .any(|mention| mention.id == user.id as u64)
+                {
+                    println!(
+                        "On {}, @{} tweeted: {:?}",
+                        tweet.created_at, tweet.user.screen_name, tweet.text
+                    );
 
-                let response = format!("@{} {}", tweet.user.screen_name, tweet.text);
-                rest.statuses()
-                    .update(response)
-                    .in_reply_to_status_id(tweet.id as _)
-                    .execute()
-                    .map_err(Error::custom)?;
+                    let response = format!("@{} {}", tweet.user.screen_name, tweet.text);
+                    rest.statuses()
+                        .update(response)
+                        .in_reply_to_status_id(tweet.id as _)
+                        .execute()
+                        .map_err(Error::custom)?;
+                }
             }
-        }
 
-        Ok(())
-    })
-    .map_err(|e| println!("error: {}", e));
+            Ok(())
+        })
+        .map_err(|e| println!("error: {}", e));
 
     rt::run(bot);
 }

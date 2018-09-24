@@ -31,7 +31,8 @@ pub enum Error {
 
 impl Error {
     pub fn custom<E>(error: E) -> Self
-        where E: Into<Box<error::Error + Send + Sync>>
+    where
+        E: Into<Box<error::Error + Send + Sync>>,
     {
         Error::Custom(error.into())
     }
@@ -43,8 +44,7 @@ impl error::Error for Error {
 
         match *self {
             Gzip(ref e) => e.description(),
-            Http(ref status) => status.canonical_reason()
-                .unwrap_or("<unknown status code>"),
+            Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
             TimedOut => "timed out",
             Tls(ref e) => e.description(),

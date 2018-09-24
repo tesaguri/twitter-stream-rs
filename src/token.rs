@@ -1,14 +1,14 @@
 use std::borrow::Borrow;
 
 /// An OAuth token used to log into Twitter.
-#[cfg_attr(feature = "tweetust", doc = "
+#[cfg_attr(feature = "tweetust",
+           doc = "
 
 This implements `tweetust::conn::Authenticator` so you can pass it to
-`tweetust::TwitterClient` as if it were `tweetust::OAuthAuthenticator`"
-)]
+`tweetust::TwitterClient` as if it were `tweetust::OAuthAuthenticator`")]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Debug)]
-pub struct Token<C=String, A=String> {
+pub struct Token<C = String, A = String> {
     pub consumer_key: C,
     pub consumer_secret: C,
     pub access_key: A,
@@ -16,14 +16,13 @@ pub struct Token<C=String, A=String> {
 }
 
 impl<C: Borrow<str>, A: Borrow<str>> Token<C, A> {
-    pub fn new(
-        consumer_key: C,
-        consumer_secret: C,
-        access_key: A,
-        access_secret: A,
-    ) -> Self
-    {
-        Token { consumer_key, consumer_secret, access_key, access_secret }
+    pub fn new(consumer_key: C, consumer_secret: C, access_key: A, access_secret: A) -> Self {
+        Token {
+            consumer_key,
+            consumer_secret,
+            access_key,
+            access_secret,
+        }
     }
 
     /// Borrow token strings from `self` and make a new `Token` with them.

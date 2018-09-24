@@ -44,9 +44,7 @@ impl JsonStr {
 
     #[doc(hidden)]
     pub unsafe fn from_utf8_unchecked(v: Bytes) -> Self {
-        JsonStr {
-            inner: v,
-        }
+        JsonStr { inner: v }
     }
 
     pub fn as_str(&self) -> &str {
@@ -84,9 +82,7 @@ impl From<String> for JsonStr {
 
 impl<'a> From<&'a str> for JsonStr {
     fn from(s: &'a str) -> Self {
-        JsonStr {
-            inner: s.into(),
-        }
+        JsonStr { inner: s.into() }
     }
 }
 

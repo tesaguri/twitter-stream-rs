@@ -51,6 +51,7 @@ compile_error!("`runtime` feature must be enabled for now.");
 
 #[macro_use]
 extern crate bitflags;
+extern crate byteorder;
 extern crate bytes;
 #[macro_use]
 extern crate cfg_if;
@@ -59,7 +60,6 @@ extern crate futures;
 extern crate hmac;
 extern crate http;
 extern crate hyper;
-extern crate byteorder;
 extern crate libflate;
 extern crate percent_encoding;
 extern crate rand;
@@ -97,14 +97,8 @@ use hyper::Request;
 use hyper::body::{Body, Payload};
 use hyper::client::{Client, ResponseFuture};
 use hyper::client::connect::Connect;
-use hyper::header::{
-    HeaderValue,
-    ACCEPT_ENCODING,
-    AUTHORIZATION,
-    CONTENT_ENCODING,
-    CONTENT_LENGTH,
-    CONTENT_TYPE,
-};
+use hyper::header::{HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH,
+                    CONTENT_TYPE};
 
 use error::TlsError;
 use gzip::Gzip;
@@ -161,16 +155,14 @@ macro_rules! def_stream {
         }
 
         impl<$lifetime, C, A> $B<$lifetime, Token<C, A>, ()>
-            where C: Borrow<str>, A: Borrow<str>
+        where
+            C: Borrow<str>,
+            A: Borrow<str>,
         {
             $(
                 $(#[$constructor_attr])*
                 pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
-                    $B::custom(
-                        RequestMethod::$Method,
-                        Uri::from_static($endpoint),
-                        token,
-                    )
+                    $B::custom(RequestMethod::$Method, Uri::from_static($endpoint), token)
                 }
             )*
 
@@ -195,8 +187,10 @@ macro_rules! def_stream {
             /// Set a `hyper::Client` to be used for connecting to the server.
             ///
             /// The `Client` should be able to handle the `https` scheme.
-            pub fn client<Conn, B>(self, client: &$lifetime Client<Conn, B>)
-                -> $B<$lifetime, Token<C, A>, Client<Conn, B>>
+            pub fn client<Conn, B>(
+                self,
+                client: &$lifetime Client<Conn, B>
+            ) -> $B<$lifetime, Token<C, A>, Client<Conn, B>>
             where
                 Conn: Connect + Sync + 'static,
                 Conn::Transport: 'static,
@@ -234,8 +228,7 @@ macro_rules! def_stream {
             }
 
             /// Reset the token to be used to log into Twitter.
-            pub fn token(&mut self, token: &$lifetime Token<C, A>) -> &mut Self
-            {
+            pub fn token(&mut self, token: &$lifetime Token<C, A>) -> &mut Self {
                 self.token = token;
                 self
             }
@@ -247,7 +240,9 @@ macro_rules! def_stream {
             $(
                 $(#[$s_constructor_attr])*
                 pub fn $constructor<C, A>(token: &Token<C, A>) -> $FS
-                    where C: Borrow<str>, A: Borrow<str>
+                where
+                    C: Borrow<str>,
+                    A: Borrow<str>,
                 {
                     $B::$constructor(token).listen()
                 }
@@ -401,10 +396,7 @@ def_stream! {
     /// A listener for Twitter Streaming API.
     /// It yields JSON strings returned from the API.
     pub struct TwitterStream {
-        inner: EitherStream<
-            Lines<TimeoutStream<Body>>,
-            Lines<Gzip<TimeoutStream<Body>>>,
-        >,
+        inner: EitherStream<Lines<TimeoutStream<Body>>, Lines<Gzip<TimeoutStream<Body>>>>,
     }
 
     // Constructors for `TwitterStreamBuilder`:
@@ -449,7 +441,8 @@ where
         FutureTwitterStream {
             inner: Ok(FutureTwitterStreamInner {
                 resp: self.connect(self.client),
-                timeout: self.inner.timeout
+                timeout: self.inner
+                    .timeout
                     .map(Timeout::new)
                     .unwrap_or_else(Timeout::never),
             }),
@@ -458,7 +451,9 @@ where
 }
 
 impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
-    where C: Borrow<str>, A: Borrow<str>
+where
+    C: Borrow<str>,
+    A: Borrow<str>,
 {
     /// Start listening on a Stream, returning a `Future` which resolves
     /// to a `Stream` yielding JSON messages from the API.
@@ -467,7 +462,8 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
             inner: default_connector::new()
                 .map(|c| FutureTwitterStreamInner {
                     resp: self.connect::<_, Body>(&Client::builder().build(c)),
-                    timeout: self.inner.timeout
+                    timeout: self.inner
+                        .timeout
                         .map(Timeout::new)
                         .unwrap_or_else(Timeout::never),
                 })
@@ -477,7 +473,9 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
 }
 
 impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
-    where C: Borrow<str>, A: Borrow<str>
+where
+    C: Borrow<str>,
+    A: Borrow<str>,
 {
     /// Make an HTTP connection to an endpoint of the Streaming API.
     fn connect<Conn, B>(&self, c: &Client<Conn, B>) -> ResponseFuture
@@ -496,16 +494,17 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
             let query = QueryBuilder::new_form(
                 self.token.consumer_secret.borrow(),
                 self.token.access_secret.borrow(),
-                "POST", &self.endpoint,
+                "POST",
+                &self.endpoint,
             );
             let QueryOutcome { header, query } = self.build_query(query);
 
-            req
-                .uri(self.endpoint.clone())
+            req.uri(self.endpoint.clone())
                 .header(AUTHORIZATION, Bytes::from(header))
-                .header(CONTENT_TYPE, HeaderValue::from_static(
-                    "application/x-www-form-urlencoded"
-                ))
+                .header(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/x-www-form-urlencoded"),
+                )
                 .header(CONTENT_LENGTH, Bytes::from(query.len().to_string()))
                 .body(query.into_bytes().into())
                 .unwrap()
@@ -513,19 +512,19 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
             let query = QueryBuilder::new(
                 self.token.consumer_secret.borrow(),
                 self.token.access_secret.borrow(),
-                self.method.as_ref(), &self.endpoint,
+                self.method.as_ref(),
+                &self.endpoint,
             );
             let QueryOutcome { header, query: uri } = self.build_query(query);
 
-            req
-                .uri(uri)
+            req.uri(uri)
                 .header(AUTHORIZATION, Bytes::from(header))
                 .body(B::default())
                 .unwrap()
         };
 
-            c.request(req)
-        }
+        c.request(req)
+    }
 
     fn build_query(&self, mut query: QueryBuilder) -> QueryOutcome {
         const COMMA: &str = "%2C";
@@ -547,9 +546,7 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
             impl<'a, D: Display> Display for LocationsDisplay<'a, D> {
                 fn fmt(&self, f: &mut Formatter) -> fmt::Result {
                     macro_rules! push {
-                        ($($c:expr),*) => {{
-                            $(write!(f, "{}{}", self.1, $c)?;)*
-                        }};
+                        ($($c:expr),*) => {{ $(write!(f, "{}{}", self.1, $c)?;)* }};
                     }
                     let mut iter = self.0.iter();
                     if let Some(&((x1, y1), (x2, y2))) = iter.next() {
@@ -586,21 +583,29 @@ impl Future for FutureTwitterStream {
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
         use futures::Async;
 
-        let FutureTwitterStreamInner { ref mut resp, ref mut timeout } =
-            *self.inner.as_mut().map_err(|e| Error::Tls(
-                e.take().expect("cannot poll FutureTwitterStream twice")
-            ))?;
+        let FutureTwitterStreamInner {
+            ref mut resp,
+            ref mut timeout,
+        } = *self.inner
+            .as_mut()
+            .map_err(|e| Error::Tls(e.take().expect("cannot poll FutureTwitterStream twice")))?;
 
         match resp.poll().map_err(Error::Hyper)? {
             Async::Ready(res) => {
-                let (Parts { status, headers, .. }, body) = res.into_parts();
+                let (
+                    Parts {
+                        status, headers, ..
+                    },
+                    body,
+                ) = res.into_parts();
 
                 if StatusCode::OK != status {
                     return Err(Error::Http(status));
                 }
 
                 let body = timeout.take().for_stream(body);
-                let gzip = headers.get_all(CONTENT_ENCODING)
+                let gzip = headers
+                    .get_all(CONTENT_ENCODING)
                     .iter()
                     .any(|e| e == "gzip");
                 let inner = if gzip {
@@ -610,13 +615,11 @@ impl Future for FutureTwitterStream {
                 };
 
                 Ok(TwitterStream { inner }.into())
-            },
-            Async::NotReady => {
-                match timeout.poll() {
-                    Ok(Async::Ready(())) => Err(Error::TimedOut),
-                    Ok(Async::NotReady) => Ok(Async::NotReady),
-                    Err(_never) => unreachable!(),
-                }
+            }
+            Async::NotReady => match timeout.poll() {
+                Ok(Async::Ready(())) => Err(Error::TimedOut),
+                Ok(Async::NotReady) => Ok(Async::NotReady),
+                Err(_never) => unreachable!(),
             },
         }
     }
@@ -631,15 +634,13 @@ impl Stream for TwitterStream {
             match try_ready!(self.inner.poll()) {
                 Some(line) => {
                     // Skip whitespaces (as in RFC7159 §2)
-                    let all_ws = line.iter().all(|&c| {
-                        c == b'\n' || c == b'\r' || c == b' ' || c == b'\t'
-                    });
-                    if ! all_ws {
-                        let line = JsonStr::from_utf8(line)
-                            .map_err(Error::Utf8)?;
+                    let all_ws = line.iter()
+                        .all(|&c| c == b'\n' || c == b'\r' || c == b' ' || c == b'\t');
+                    if !all_ws {
+                        let line = JsonStr::from_utf8(line).map_err(Error::Utf8)?;
                         return Ok(Some(line).into());
                     }
-                },
+                }
                 None => return Ok(None.into()),
             }
         }
@@ -653,7 +654,8 @@ mod tests {
     #[test]
     fn query_dictionary_order() {
         let endpoint = "https://stream.twitter.com/1.1/statuses/filter.json"
-            .parse::<Uri>().unwrap();
+            .parse::<Uri>()
+            .unwrap();
         TwitterStreamBuilder {
             client: &(),
             method: RequestMethod::GET,

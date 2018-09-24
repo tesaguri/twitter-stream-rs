@@ -98,10 +98,13 @@ pub struct TimeoutStream<S> {
     timeout: Timeout,
 }
 
-pub struct JoinDisplay<'a, D: 'a, Sep: ?Sized+'a>(pub &'a [D], pub &'a Sep);
+pub struct JoinDisplay<'a, D: 'a, Sep: ?Sized + 'a>(pub &'a [D], pub &'a Sep);
 
 /// A stream over the lines (delimited by CRLF) of a `Body`.
-pub struct Lines<B> where B: Stream {
+pub struct Lines<B>
+where
+    B: Stream,
+{
     inner: Fuse<B>,
     buf: Bytes,
 }
@@ -111,7 +114,9 @@ pub struct Lines<B> where B: Stream {
 pub enum Never {}
 
 impl<A, B> Stream for EitherStream<A, B>
-    where A: Stream, B: Stream<Item=A::Item, Error=A::Error>
+where
+    A: Stream,
+    B: Stream<Item = A::Item, Error = A::Error>,
 {
     type Item = A::Item;
     type Error = A::Error;
@@ -144,7 +149,9 @@ impl Timeout {
     fn with_clock(clock: Clock, dur: Duration) -> Self {
         Timeout {
             inner: Some(TimeoutInner {
-                dur, timer: Delay::new(clock.now() + dur), clock
+                dur,
+                timer: Delay::new(clock.now() + dur),
+                clock,
             }),
         }
     }
@@ -156,12 +163,17 @@ impl Timeout {
     }
 
     pub fn take(&mut self) -> Self {
-        Timeout { inner: self.inner.take() }
+        Timeout {
+            inner: self.inner.take(),
+        }
     }
 
     pub fn for_stream<S>(mut self, stream: S) -> TimeoutStream<S> {
         self.reset();
-        TimeoutStream { stream, timeout: self }
+        TimeoutStream {
+            stream,
+            timeout: self,
+        }
     }
 }
 
@@ -173,7 +185,9 @@ impl Future for Timeout {
         if let Some(ref mut inner) = self.inner {
             match inner.timer.poll() {
                 Ok(async) => return Ok(async),
-                Err(e) => if ! e.is_shutdown() { return Ok(Async::NotReady); },
+                Err(e) => if !e.is_shutdown() {
+                    return Ok(Async::NotReady);
+                },
             }
         }
         // if `e.is_shutdown`:
@@ -182,30 +196,36 @@ impl Future for Timeout {
     }
 }
 
-impl<S> Stream for TimeoutStream<S> where S: Stream<Error=HyperError> {
+impl<S> Stream for TimeoutStream<S>
+where
+    S: Stream<Error = HyperError>,
+{
     type Item = S::Item;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<S::Item>, Error> {
-        self.stream.poll().map_err(Error::Hyper).and_then(|async| {
-            match async {
+        self.stream
+            .poll()
+            .map_err(Error::Hyper)
+            .and_then(|async| match async {
                 Async::Ready(Some(v)) => {
                     self.timeout.reset();
                     Ok(Some(v).into())
-                },
+                }
                 Async::Ready(None) => Ok(Async::Ready(None)),
                 Async::NotReady => match self.timeout.poll() {
                     Ok(Async::Ready(())) => Err(Error::TimedOut),
                     Ok(Async::NotReady) => Ok(Async::NotReady),
                     Err(_never) => unreachable!(),
                 },
-            }
-        })
+            })
     }
 }
 
 impl<'a, D, Sep> Display for JoinDisplay<'a, D, Sep>
-    where D: Display+'a, Sep: Display+?Sized+'a
+where
+    D: Display + 'a,
+    Sep: Display + ?Sized + 'a,
 {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let mut iter = self.0.iter();
@@ -219,7 +239,10 @@ impl<'a, D, Sep> Display for JoinDisplay<'a, D, Sep>
     }
 }
 
-impl<B> Lines<B> where B: Stream {
+impl<B> Lines<B>
+where
+    B: Stream,
+{
     pub fn new(body: B) -> Self {
         Lines {
             inner: body.fuse(),
@@ -228,7 +251,11 @@ impl<B> Lines<B> where B: Stream {
     }
 }
 
-impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
+impl<B> Stream for Lines<B>
+where
+    B: Stream,
+    B::Item: Into<Bytes>,
+{
     type Item = Bytes;
     type Error = B::Error;
 
@@ -250,7 +277,9 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
         }
 
         fn remove_first_line(buf: &mut Bytes) -> Option<Bytes> {
-            (buf as &Bytes).into_iter().enumerate()
+            (buf as &Bytes)
+                .into_iter()
+                .enumerate()
                 .find(|&(i, b)| b'\r' == b && Some(&b'\n') == buf.get(i + 1))
                 .map(|(i, _)| buf.split_to(i + 2))
         }
@@ -268,9 +297,7 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
             match try_ready!(self.inner.poll()) {
                 Some(chunk) => {
                     let mut chunk = chunk.into();
-                    if b'\r' == *self.buf.last().unwrap()
-                        && Some(&b'\n') == chunk.first()
-                    {
+                    if b'\r' == *self.buf.last().unwrap() && Some(&b'\n') == chunk.first() {
                         let i = self.buf.len() + 1;
                         self.buf.extend_from_slice(&chunk);
                         let next = self.buf.split_off(i);
@@ -283,11 +310,11 @@ impl<B> Stream for Lines<B> where B: Stream, B::Item: Into<Bytes> {
                     } else {
                         self.buf.extend_from_slice(&chunk);
                     }
-                },
+                }
                 None => {
                     let ret = mem::replace(&mut self.buf, Bytes::new());
                     return Ok(Some(ret).into());
-                },
+                }
             };
         }
     }
@@ -339,15 +366,12 @@ mod test {
         ];
 
         let mut iter1 = lines.iter().cloned();
-        let mut iter2 = Lines::new(stream::iter_ok::<_,()>(body))
+        let mut iter2 = Lines::new(stream::iter_ok::<_, ()>(body))
             .wait()
             .map(|s| String::from_utf8(s.unwrap().to_vec()).unwrap());
 
-        for _ in 0..(lines.len()+1) {
-            assert_eq!(
-                iter1.next(),
-                iter2.next().as_ref().map(String::as_str)
-            );
+        for _ in 0..(lines.len() + 1) {
+            assert_eq!(iter1.next(), iter2.next().as_ref().map(String::as_str));
         }
     }
 }

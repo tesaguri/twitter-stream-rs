@@ -2,4 +2,4 @@
 
 pub use futures::{Future, Stream};
 pub use futures::future::{lazy, poll_fn};
-pub use tokio::{spawn, run};
+pub use tokio::{run, spawn};
