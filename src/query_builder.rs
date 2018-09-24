@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use byteorder::{BigEndian, ByteOrder};
 use hmac::{Hmac, Mac};
 use hyper::Uri;
-use percent_encoding::{EncodeSet as EncodeSet_, PercentEncode};
+use percent_encoding::{EncodeSet as EncodeSet_, PercentEncode as PercentEncode_};
 use rand::thread_rng;
 use rand::distributions::{Alphanumeric, Distribution};
 use sha1::Sha1;
@@ -40,6 +40,8 @@ struct Base64PercentEncode<'a>(&'a [u8]);
 struct DoublePercentEncode<'a>(&'a str);
 
 struct MacWrite<M>(M);
+
+struct PercentEncode<D>(D);
 
 // https://tools.ietf.org/html/rfc3986#section-2.1
 #[derive(Clone)]
@@ -120,15 +122,11 @@ impl QueryBuilder {
         self.mac_input(k, v);
     }
 
-    /// `v` is used to make query string and `w` is used to make the signature.
-    /// `v` should be percent encoded and `w` should be percent encoded twice.
-    pub fn append_encoded<V, W>(&mut self, k: &str, v: V, w: W)
-        where V: Display, W: Display
-    {
+    pub fn append_encoded<V: Display>(&mut self, k: &str, v: V) {
         self.check_dictionary_order(k);
         self.append_delim();
         write!(self.query, "{}={}", k, v).unwrap();
-        self.mac_input_encoded(k, w);
+        self.mac_input_encoded(k, PercentEncode(v));
     }
 
     pub fn append_oauth_params(&mut self, ck: &str, ak: &str) {
@@ -171,7 +169,7 @@ impl QueryBuilder {
     fn append_to_header_encoded<V: Display>(&mut self, k: &str, v: V) {
         self.check_dictionary_order(k);
         write!(self.header, r#"{}="{}","#, k, v).unwrap();
-        self.mac_input_encoded(k, v);
+        self.mac_input_encoded(k, PercentEncode(v));
     }
 
     fn append_delim(&mut self) {
@@ -281,6 +279,18 @@ impl<'a> Display for DoublePercentEncode<'a> {
     }
 }
 
+impl<D: Display> Display for PercentEncode<D> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        struct Adapter<'a, 'b: 'a>(&'a mut Formatter<'b>);
+        impl<'a, 'b: 'a> Write for Adapter<'a, 'b> {
+            fn write_str(&mut self, s: &str) -> fmt::Result {
+                Display::fmt(&percent_encode(s), self.0)
+            }
+        }
+        write!(Adapter(f), "{}", self.0)
+    }
+}
+
 fn double_encode_byte(b: u8) -> &'static str {
     const ENCODE: &[u8; 0x100*5] = b"\
         %2500%2501%2502%2503%2504%2505%2506%2507\
@@ -368,7 +378,7 @@ impl EncodeSet_ for EncodeSet {
     }
 }
 
-fn percent_encode(input: &str) -> PercentEncode<EncodeSet> {
+fn percent_encode(input: &str) -> PercentEncode_<EncodeSet> {
     ::percent_encoding::utf8_percent_encode(input, EncodeSet)
 }
 
@@ -470,8 +480,8 @@ mod tests {
         }
 
         macro_rules! test_inner {
-            ($qb:ident; encoded $key:ident: $v:expr, $w:expr, $($rest:tt)*) => {
-                $qb.append_encoded(stringify!($key), $v, $w);
+            ($qb:ident; encoded $key:ident: $v:expr, $($rest:tt)*) => {
+                $qb.append_encoded(stringify!($key), $v);
                 test_inner! { $qb; $($rest)* }
             };
             ($qb:ident; $key:ident: $v:expr, $($rest:tt)*) => {
@@ -485,7 +495,7 @@ mod tests {
             (
                 "GET", "https://stream.twitter.com/1.1/statuses/sample.json",
                 CK, AK, CS, AS, NONCE, TIMESTAMP,
-                {}, { encoded stall_warnings: "true", "true", },
+                {}, { encoded stall_warnings: "true", },
             ) -> (
                 "OGQqcy4l5xWBFX7t0DrkP5%2FD0rM%3D",
                 "https://stream.twitter.com/1.1/statuses/sample.json?stall_warnings=true",
@@ -493,7 +503,7 @@ mod tests {
             (
                 "POST", "https://api.twitter.com/1.1/statuses/update.json",
                 CK, AK, CS, AS, NONCE, TIMESTAMP,
-                { encoded include_entities: "true", "true", },
+                { encoded include_entities: "true", },
                 { status: "Hello Ladies + Gentlemen, a signed OAuth request!", },
             ) -> (
                 "hCtSmYh%2BiHYCEqBWrE7C7hYmtUk%3D",
@@ -505,10 +515,10 @@ mod tests {
             (
                 "GET", "https://example.com/get.json",
                 CK, AK, CS, AS, NONCE, TIMESTAMP,
-                { foo: "ふー", }, {},
+                { encoded bar: "%E9%85%92%E5%A0%B4", foo: "ふー", }, {},
             ) -> (
-                "C94m222zyoIZlJ7THfw3RKOoGPQ%3D",
-                "https://example.com/get.json?foo=%E3%81%B5%E3%83%BC",
+                "Xp35hf3T21yhpEuxez7p6bV62Bw%3D",
+                "https://example.com/get.json?bar=%E9%85%92%E5%A0%B4&foo=%E3%81%B5%E3%83%BC",
             );
         }
     }

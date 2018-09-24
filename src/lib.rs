@@ -529,20 +529,15 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
 
     fn build_query(&self, mut query: QueryBuilder) -> QueryOutcome {
         const COMMA: &str = "%2C";
-        const COMMA_DOUBLE_ENCODED: &str = "%252C";
         let this = &self.inner;
         if let Some(n) = this.count {
-            query.append_encoded("count", n, n);
+            query.append_encoded("count", n);
         }
         if let Some(ref fl) = this.filter_level {
             query.append("filter_level", fl.as_ref());
         }
         if let Some(ids) = this.follow {
-            query.append_encoded(
-                "follow",
-                JoinDisplay(ids, COMMA),
-                JoinDisplay(ids, COMMA_DOUBLE_ENCODED),
-            );
+            query.append_encoded("follow", JoinDisplay(ids, COMMA));
         }
         if let Some(s) = this.language {
             query.append("language", s);
@@ -567,18 +562,14 @@ impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
                     Ok(())
                 }
             }
-            query.append_encoded(
-                "locations",
-                LocationsDisplay(locs, COMMA),
-                LocationsDisplay(locs, COMMA_DOUBLE_ENCODED),
-            );
+            query.append_encoded("locations", LocationsDisplay(locs, COMMA));
         }
         query.append_oauth_params(
             self.token.consumer_key.borrow(),
             self.token.access_key.borrow(),
         );
         if this.stall_warnings {
-            query.append_encoded("stall_warnings", "true", "true");
+            query.append_encoded("stall_warnings", "true");
         }
         if let Some(s) = this.track {
             query.append("track", s);
