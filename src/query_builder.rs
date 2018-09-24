@@ -500,6 +500,16 @@ mod tests {
                 "include_entities=true&\
                     status=Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21",
             );
+            ("POST", "https://example.com/post.json", CK, AK, CS, AS, NONCE, TIMESTAMP, {}, {})
+                -> ("pN52L1gJ6sOyYOyv23cwfWFsIZc%3D", "");
+            (
+                "GET", "https://example.com/get.json",
+                CK, AK, CS, AS, NONCE, TIMESTAMP,
+                { foo: "ふー", }, {},
+            ) -> (
+                "C94m222zyoIZlJ7THfw3RKOoGPQ%3D",
+                "https://example.com/get.json?foo=%E3%81%B5%E3%83%BC",
+            );
         }
     }
 }
