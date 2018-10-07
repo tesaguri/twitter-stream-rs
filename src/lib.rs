@@ -109,7 +109,8 @@ use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 macro_rules! def_stream {
     (
         $(#[$builder_attr:meta])*
-        pub struct $B:ident<$lifetime:tt, $T:ident, $Cli:ident> {
+        pub struct $B:ident<$lifetime:tt, $T:ident $(=$TDefault:ty)*, $Cli:ident $(=$CliDefault:ty)*>
+        {
             $client:ident: $cli_ty:ty = $cli_default:expr;
             $($arg:ident: $a_ty:ty),*;
             $($setters:tt)*
@@ -133,7 +134,7 @@ macro_rules! def_stream {
         )*
     ) => {
         $(#[$builder_attr])*
-        pub struct $B<$lifetime, $T: $lifetime, $Cli: $lifetime> {
+        pub struct $B<$lifetime, $T: $lifetime $(= $TDefault)*, $Cli: $lifetime $(= $CliDefault)*> {
             $client: $cli_ty,
             $($arg: $a_ty,)*
             inner: BuilderInner<$lifetime>,
@@ -154,7 +155,7 @@ macro_rules! def_stream {
             $($s_field: $sf_ty,)*
         }
 
-        impl<$lifetime, C, A> $B<$lifetime, Token<C, A>, ()>
+        impl<$lifetime, C, A> $B<$lifetime, Token<C, A>>
         where
             C: Borrow<str>,
             A: Borrow<str>,
@@ -206,7 +207,7 @@ macro_rules! def_stream {
             }
 
             /// Unset the client set by `client` method.
-            pub fn unset_client(self) -> $B<$lifetime, Token<C, A>, ()> {
+            pub fn unset_client(self) -> $B<$lifetime, Token<C, A>> {
                 $B {
                     $client: &(),
                     $($arg: self.$arg,)*
@@ -315,7 +316,7 @@ def_stream! {
     /// # }
     /// ```
     #[derive(Clone, Debug)]
-    pub struct TwitterStreamBuilder<'a, T, Cli> {
+    pub struct TwitterStreamBuilder<'a, T = Token, Cli = ()> {
         client: &'a Cli = &();
 
         method: RequestMethod,
@@ -450,7 +451,7 @@ where
     }
 }
 
-impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>, ()>
+impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>>
 where
     C: Borrow<str>,
     A: Borrow<str>,
