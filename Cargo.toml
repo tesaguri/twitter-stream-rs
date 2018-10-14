@@ -14,19 +14,13 @@ A library for listening on Twitter Streaming API.
 """
 
 [dependencies]
-bitflags = "1"
-byteorder = { version = "1.2.3", features = ["i128"] }
 bytes = "0.4.4"
 cfg-if = "0.1"
 futures = "0.1.4"
-hmac = "0.6"
 http = "0.1.11"
 hyper = "0.12"
 libflate = "0.1.15"
-percent-encoding = "1"
-rand = "0.5"
-sha-1 = "0.7"
-string = "0.1"
+oauth1-request = "0.1"
 tokio = "0.1"
 tokio-timer = "0.2.2"
 egg-mode = { version = "0.12", optional = true }

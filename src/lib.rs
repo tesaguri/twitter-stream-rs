@@ -49,25 +49,18 @@ rt::run(future);
 #[cfg(not(feature = "runtime"))]
 compile_error!("`runtime` feature must be enabled for now.");
 
-#[macro_use]
-extern crate bitflags;
-extern crate byteorder;
 extern crate bytes;
 #[macro_use]
 extern crate cfg_if;
 #[macro_use]
 extern crate futures;
-extern crate hmac;
 extern crate http;
 extern crate hyper;
 extern crate libflate;
-extern crate percent_encoding;
-extern crate rand;
+extern crate oauth1_request as oauth;
 #[cfg(feature = "serde")]
 #[macro_use]
 extern crate serde;
-extern crate sha1;
-extern crate string;
 extern crate tokio;
 extern crate tokio_timer;
 
@@ -80,7 +73,6 @@ pub mod types;
 
 mod default_connector;
 mod gzip;
-mod query_builder;
 mod token;
 
 pub use token::Token;
@@ -102,7 +94,6 @@ use hyper::header::{HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODIN
 
 use error::TlsError;
 use gzip::Gzip;
-use query_builder::{QueryBuilder, QueryOutcome};
 use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri};
 use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 
@@ -492,34 +483,34 @@ where
             .header(ACCEPT_ENCODING, HeaderValue::from_static("chunked,gzip"));
 
         let req = if RequestMethod::POST == self.method {
-            let query = QueryBuilder::new_form(
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
+            let signer = oauth::Signer::new_form(
                 "POST",
                 &self.endpoint,
+                self.token.consumer_secret.borrow(),
+                self.token.access_secret.borrow(),
             );
-            let QueryOutcome { header, query } = self.build_query(query);
+            let oauth::Request { authorization, data } = self.build_query(signer);
 
             req.uri(self.endpoint.clone())
-                .header(AUTHORIZATION, Bytes::from(header))
+                .header(AUTHORIZATION, Bytes::from(authorization))
                 .header(
                     CONTENT_TYPE,
                     HeaderValue::from_static("application/x-www-form-urlencoded"),
                 )
-                .header(CONTENT_LENGTH, Bytes::from(query.len().to_string()))
-                .body(query.into_bytes().into())
+                .header(CONTENT_LENGTH, Bytes::from(data.len().to_string()))
+                .body(data.into_bytes().into())
                 .unwrap()
         } else {
-            let query = QueryBuilder::new(
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
+            let signer = oauth::Signer::new(
                 self.method.as_ref(),
                 &self.endpoint,
+                self.token.consumer_secret.borrow(),
+                self.token.access_secret.borrow(),
             );
-            let QueryOutcome { header, query: uri } = self.build_query(query);
+            let oauth::Request { authorization, data: uri } = self.build_query(signer);
 
             req.uri(uri)
-                .header(AUTHORIZATION, Bytes::from(header))
+                .header(AUTHORIZATION, Bytes::from(authorization))
                 .body(B::default())
                 .unwrap()
         };
@@ -527,20 +518,20 @@ where
         c.request(req)
     }
 
-    fn build_query(&self, mut query: QueryBuilder) -> QueryOutcome {
+    fn build_query(&self, mut signer: oauth::Signer) -> oauth::Request {
         const COMMA: &str = "%2C";
         let this = &self.inner;
         if let Some(n) = this.count {
-            query.append_encoded("count", n);
+            signer.append_encoded("count", n);
         }
         if let Some(ref fl) = this.filter_level {
-            query.append("filter_level", fl.as_ref());
+            signer.append("filter_level", fl.as_ref());
         }
         if let Some(ids) = this.follow {
-            query.append_encoded("follow", JoinDisplay(ids, COMMA));
+            signer.append_encoded("follow", JoinDisplay(ids, COMMA));
         }
         if let Some(s) = this.language {
-            query.append("language", s);
+            signer.append("language", s);
         }
         if let Some(locs) = this.locations {
             struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
@@ -560,20 +551,20 @@ where
                     Ok(())
                 }
             }
-            query.append_encoded("locations", LocationsDisplay(locs, COMMA));
+            signer.append_encoded("locations", LocationsDisplay(locs, COMMA));
         }
-        query.append_oauth_params(
+        let mut signer = signer.append_oauth_params(
             self.token.consumer_key.borrow(),
-            self.token.access_key.borrow(),
+            &*oauth::Options::new().token(self.token.access_key.borrow()),
         );
         if this.stall_warnings {
-            query.append_encoded("stall_warnings", "true");
+            signer.append_encoded("stall_warnings", "true");
         }
         if let Some(s) = this.track {
-            query.append("track", s);
+            signer.append("track", s);
         }
 
-        query.build()
+        signer.finish()
     }
 }
 
@@ -672,7 +663,7 @@ mod tests {
                 locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
                 count: Some(10),
             },
-        }.build_query(QueryBuilder::new_form("", "", "", &endpoint));
+        }.build_query(oauth::Signer::new_form("", &endpoint, "", ""));
         // `QueryBuilder::check_dictionary_order` will panic
         // if the insertion order of query pairs is incorrect.
     }
