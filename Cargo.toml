@@ -47,8 +47,6 @@ name = "echo_bot"
 required-features = ["serde", "use-tweetust"]
 
 [dev-dependencies]
-base64 = "0.9"
-
 # examples/echo_bot
 serde_json = "1"
 tweetust = "0.9"
