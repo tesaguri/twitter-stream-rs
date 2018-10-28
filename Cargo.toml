@@ -20,7 +20,7 @@ futures = "0.1.4"
 http = "0.1.11"
 hyper = "0.12"
 libflate = "0.1.15"
-oauth1-request = "0.1"
+oauth1-request = "0.2"
 tokio = "0.1"
 tokio-timer = "0.2.2"
 egg-mode = { version = "0.12", optional = true }

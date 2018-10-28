@@ -483,7 +483,7 @@ where
             .header(ACCEPT_ENCODING, HeaderValue::from_static("chunked,gzip"));
 
         let req = if RequestMethod::POST == self.method {
-            let signer = oauth::Signer::new_form(
+            let signer = oauth::HmacSha1Signer::new_form(
                 "POST",
                 &self.endpoint,
                 self.token.consumer_secret.borrow(),
@@ -501,7 +501,7 @@ where
                 .body(data.into_bytes().into())
                 .unwrap()
         } else {
-            let signer = oauth::Signer::new(
+            let signer = oauth::HmacSha1Signer::new(
                 self.method.as_ref(),
                 &self.endpoint,
                 self.token.consumer_secret.borrow(),
@@ -518,20 +518,20 @@ where
         c.request(req)
     }
 
-    fn build_query(&self, mut signer: oauth::Signer) -> oauth::Request {
+    fn build_query(&self, mut signer: oauth::HmacSha1Signer) -> oauth::Request {
         const COMMA: &str = "%2C";
         let this = &self.inner;
         if let Some(n) = this.count {
-            signer.append_encoded("count", n);
+            signer.parameter_encoded("count", n);
         }
         if let Some(ref fl) = this.filter_level {
-            signer.append("filter_level", fl.as_ref());
+            signer.parameter("filter_level", fl.as_ref());
         }
         if let Some(ids) = this.follow {
-            signer.append_encoded("follow", JoinDisplay(ids, COMMA));
+            signer.parameter_encoded("follow", JoinDisplay(ids, COMMA));
         }
         if let Some(s) = this.language {
-            signer.append("language", s);
+            signer.parameter("language", s);
         }
         if let Some(locs) = this.locations {
             struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
@@ -551,17 +551,17 @@ where
                     Ok(())
                 }
             }
-            signer.append_encoded("locations", LocationsDisplay(locs, COMMA));
+            signer.parameter_encoded("locations", LocationsDisplay(locs, COMMA));
         }
-        let mut signer = signer.append_oauth_params(
+        let mut signer = signer.oauth_parameters(
             self.token.consumer_key.borrow(),
             &*oauth::Options::new().token(self.token.access_key.borrow()),
         );
         if this.stall_warnings {
-            signer.append_encoded("stall_warnings", "true");
+            signer.parameter_encoded("stall_warnings", "true");
         }
         if let Some(s) = this.track {
-            signer.append("track", s);
+            signer.parameter("track", s);
         }
 
         signer.finish()
