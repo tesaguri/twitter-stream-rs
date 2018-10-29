@@ -76,8 +76,8 @@ mod default_connector;
 mod gzip;
 mod token;
 
-pub use token::Token;
 pub use error::Error;
+pub use token::Token;
 
 use std::borrow::Borrow;
 use std::fmt::{self, Display, Formatter};
@@ -86,12 +86,13 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures::{Future, Poll, Stream};
 use http::response::Parts;
-use hyper::Request;
 use hyper::body::{Body, Payload};
-use hyper::client::{Client, ResponseFuture};
 use hyper::client::connect::Connect;
-use hyper::header::{HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH,
-                    CONTENT_TYPE};
+use hyper::client::{Client, ResponseFuture};
+use hyper::header::{
+    HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
+};
+use hyper::Request;
 use string::TryFrom;
 
 use error::TlsError;
@@ -444,15 +445,17 @@ where
                 self.token.consumer_secret.borrow(),
                 self.token.access_secret.borrow(),
             );
-            let oauth::Request { authorization, data } = self.build_query(signer);
+            let oauth::Request {
+                authorization,
+                data,
+            } = self.build_query(signer);
 
             req.uri(self.endpoint.clone())
                 .header(AUTHORIZATION, Bytes::from(authorization))
                 .header(
                     CONTENT_TYPE,
                     HeaderValue::from_static("application/x-www-form-urlencoded"),
-                )
-                .header(CONTENT_LENGTH, Bytes::from(data.len().to_string()))
+                ).header(CONTENT_LENGTH, Bytes::from(data.len().to_string()))
                 .body(data.into_bytes().into())
                 .unwrap()
         } else {
@@ -462,7 +465,10 @@ where
                 self.token.consumer_secret.borrow(),
                 self.token.access_secret.borrow(),
             );
-            let oauth::Request { authorization, data: uri } = self.build_query(signer);
+            let oauth::Request {
+                authorization,
+                data: uri,
+            } = self.build_query(signer);
 
             req.uri(uri)
                 .header(AUTHORIZATION, Bytes::from(authorization))
@@ -533,7 +539,8 @@ impl Future for FutureTwitterStream {
         let FutureTwitterStreamInner {
             ref mut resp,
             ref mut timeout,
-        } = *self.inner
+        } = *self
+            .inner
             .as_mut()
             .map_err(|e| Error::Tls(e.take().expect("cannot poll FutureTwitterStream twice")))?;
 
@@ -581,7 +588,8 @@ impl Stream for TwitterStream {
             match try_ready!(self.inner.poll()) {
                 Some(line) => {
                     // Skip whitespaces (as in RFC7159 §2)
-                    let all_ws = line.iter()
+                    let all_ws = line
+                        .iter()
                         .all(|&c| c == b'\n' || c == b'\r' || c == b' ' || c == b'\t');
                     if !all_ws {
                         let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;

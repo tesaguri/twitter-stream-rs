@@ -5,8 +5,8 @@ extern crate twitter_stream_message;
 
 use std::fs::File;
 use std::path::PathBuf;
-use twitter_stream::{Error, Token, TwitterStreamBuilder};
 use twitter_stream::rt::{self, Future, Stream};
+use twitter_stream::{Error, Token, TwitterStreamBuilder};
 use twitter_stream_message::StreamMessage;
 
 fn main() {
@@ -32,7 +32,8 @@ fn main() {
     );
 
     // Information of the authenticated user:
-    let user = rest.account()
+    let user = rest
+        .account()
         .verify_credentials()
         .execute()
         .unwrap()
@@ -41,12 +42,11 @@ fn main() {
     let bot = stream
         .for_each(move |json| {
             if let Ok(StreamMessage::Tweet(tweet)) = StreamMessage::from_str(&json) {
-                if tweet.user.id != user.id as u64
-                    && tweet
-                        .entities
-                        .user_mentions
-                        .iter()
-                        .any(|mention| mention.id == user.id as u64)
+                if tweet.user.id != user.id as u64 && tweet
+                    .entities
+                    .user_mentions
+                    .iter()
+                    .any(|mention| mention.id == user.id as u64)
                 {
                     println!(
                         "On {}, @{} tweeted: {:?}",
@@ -63,8 +63,7 @@ fn main() {
             }
 
             Ok(())
-        })
-        .map_err(|e| println!("error: {}", e));
+        }).map_err(|e| println!("error: {}", e));
 
     rt::run(bot);
 }

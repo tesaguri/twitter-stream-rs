@@ -1,11 +1,13 @@
 use std::borrow::Borrow;
 
 /// An OAuth token used to log into Twitter.
-#[cfg_attr(feature = "tweetust",
-           doc = "
+#[cfg_attr(
+    feature = "tweetust",
+    doc = "
 
 This implements `tweetust::conn::Authenticator` so you can pass it to
-`tweetust::TwitterClient` as if it were `tweetust::OAuthAuthenticator`")]
+`tweetust::TwitterClient` as if it were `tweetust::OAuthAuthenticator`"
+)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Debug)]
 pub struct Token<C = String, A = String> {

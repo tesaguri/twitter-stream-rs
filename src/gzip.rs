@@ -1,7 +1,7 @@
 use std::io::{self, ErrorKind, Read};
 
-use bytes::BytesMut;
 use bytes::buf::{Buf, BufMut, Reader};
+use bytes::BytesMut;
 use futures::{Async, Poll, Stream};
 use hyper::body::Chunk;
 use libflate::non_blocking::gzip;

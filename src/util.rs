@@ -3,8 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures::{Async, Future, Poll, Stream};
 use futures::stream::Fuse;
+use futures::{Async, Future, Poll, Stream};
 use tokio_timer::Delay;
 
 use tokio_timer::clock::Clock;
@@ -267,7 +267,7 @@ where
                 let poll = $poll;
                 match try_ready!(poll) {
                     Some(v) => v,
-                    None    => return Ok(None.into()),
+                    None => return Ok(None.into()),
                 }
             }};
         }
@@ -334,9 +334,9 @@ impl Display for Never {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use bytes::Bytes;
     use futures::stream;
-    use super::*;
 
     #[test]
     fn lines() {
