@@ -100,9 +100,7 @@ use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 macro_rules! def_stream {
     (
         $(#[$builder_attr:meta])*
-        pub struct $B:ident<$lifetime:tt, $T:ident $(=$TDefault:ty)*, $Cli:ident $(=$CliDefault:ty)*>
-        {
-            $client:ident: $cli_ty:ty = $cli_default:expr;
+        pub struct $B:ident<$lifetime:tt, $T:ident $(=$TDefault:ty)*> {
             $($arg:ident: $a_ty:ty),*;
             $($setters:tt)*
         }
@@ -125,8 +123,7 @@ macro_rules! def_stream {
         )*
     ) => {
         $(#[$builder_attr])*
-        pub struct $B<$lifetime, $T: $lifetime $(= $TDefault)*, $Cli: $lifetime $(= $CliDefault)*> {
-            $client: $cli_ty,
+        pub struct $B<$lifetime, $T: $lifetime $(= $TDefault)*> {
             $($arg: $a_ty,)*
             inner: BuilderInner<$lifetime>,
         }
@@ -166,23 +163,31 @@ macro_rules! def_stream {
             ) -> Self
             {
                 $B {
-                    $client: $cli_default,
                     method,
                     endpoint,
                     token,
                     inner: BuilderInner::new(),
                 }
             }
-        }
 
-        impl<$lifetime, C, A, _Cli> $B<$lifetime, Token<C, A>, _Cli> {
-            /// Set a `hyper::Client` to be used for connecting to the server.
-            ///
-            /// The `Client` should be able to handle the `https` scheme.
-            pub fn client<Conn, B>(
-                self,
-                client: &$lifetime Client<Conn, B>
-            ) -> $B<$lifetime, Token<C, A>, Client<Conn, B>>
+            /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
+            /// to a `Stream` yielding JSON messages from the API.
+            pub fn listen(&self) -> $FS {
+                $FS {
+                    inner: default_connector::new()
+                        .map(|c| FutureTwitterStreamInner {
+                            resp: self.connect::<_, Body>(&Client::builder().build(c)),
+                            timeout: self.inner
+                                .timeout
+                                .map(Timeout::new)
+                                .unwrap_or_else(Timeout::never),
+                        })
+                        .map_err(Some),
+                }
+            }
+
+            /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
+            pub fn listen_with_client<Conn, B>(&self, client: &Client<Conn, B>) -> $FS
             where
                 Conn: Connect + Sync + 'static,
                 Conn::Transport: 'static,
@@ -190,22 +195,19 @@ macro_rules! def_stream {
                 B: Default + From<Vec<u8>> + Payload + Send + 'static,
                 B::Data: Send,
             {
-                $B {
-                    $client: client,
-                    $($arg: self.$arg,)*
-                    inner: self.inner,
+                $FS {
+                    inner: Ok(FutureTwitterStreamInner {
+                        resp: self.connect(client),
+                        timeout: self.inner
+                            .timeout
+                            .map(Timeout::new)
+                            .unwrap_or_else(Timeout::never),
+                    }),
                 }
             }
+        }
 
-            /// Unset the client set by `client` method.
-            pub fn unset_client(self) -> $B<$lifetime, Token<C, A>> {
-                $B {
-                    $client: &(),
-                    $($arg: self.$arg,)*
-                    inner: self.inner,
-                }
-            }
-
+        impl<$lifetime, C, A> $B<$lifetime, Token<C, A>> {
             /// Reset the HTTP request method to be used when connecting
             /// to the server.
             pub fn method(&mut self, method: RequestMethod) -> &mut Self {
@@ -307,9 +309,7 @@ def_stream! {
     /// # }
     /// ```
     #[derive(Clone, Debug)]
-    pub struct TwitterStreamBuilder<'a, T = Token, Cli = ()> {
-        client: &'a Cli = &();
-
+    pub struct TwitterStreamBuilder<'a, T = Token> {
         method: RequestMethod,
         endpoint: Uri,
         token: &'a T;
@@ -417,54 +417,7 @@ struct FutureTwitterStreamInner {
     timeout: Timeout,
 }
 
-impl<'a, C, A, Conn, B> TwitterStreamBuilder<'a, Token<C, A>, Client<Conn, B>>
-where
-    C: Borrow<str>,
-    A: Borrow<str>,
-    Conn: Connect + Sync + 'static,
-    Conn::Transport: 'static,
-    Conn::Future: 'static,
-    B: Default + From<Vec<u8>> + Payload + Send + 'static,
-    B::Data: Send,
-{
-    /// Start listening on a Stream, returning a `Future` which resolves
-    /// to a `Stream` yielding JSON messages from the API.
-    pub fn listen(&self) -> FutureTwitterStream {
-        FutureTwitterStream {
-            inner: Ok(FutureTwitterStreamInner {
-                resp: self.connect(self.client),
-                timeout: self.inner
-                    .timeout
-                    .map(Timeout::new)
-                    .unwrap_or_else(Timeout::never),
-            }),
-        }
-    }
-}
-
 impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>>
-where
-    C: Borrow<str>,
-    A: Borrow<str>,
-{
-    /// Start listening on a Stream, returning a `Future` which resolves
-    /// to a `Stream` yielding JSON messages from the API.
-    pub fn listen(&self) -> FutureTwitterStream {
-        FutureTwitterStream {
-            inner: default_connector::new()
-                .map(|c| FutureTwitterStreamInner {
-                    resp: self.connect::<_, Body>(&Client::builder().build(c)),
-                    timeout: self.inner
-                        .timeout
-                        .map(Timeout::new)
-                        .unwrap_or_else(Timeout::never),
-                })
-                .map_err(Some),
-        }
-    }
-}
-
-impl<'a, C, A, _Cli> TwitterStreamBuilder<'a, Token<C, A>, _Cli>
 where
     C: Borrow<str>,
     A: Borrow<str>,
