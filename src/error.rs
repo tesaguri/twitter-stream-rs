@@ -1,6 +1,12 @@
 //! Error types
 
-pub use default_connector::Error as TlsError;
+cfg_if! {
+    if #[cfg(feature = "runtime")] {
+        pub use default_connector::Error as TlsError;
+    } else {
+        pub use util::Never as TlsError;
+    }
+}
 pub use hyper::Error as HyperError;
 
 use std::error::{self, Error as _Error};

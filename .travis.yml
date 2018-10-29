@@ -14,15 +14,16 @@ matrix:
     - rust: 1.26.0
 script:
   - |
-    if [ -z "$FEATURES" ] || [ "$FEATURES" = runtime ]; then
+    if [ -z "$FEATURES" ]; then
       cargo build --verbose --no-default-features --features=$FEATURES &&
       cargo test --verbose --no-default-features --features=$FEATURES
     else
       cargo check --verbose --no-default-features --features=$FEATURES
     fi
 env:
+  - FEATURES=
   - FEATURES=runtime
-  - FEATURES=runtime,tls
-  - FEATURES=runtime,tls-rustls
-  - FEATURES=runtime,tls-openssl
-  - FEATURES=runtime,egg-mode,tweetust
+  - FEATURES=tls
+  - FEATURES=tls-rustls
+  - FEATURES=tls-openssl
+  - FEATURES=egg-mode,tweetust

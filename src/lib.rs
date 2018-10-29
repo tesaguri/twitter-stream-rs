@@ -46,9 +46,6 @@ rt::run(future);
 ```
 */
 
-#[cfg(not(feature = "runtime"))]
-compile_error!("`runtime` feature must be enabled for now.");
-
 extern crate bytes;
 #[macro_use]
 extern crate cfg_if;
@@ -62,17 +59,21 @@ extern crate oauth1_request as oauth;
 #[macro_use]
 extern crate serde;
 extern crate string;
-extern crate tokio;
 extern crate tokio_timer;
 
 #[macro_use]
 mod util;
 
 pub mod error;
-pub mod rt;
 pub mod types;
 
-mod default_connector;
+cfg_if! {
+    if #[cfg(feature = "runtime")] {
+        pub mod rt;
+        mod default_connector;
+    }
+}
+
 mod gzip;
 mod token;
 
@@ -175,6 +176,7 @@ macro_rules! def_stream {
 
             /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
             /// to a `Stream` yielding JSON messages from the API.
+            #[cfg(feature = "runtime")]
             pub fn listen(&self) -> $FS {
                 $FS {
                     inner: default_connector::new()
@@ -233,6 +235,7 @@ macro_rules! def_stream {
             def_setters! { $($setters)* }
         }
 
+        #[cfg(feature = "runtime")]
         impl $S {
             $(
                 $(#[$s_constructor_attr])*

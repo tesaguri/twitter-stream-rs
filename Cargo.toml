@@ -18,11 +18,10 @@ bytes = "0.4.4"
 cfg-if = "0.1"
 futures = "0.1.4"
 http = "0.1.11"
-hyper = "0.12"
+hyper = { version = "0.12", default-features = false }
 libflate = "0.1.15"
 oauth1-request = "0.2"
 string = "0.1"
-tokio = "0.1"
 tokio-timer = "0.2.2"
 egg-mode = { version = "0.12", optional = true }
 hyper-openssl = { version = "0.6", optional = true }
@@ -31,16 +30,15 @@ hyper-tls = { version = "0.3", optional = true }
 native-tls = { version = "0.2", optional = true }
 oauthcli = { version = "1", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
+tokio = { version = "0.1", optional = true }
 tweetust = { version = "0.9", optional = true }
 
 [features]
 default = ["runtime", "tls"]
-# `runtime` feature does nothing useful for now, but this feature is
-# necessary for the crate to compile, leaving possibility for future extension.
-runtime = ["hyper/runtime"]
-tls = ["hyper-tls", "native-tls"]
-tls-openssl = ["hyper-openssl"]
-tls-rustls = ["hyper-rustls"]
+runtime = ["hyper/runtime", "tokio"]
+tls = ["hyper-tls", "native-tls", "runtime"]
+tls-openssl = ["hyper-openssl", "runtime"]
+tls-rustls = ["hyper-rustls", "runtime"]
 use-tweetust = ["oauthcli", "tweetust"]
 
 [[example]]
