@@ -61,6 +61,7 @@ extern crate oauth1_request as oauth;
 #[cfg(feature = "serde")]
 #[macro_use]
 extern crate serde;
+extern crate string;
 extern crate tokio;
 extern crate tokio_timer;
 
@@ -91,10 +92,11 @@ use hyper::client::{Client, ResponseFuture};
 use hyper::client::connect::Connect;
 use hyper::header::{HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH,
                     CONTENT_TYPE};
+use string::TryFrom;
 
 use error::TlsError;
 use gzip::Gzip;
-use types::{FilterLevel, JsonStr, RequestMethod, StatusCode, Uri};
+use types::{FilterLevel, RequestMethod, StatusCode, Uri};
 use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
 
 macro_rules! def_stream {
@@ -571,10 +573,10 @@ impl Future for FutureTwitterStream {
 }
 
 impl Stream for TwitterStream {
-    type Item = JsonStr;
+    type Item = string::String<Bytes>;
     type Error = Error;
 
-    fn poll(&mut self) -> Poll<Option<JsonStr>, Error> {
+    fn poll(&mut self) -> Poll<Option<string::String<Bytes>>, Error> {
         loop {
             match try_ready!(self.inner.poll()) {
                 Some(line) => {
@@ -582,7 +584,7 @@ impl Stream for TwitterStream {
                     let all_ws = line.iter()
                         .all(|&c| c == b'\n' || c == b'\r' || c == b' ' || c == b'\t');
                     if !all_ws {
-                        let line = JsonStr::from_utf8(line).map_err(Error::Utf8)?;
+                        let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
                         return Ok(Some(line).into());
                     }
                 }
