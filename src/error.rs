@@ -1,12 +1,5 @@
 //! Error types
 
-cfg_if! {
-    if #[cfg(feature = "runtime")] {
-        pub use default_connector::Error as TlsError;
-    } else {
-        pub use util::Never as TlsError;
-    }
-}
 pub use hyper::Error as HyperError;
 
 use std::error::{self, Error as _Error};
@@ -15,6 +8,14 @@ use std::io;
 use std::str::Utf8Error;
 
 use types::StatusCode;
+
+cfg_if! {
+    if #[cfg(feature = "runtime")] {
+        use default_connector::Error as TlsErrorInner;
+    } else {
+        use util::Never as TlsErrorInner;
+    }
+}
 
 /// An error occurred while trying to connect to a Stream.
 #[derive(Debug)]
@@ -34,6 +35,10 @@ pub enum Error {
     /// User-defined error.
     Custom(Box<error::Error + Send + Sync>),
 }
+
+/// An error from the TLS implementation.
+#[derive(Debug)]
+pub struct TlsError(pub(crate) TlsErrorInner);
 
 impl Error {
     pub fn custom<E>(error: E) -> Self
@@ -86,5 +91,17 @@ impl Display for Error {
             Utf8(ref e) => Display::fmt(e, f),
             Custom(ref e) => Display::fmt(e, f),
         }
+    }
+}
+
+impl error::Error for TlsError {
+    fn cause(&self) -> Option<&error::Error> {
+        Some(&self.0)
+    }
+}
+
+impl Display for TlsError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        Display::fmt(&self.0, f)
     }
 }

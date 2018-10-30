@@ -187,7 +187,7 @@ macro_rules! def_stream {
                                 .map(Timeout::new)
                                 .unwrap_or_else(Timeout::never),
                         })
-                        .map_err(Some),
+                        .map_err(|e| Some(TlsError(e))),
                 }
             }
 
