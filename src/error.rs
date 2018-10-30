@@ -33,7 +33,7 @@ pub enum Error {
     /// Twitter returned a non-UTF-8 string.
     Utf8(Utf8Error),
     /// User-defined error.
-    Custom(Box<error::Error + Send + Sync>),
+    Custom(Box<dyn error::Error + Send + Sync>),
 }
 
 /// An error from the TLS implementation.
@@ -43,7 +43,7 @@ pub struct TlsError(pub(crate) TlsErrorInner);
 impl Error {
     pub fn custom<E>(error: E) -> Self
     where
-        E: Into<Box<error::Error + Send + Sync>>,
+        E: Into<Box<dyn error::Error + Send + Sync>>,
     {
         Error::Custom(error.into())
     }
@@ -64,7 +64,7 @@ impl error::Error for Error {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         use Error::*;
 
         match *self {
@@ -79,7 +79,7 @@ impl error::Error for Error {
 }
 
 impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use Error::*;
 
         match *self {
@@ -95,13 +95,13 @@ impl Display for Error {
 }
 
 impl error::Error for TlsError {
-    fn cause(&self) -> Option<&error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         Some(&self.0)
     }
 }
 
 impl Display for TlsError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
     }
 }

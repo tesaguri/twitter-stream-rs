@@ -227,7 +227,7 @@ where
     D: Display + 'a,
     Sep: Display + ?Sized + 'a,
 {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut iter = self.0.iter();
         if let Some(d) = iter.next() {
             Display::fmt(d, f)?;
@@ -327,7 +327,7 @@ impl error::Error for Never {
 }
 
 impl Display for Never {
-    fn fmt(&self, _: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, _: &mut Formatter<'_>) -> fmt::Result {
         unreachable!();
     }
 }

@@ -500,7 +500,7 @@ where
         if let Some(locs) = this.locations {
             struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
             impl<'a, D: Display> Display for LocationsDisplay<'a, D> {
-                fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+                fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
                     macro_rules! push {
                         ($($c:expr),*) => {{ $(write!(f, "{}{}", self.1, $c)?;)* }};
                     }
