@@ -615,7 +615,6 @@ mod tests {
             .parse::<Uri>()
             .unwrap();
         TwitterStreamBuilder {
-            client: &(),
             method: RequestMethod::GET,
             endpoint: endpoint.clone(),
             token: &Token::new("", "", "", ""),

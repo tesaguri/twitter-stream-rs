@@ -14,7 +14,7 @@ matrix:
     - rust: 1.30.0
 script:
   - |
-    if [ -z "$FEATURES" ]; then
+    if [ "$FEATURES" = runtime ]; then
       cargo build --verbose --no-default-features --features=$FEATURES &&
       cargo test --verbose --no-default-features --features=$FEATURES
     else
