@@ -7,6 +7,8 @@ use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
 
+use cfg_if::cfg_if;
+
 use types::StatusCode;
 
 cfg_if! {

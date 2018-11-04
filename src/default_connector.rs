@@ -1,3 +1,4 @@
+use cfg_if::cfg_if;
 use hyper::client::HttpConnector;
 
 cfg_if! {

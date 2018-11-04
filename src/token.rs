@@ -1,5 +1,10 @@
 use std::borrow::Borrow;
 
+use cfg_if::cfg_if;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// An OAuth token used to log into Twitter.
 #[cfg_attr(
     feature = "tweetust",

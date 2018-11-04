@@ -4,10 +4,9 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures::stream::Fuse;
-use futures::{Async, Future, Poll, Stream};
-use tokio_timer::Delay;
-
+use futures::{try_ready, Async, Future, Poll, Stream};
 use tokio_timer::clock::Clock;
+use tokio_timer::Delay;
 
 use error::{Error, HyperError};
 
@@ -37,7 +36,7 @@ macro_rules! string_enums {
                 $U(String),
             }
 
-            impl ::std::convert::AsRef<str> for $E {
+            impl std::convert::AsRef<str> for $E {
                 fn as_ref(&self) -> &str {
                     match *self {
                         $($E::$V => $by,)*
@@ -46,7 +45,7 @@ macro_rules! string_enums {
                 }
             }
 
-            impl ::std::cmp::PartialEq for $E {
+            impl std::cmp::PartialEq for $E {
                 fn eq(&self, other: &$E) -> bool {
                     match *self {
                         $($E::$V => match *other {
@@ -62,8 +61,8 @@ macro_rules! string_enums {
                 }
             }
 
-            impl ::std::hash::Hash for $E {
-                fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+            impl std::hash::Hash for $E {
+                fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
                     match *self {
                         $($E::$V => $by.hash(state),)*
                         $E::$U(ref s) => s.hash(state),
@@ -71,7 +70,7 @@ macro_rules! string_enums {
                 }
             }
 
-            impl ::std::cmp::Eq for $E {}
+            impl std::cmp::Eq for $E {}
         )*
     }
 }
@@ -216,7 +215,7 @@ where
                 Async::NotReady => match self.timeout.poll() {
                     Ok(Async::Ready(())) => Err(Error::TimedOut),
                     Ok(Async::NotReady) => Ok(Async::NotReady),
-                    Err(_never) => unreachable!(),
+                    Err(never) => match never {},
                 },
             })
     }
@@ -322,13 +321,13 @@ where
 
 impl error::Error for Never {
     fn description(&self) -> &str {
-        unreachable!();
+        match *self {}
     }
 }
 
 impl Display for Never {
     fn fmt(&self, _: &mut Formatter<'_>) -> fmt::Result {
-        unreachable!();
+        match *self {}
     }
 }
 

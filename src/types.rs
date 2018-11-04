@@ -15,7 +15,7 @@ string_enums! {
     }
 }
 
-impl ::std::default::Default for FilterLevel {
+impl std::default::Default for FilterLevel {
     fn default() -> Self {
         FilterLevel::None
     }

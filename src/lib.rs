@@ -47,19 +47,18 @@ rt::run(future);
 */
 
 extern crate bytes;
-#[macro_use]
 extern crate cfg_if;
-#[macro_use]
 extern crate futures;
 extern crate http;
 extern crate hyper;
 extern crate libflate;
 extern crate oauth1_request as oauth;
 #[cfg(feature = "serde")]
-#[macro_use]
 extern crate serde;
 extern crate string;
 extern crate tokio_timer;
+
+use cfg_if::cfg_if;
 
 #[macro_use]
 mod util;
@@ -85,7 +84,7 @@ use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures::{Future, Poll, Stream};
+use futures::{try_ready, Future, Poll, Stream};
 use http::response::Parts;
 use hyper::body::{Body, Payload};
 use hyper::client::connect::Connect;
@@ -576,7 +575,7 @@ impl Future for FutureTwitterStream {
             Async::NotReady => match timeout.poll() {
                 Ok(Async::Ready(())) => Err(Error::TimedOut),
                 Ok(Async::NotReady) => Ok(Async::NotReady),
-                Err(_never) => unreachable!(),
+                Err(never) => match never {},
             },
         }
     }
