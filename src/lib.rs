@@ -96,9 +96,9 @@ use hyper::Request;
 use string::TryFrom;
 
 use error::TlsError;
-use gzip::Gzip;
+use gzip::MaybeGzip;
 use types::{FilterLevel, RequestMethod, StatusCode, Uri};
-use util::{EitherStream, JoinDisplay, Lines, Timeout, TimeoutStream};
+use util::*;
 
 macro_rules! def_stream {
     (
@@ -179,12 +179,9 @@ macro_rules! def_stream {
             pub fn listen(&self) -> $FS {
                 $FS {
                     inner: default_connector::new()
-                        .map(|c| FutureTwitterStreamInner {
-                            resp: self.connect::<_, Body>(&Client::builder().build(c)),
-                            timeout: self.inner
-                                .timeout
-                                .map(Timeout::new)
-                                .unwrap_or_else(Timeout::never),
+                        .map(|c| {
+                            let res = self.connect::<_, Body>(&Client::builder().build(c));
+                            timeout(res, self.inner.timeout)
                         })
                         .map_err(|e| Some(TlsError(e))),
                 }
@@ -199,14 +196,9 @@ macro_rules! def_stream {
                 B: Default + From<Vec<u8>> + Payload + Send + 'static,
                 B::Data: Send,
             {
+                let res = self.connect(client);
                 $FS {
-                    inner: Ok(FutureTwitterStreamInner {
-                        resp: self.connect(client),
-                        timeout: self.inner
-                            .timeout
-                            .map(Timeout::new)
-                            .unwrap_or_else(Timeout::never),
-                    }),
+                    inner: Ok(timeout(res, self.inner.timeout)),
                 }
             }
         }
@@ -387,13 +379,13 @@ def_stream! {
     /// A future returned by constructor methods
     /// which resolves to a `TwitterStream`.
     pub struct FutureTwitterStream {
-        inner: Result<FutureTwitterStreamInner, Option<TlsError>>,
+        inner: Result<MaybeTimeout<ResponseFuture>, Option<TlsError>>,
     }
 
     /// A listener for Twitter Streaming API.
     /// It yields JSON strings returned from the API.
     pub struct TwitterStream {
-        inner: EitherStream<Lines<TimeoutStream<Body>>, Lines<Gzip<TimeoutStream<Body>>>>,
+        inner: Lines<MaybeGzip<MaybeTimeoutStream<Body>>>,
     }
 
     // Constructors for `TwitterStreamBuilder`:
@@ -415,11 +407,6 @@ def_stream! {
     -
     /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
     pub fn sample(GET, "https://stream.twitter.com/1.1/statuses/sample.json");
-}
-
-struct FutureTwitterStreamInner {
-    resp: ResponseFuture,
-    timeout: Timeout,
 }
 
 impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>>
@@ -536,48 +523,35 @@ impl Future for FutureTwitterStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
-        use futures::Async;
-
-        let FutureTwitterStreamInner {
-            ref mut resp,
-            ref mut timeout,
-        } = *self
+        let res_fut = self
             .inner
             .as_mut()
             .map_err(|e| Error::Tls(e.take().expect("cannot poll FutureTwitterStream twice")))?;
 
-        match resp.poll().map_err(Error::Hyper)? {
-            Async::Ready(res) => {
-                let (
-                    Parts {
-                        status, headers, ..
-                    },
-                    body,
-                ) = res.into_parts();
-
-                if StatusCode::OK != status {
-                    return Err(Error::Http(status));
-                }
-
-                let body = timeout.take().for_stream(body);
-                let gzip = headers
-                    .get_all(CONTENT_ENCODING)
-                    .iter()
-                    .any(|e| e == "gzip");
-                let inner = if gzip {
-                    EitherStream::B(Lines::new(Gzip::new(body)))
-                } else {
-                    EitherStream::A(Lines::new(body))
-                };
-
-                Ok(TwitterStream { inner }.into())
-            }
-            Async::NotReady => match timeout.poll() {
-                Ok(Async::Ready(())) => Err(Error::TimedOut),
-                Ok(Async::NotReady) => Ok(Async::NotReady),
-                Err(never) => match never {},
+        let res = try_ready!(res_fut.poll());
+        let (
+            Parts {
+                status, headers, ..
             },
+            body,
+        ) = res.into_parts();
+
+        if StatusCode::OK != status {
+            return Err(Error::Http(status));
         }
+
+        let body = timeout_to_stream(res_fut, body);
+        let use_gzip = headers
+            .get_all(CONTENT_ENCODING)
+            .iter()
+            .any(|e| e == "gzip");
+        let inner = if use_gzip {
+            Lines::new(MaybeGzip::gzip(body))
+        } else {
+            Lines::new(MaybeGzip::identity(body))
+        };
+
+        Ok(TwitterStream { inner }.into())
     }
 }
 

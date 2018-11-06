@@ -22,7 +22,7 @@ hyper = { version = "0.12", default-features = false }
 libflate = "0.1.15"
 oauth1-request = "0.2"
 string = "0.1"
-tokio-timer = "0.2.2"
+tokio-timer = "0.2.6"
 egg-mode = { version = "0.12", optional = true }
 hyper-openssl = { version = "0.6", optional = true }
 hyper-rustls = { version = "0.14", optional = true }

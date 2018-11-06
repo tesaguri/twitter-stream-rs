@@ -6,6 +6,7 @@ use futures::{Async, Poll, Stream};
 use hyper::body::Chunk;
 use libflate::non_blocking::gzip;
 
+use util::EitherStream;
 use Error;
 
 pub struct Gzip<S>
@@ -14,6 +15,8 @@ where
 {
     inner: ReadStream<gzip::Decoder<StreamRead<S>>>,
 }
+
+pub type MaybeGzip<S> = EitherStream<Gzip<S>, S>;
 
 struct StreamRead<S>
 where
@@ -131,6 +134,19 @@ impl<R: Read> Stream for ReadStream<R> {
             Err(ref e) if ErrorKind::WouldBlock == e.kind() => Ok(Async::NotReady),
             Err(e) => Err(e),
         }
+    }
+}
+
+impl<S: Stream> MaybeGzip<S>
+where
+    S::Item: Buf + Default,
+{
+    pub fn gzip(s: S) -> Self {
+        EitherStream::A(Gzip::new(s))
+    }
+
+    pub fn identity(s: S) -> Self {
+        EitherStream::B(s)
     }
 }
 
