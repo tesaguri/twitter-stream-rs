@@ -5,8 +5,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures::stream::Fuse;
 use futures::{try_ready, Async, Future, Poll, Stream};
-use tokio_timer::clock::Clock;
-use tokio_timer::Delay;
+use tokio_timer::{clock, Delay};
 
 use error::{Error, HyperError};
 
@@ -87,7 +86,6 @@ pub struct Timeout {
 struct TimeoutInner {
     dur: Duration,
     timer: Delay,
-    clock: Clock,
 }
 
 /// Adds a timeout to a `Stream`.
@@ -130,7 +128,12 @@ where
 
 impl Timeout {
     pub fn new(dur: Duration) -> Self {
-        Timeout::with_clock(Clock::system(), dur)
+        Timeout {
+            inner: Some(TimeoutInner {
+                dur,
+                timer: Delay::new(clock::now() + dur),
+            }),
+        }
     }
 }
 
@@ -145,19 +148,9 @@ impl Timeout {
         Timeout { inner: None }
     }
 
-    fn with_clock(clock: Clock, dur: Duration) -> Self {
-        Timeout {
-            inner: Some(TimeoutInner {
-                dur,
-                timer: Delay::new(clock.now() + dur),
-                clock,
-            }),
-        }
-    }
-
     pub fn reset(&mut self) {
         if let Some(ref mut inner) = self.inner {
-            inner.timer.reset(inner.clock.now() + inner.dur)
+            inner.timer.reset(clock::now() + inner.dur)
         }
     }
 
