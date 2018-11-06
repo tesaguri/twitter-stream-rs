@@ -24,10 +24,7 @@ oauth1-request = "0.2"
 string = "0.1"
 tokio-timer = "0.2.6"
 egg-mode = { version = "0.12", optional = true }
-hyper-openssl = { version = "0.6", optional = true }
-hyper-rustls = { version = "0.14", optional = true }
 hyper-tls = { version = "0.3", optional = true }
-native-tls = { version = "0.2", optional = true }
 oauthcli = { version = "1", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 tokio = { version = "0.1", optional = true }
@@ -36,9 +33,7 @@ tweetust = { version = "0.9", optional = true }
 [features]
 default = ["runtime", "tls"]
 runtime = ["hyper/runtime", "tokio"]
-tls = ["hyper-tls", "native-tls", "runtime"]
-tls-openssl = ["hyper-openssl", "runtime"]
-tls-rustls = ["hyper-rustls", "runtime"]
+tls = ["hyper-tls", "runtime"]
 use-tweetust = ["oauthcli", "tweetust"]
 
 [[example]]

@@ -52,6 +52,8 @@ extern crate cfg_if;
 extern crate futures;
 extern crate http;
 extern crate hyper;
+#[cfg(feature = "tls")]
+extern crate hyper_tls;
 extern crate libflate;
 extern crate oauth1_request as oauth;
 #[cfg(feature = "serde")]
@@ -59,20 +61,13 @@ extern crate serde;
 extern crate string;
 extern crate tokio_timer;
 
-use cfg_if::cfg_if;
-
 #[macro_use]
 mod util;
 
 pub mod error;
+#[cfg(feature = "runtime")]
+pub mod rt;
 pub mod types;
-
-cfg_if! {
-    if #[cfg(feature = "runtime")] {
-        pub mod rt;
-        mod default_connector;
-    }
-}
 
 mod gzip;
 mod token;
@@ -96,7 +91,6 @@ use hyper::header::{
 use hyper::Request;
 use string::TryFrom;
 
-use error::TlsError;
 use gzip::MaybeGzip;
 use types::{FilterLevel, RequestMethod, StatusCode, Uri};
 use util::*;
@@ -176,9 +170,9 @@ macro_rules! def_stream {
 
             /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
             /// to a `Stream` yielding JSON messages from the API.
-            #[cfg(feature = "runtime")]
-            pub fn listen(&self) -> Result<$FS, TlsError> {
-                let conn = default_connector::new().map_err(TlsError)?;
+            #[cfg(feature = "tls")]
+            pub fn listen(&self) -> Result<$FS, error::TlsError> {
+                let conn = hyper_tls::HttpsConnector::new(1)?;
                 Ok(self.listen_with_client(&Client::builder().build::<_, Body>(conn)))
             }
 
@@ -218,11 +212,11 @@ macro_rules! def_stream {
             def_setters! { $($setters)* }
         }
 
-        #[cfg(feature = "runtime")]
+        #[cfg(feature = "tls")]
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor<C, A>(token: &Token<C, A>) -> Result<$FS, TlsError>
+                pub fn $constructor<C, A>(token: &Token<C, A>) -> Result<$FS, error::TlsError>
                 where
                     C: Borrow<str>,
                     A: Borrow<str>,
