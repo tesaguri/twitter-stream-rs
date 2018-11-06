@@ -31,7 +31,7 @@ use twitter_stream::rt::{self, Future, Stream};
 # fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let future = TwitterStreamBuilder::filter(&token)
+let future = TwitterStreamBuilder::filter(token)
     .track(Some("@Twitter"))
     .listen()
     .unwrap()
@@ -121,7 +121,7 @@ macro_rules! def_stream {
         )*
     ) => {
         $(#[$builder_attr])*
-        pub struct $B<$lifetime, $T: $lifetime $(= $TDefault)*> {
+        pub struct $B<$lifetime, $T $(= $TDefault)*> {
             $($arg: $a_ty,)*
             inner: BuilderInner<$lifetime>,
         }
@@ -148,7 +148,7 @@ macro_rules! def_stream {
         {
             $(
                 $(#[$constructor_attr])*
-                pub fn $constructor(token: &$lifetime Token<C, A>) -> Self {
+                pub fn $constructor(token: Token<C, A>) -> Self {
                     $B::custom(RequestMethod::$Method, Uri::from_static($endpoint), token)
                 }
             )*
@@ -157,7 +157,7 @@ macro_rules! def_stream {
             pub fn custom(
                 method: RequestMethod,
                 endpoint: Uri,
-                token: &$lifetime Token<C, A>,
+                token: Token<C, A>,
             ) -> Self
             {
                 $B {
@@ -204,7 +204,7 @@ macro_rules! def_stream {
             }
 
             /// Reset the token to be used to log into Twitter.
-            pub fn token(&mut self, token: &$lifetime Token<C, A>) -> &mut Self {
+            pub fn token(&mut self, token: Token<C, A>) -> &mut Self {
                 self.token = token;
                 self
             }
@@ -216,7 +216,7 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor<C, A>(token: &Token<C, A>) -> Result<$FS, error::TlsError>
+                pub fn $constructor<C, A>(token: Token<C, A>) -> Result<$FS, error::TlsError>
                 where
                     C: Borrow<str>,
                     A: Borrow<str>,
@@ -278,7 +278,7 @@ def_stream! {
     /// # fn main() {
     /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
     ///
-    /// let future = TwitterStreamBuilder::sample(&token)
+    /// let future = TwitterStreamBuilder::sample(token)
     ///     .timeout(None)
     ///     .listen()
     ///     .unwrap()
@@ -296,7 +296,7 @@ def_stream! {
     pub struct TwitterStreamBuilder<'a, T = Token> {
         method: RequestMethod,
         endpoint: Uri,
-        token: &'a T;
+        token: T;
 
         // Setters:
 
@@ -574,7 +574,7 @@ mod tests {
         TwitterStreamBuilder {
             method: RequestMethod::GET,
             endpoint: endpoint.clone(),
-            token: &Token::new("", "", "", ""),
+            token: Token::new("", "", "", ""),
             inner: BuilderInner {
                 timeout: None,
                 stall_warnings: true,

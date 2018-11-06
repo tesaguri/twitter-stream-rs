@@ -14,7 +14,7 @@ This implements `tweetust::conn::Authenticator` so you can pass it to
 `tweetust::TwitterClient` as if it were `tweetust::OAuthAuthenticator`"
 )]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Token<C = String, A = String> {
     pub consumer_key: C,
     pub consumer_secret: C,

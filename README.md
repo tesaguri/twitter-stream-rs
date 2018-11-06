@@ -36,7 +36,7 @@ use twitter_stream::rt::{self, Future, Stream};
 fn main() {
     let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-    let future = TwitterStreamBuilder::filter(&token)
+    let future = TwitterStreamBuilder::filter(token)
         .track(Some("@Twitter"))
         .listen()
 	.unwrap()
