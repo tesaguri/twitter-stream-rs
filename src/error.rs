@@ -30,8 +30,6 @@ pub enum Error {
     Hyper(HyperError),
     /// The stream has timed out.
     TimedOut,
-    /// An error occured when initializing a TLS client.
-    Tls(TlsError),
     /// Twitter returned a non-UTF-8 string.
     Utf8(Utf8Error),
     /// User-defined error.
@@ -60,7 +58,6 @@ impl error::Error for Error {
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
             TimedOut => "timed out",
-            Tls(ref e) => e.description(),
             Utf8(ref e) => e.description(),
             Custom(ref e) => e.description(),
         }
@@ -73,7 +70,6 @@ impl error::Error for Error {
             Gzip(ref e) => Some(e),
             Http(_) | TimedOut => None,
             Hyper(ref e) => Some(e),
-            Tls(ref e) => Some(e),
             Utf8(ref e) => Some(e),
             Custom(ref e) => Some(&**e),
         }
@@ -89,7 +85,6 @@ impl Display for Error {
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
             TimedOut => Display::fmt(self.description(), f),
-            Tls(ref e) => Display::fmt(e, f),
             Utf8(ref e) => Display::fmt(e, f),
             Custom(ref e) => Display::fmt(e, f),
         }

@@ -34,6 +34,7 @@ let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_
 let future = TwitterStreamBuilder::filter(&token)
     .track(Some("@Twitter"))
     .listen()
+    .unwrap()
     .flatten_stream()
     .for_each(|json| {
         println!("{}", json);
@@ -176,15 +177,9 @@ macro_rules! def_stream {
             /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
             /// to a `Stream` yielding JSON messages from the API.
             #[cfg(feature = "runtime")]
-            pub fn listen(&self) -> $FS {
-                $FS {
-                    inner: default_connector::new()
-                        .map(|c| {
-                            let res = self.connect::<_, Body>(&Client::builder().build(c));
-                            timeout(res, self.inner.timeout)
-                        })
-                        .map_err(|e| Some(TlsError(e))),
-                }
+            pub fn listen(&self) -> Result<$FS, TlsError> {
+                let conn = default_connector::new().map_err(TlsError)?;
+                Ok(self.listen_with_client(&Client::builder().build::<_, Body>(conn)))
             }
 
             /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
@@ -196,10 +191,7 @@ macro_rules! def_stream {
                 B: Default + From<Vec<u8>> + Payload + Send + 'static,
                 B::Data: Send,
             {
-                let res = self.connect(client);
-                $FS {
-                    inner: Ok(timeout(res, self.inner.timeout)),
-                }
+                self.listen_with_client_(client)
             }
         }
 
@@ -230,7 +222,7 @@ macro_rules! def_stream {
         impl $S {
             $(
                 $(#[$s_constructor_attr])*
-                pub fn $constructor<C, A>(token: &Token<C, A>) -> $FS
+                pub fn $constructor<C, A>(token: &Token<C, A>) -> Result<$FS, TlsError>
                 where
                     C: Borrow<str>,
                     A: Borrow<str>,
@@ -295,6 +287,7 @@ def_stream! {
     /// let future = TwitterStreamBuilder::sample(&token)
     ///     .timeout(None)
     ///     .listen()
+    ///     .unwrap()
     ///     .flatten_stream()
     ///     .for_each(|json| {
     ///         println!("{}", json);
@@ -379,7 +372,7 @@ def_stream! {
     /// A future returned by constructor methods
     /// which resolves to a `TwitterStream`.
     pub struct FutureTwitterStream {
-        inner: Result<MaybeTimeout<ResponseFuture>, Option<TlsError>>,
+        response: MaybeTimeout<ResponseFuture>,
     }
 
     /// A listener for Twitter Streaming API.
@@ -414,8 +407,7 @@ where
     C: Borrow<str>,
     A: Borrow<str>,
 {
-    /// Make an HTTP connection to an endpoint of the Streaming API.
-    fn connect<Conn, B>(&self, c: &Client<Conn, B>) -> ResponseFuture
+    fn listen_with_client_<Conn, B>(&self, c: &Client<Conn, B>) -> FutureTwitterStream
     where
         Conn: Connect + Sync + 'static,
         Conn::Transport: 'static,
@@ -465,7 +457,10 @@ where
                 .unwrap()
         };
 
-        c.request(req)
+        let res = c.request(req);
+        FutureTwitterStream {
+            response: timeout(res, self.inner.timeout),
+        }
     }
 
     fn build_query(&self, mut signer: oauth::HmacSha1Signer) -> oauth::Request {
@@ -523,12 +518,7 @@ impl Future for FutureTwitterStream {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
-        let res_fut = self
-            .inner
-            .as_mut()
-            .map_err(|e| Error::Tls(e.take().expect("cannot poll FutureTwitterStream twice")))?;
-
-        let res = try_ready!(res_fut.poll());
+        let res = try_ready!(self.response.poll());
         let (
             Parts {
                 status, headers, ..
@@ -540,7 +530,7 @@ impl Future for FutureTwitterStream {
             return Err(Error::Http(status));
         }
 
-        let body = timeout_to_stream(res_fut, body);
+        let body = timeout_to_stream(&self.response, body);
         let use_gzip = headers
             .get_all(CONTENT_ENCODING)
             .iter()

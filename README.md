@@ -39,6 +39,7 @@ fn main() {
     let future = TwitterStreamBuilder::filter(&token)
         .track(Some("@Twitter"))
         .listen()
+	.unwrap()
         .flatten_stream()
         .for_each(|json| {
             println!("{}", json);
