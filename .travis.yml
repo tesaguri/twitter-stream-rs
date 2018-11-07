@@ -14,7 +14,7 @@ matrix:
     - rust: 1.30.0
 script:
   - |
-    if [ "$FEATURES" = runtime ]; then
+    if [ "$FEATURES" = tls ]; then
       cargo build --verbose --no-default-features --features=$FEATURES &&
       cargo test --verbose --no-default-features --features=$FEATURES
     else
@@ -24,6 +24,4 @@ env:
   - FEATURES=
   - FEATURES=runtime
   - FEATURES=tls
-  - FEATURES=tls-rustls
-  - FEATURES=tls-openssl
   - FEATURES=egg-mode,tweetust
