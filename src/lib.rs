@@ -1,3 +1,4 @@
+#![doc(html_root_url = "https://docs.rs/twitter-stream/0.8.0")]
 #![recursion_limit = "128"]
 
 /*!
