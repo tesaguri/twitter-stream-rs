@@ -1,3 +1,5 @@
+#![recursion_limit = "128"]
+
 /*!
 # Twitter Stream
 
@@ -56,8 +58,10 @@ extern crate hyper;
 extern crate hyper_tls;
 extern crate libflate;
 extern crate oauth1_request as oauth;
+extern crate oauth1_request_derive;
 #[cfg(feature = "serde")]
 extern crate serde;
+extern crate static_assertions;
 extern crate string;
 extern crate tokio_timer;
 
@@ -76,7 +80,6 @@ pub use error::Error;
 pub use token::Token;
 
 use std::borrow::Borrow;
-use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -89,6 +92,8 @@ use hyper::header::{
     HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
 };
 use hyper::Request;
+use oauth::OAuth1Authorize;
+use oauth1_request_derive::OAuth1Authorize;
 use string::TryFrom;
 
 use gzip::MaybeGzip;
@@ -128,6 +133,7 @@ macro_rules! def_stream {
 
         def_builder_inner! {
             $(#[$builder_attr])*
+            #[derive(OAuth1Authorize)]
             struct BuilderInner<$lifetime> { $($setters)* }
         }
 
@@ -242,10 +248,14 @@ macro_rules! def_builder_inner {
 }
 
 macro_rules! def_setters {
-    (
-        $(#[$attr:meta])* $setter:ident: Option<$t:ty> = $_default:expr,
-        $($rest:tt)*
-    ) => {
+    // Discard `#[oauth1(..)]` attributes.
+    (@parse $(#[$attrs:meta])*; #[oauth1($($_ignored:tt)*)] $($rest:tt)*) => {
+        def_setters! { @parse $(#[$attrs])*; $($rest)* }
+    };
+    (@parse $(#[$attrs:meta])*; #[$attr:meta] $($rest:tt)*) => {
+        def_setters! { @parse $(#[$attrs])* #[$attr]; $($rest)* }
+    };
+    (@parse $(#[$attr:meta])*; $setter:ident: Option<$t:ty> = $_default:expr, $($rest:tt)*) => {
         $(#[$attr])*
         pub fn $setter(&mut self, $setter: impl Into<Option<$t>>) -> &mut Self {
             self.inner.$setter = $setter.into();
@@ -253,13 +263,19 @@ macro_rules! def_setters {
         }
         def_setters! { $($rest)* }
     };
-    ($(#[$attr:meta])* $setter:ident: $t:ty = $_default:expr, $($rest:tt)*) => {
+    (@parse $(#[$attr:meta])*; $setter:ident: $t:ty = $_default:expr, $($rest:tt)*) => {
         $(#[$attr])*
         pub fn $setter(&mut self, $setter: $t) -> &mut Self {
             self.inner.$setter = $setter;
             self
         }
         def_setters! { $($rest)* }
+    };
+    (@parse $($rest:tt)*) => {
+        compile_error!(concat!("invalid macro call: ", stringify!({ @parse $($rest)* })));
+    };
+    ($($body:tt)+) => {
+        def_setters! { @parse; $($body)* }
     };
     () => {};
 }
@@ -301,6 +317,7 @@ def_stream! {
         // Setters:
 
         /// Set a timeout for the stream. `None` means infinity.
+        #[oauth1(skip)]
         timeout: Option<Duration> = Some(Duration::from_secs(90)),
 
         // delimited: bool,
@@ -311,6 +328,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#stall-warnings
+        #[oauth1(skip_if = "not")]
         stall_warnings: bool = false,
 
         /// Set the minimum `filter_level` Tweet attribute to receive.
@@ -319,6 +337,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#filter-level
+        #[oauth1(option)]
         filter_level: Option<FilterLevel> = None,
 
         /// Set a comma-separated language identifiers to receive Tweets
@@ -327,6 +346,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#language
+        #[oauth1(option)]
         language: Option<&'a str> = None,
 
         /// Set a list of user IDs to receive Tweets only from
@@ -335,6 +355,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#follow
+        #[oauth1(option, encoded, fmt = "fmt_follow")]
         follow: Option<&'a [u64]> = None,
 
         /// A comma separated list of phrases to filter Tweets by.
@@ -342,6 +363,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#track
+        #[oauth1(option)]
         track: Option<&'a str> = None,
 
         /// Set a list of bounding boxes to filter Tweets by,
@@ -351,6 +373,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
+        #[oauth1(encoded, option, fmt = "fmt_locations")]
         #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
         locations: Option<&'a [((f64, f64), (f64, f64))]> = None,
 
@@ -360,6 +383,7 @@ def_stream! {
         /// See the [Twitter Developer Documentation][1] for more information.
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#count
+        #[oauth1(encoded, option)]
         count: Option<i32> = None,
     }
 
@@ -414,16 +438,18 @@ where
             .header(ACCEPT_ENCODING, HeaderValue::from_static("chunked,gzip"));
 
         let req = if RequestMethod::POST == self.method {
-            let signer = oauth::HmacSha1Signer::new_form(
-                "POST",
-                &self.endpoint,
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
-            );
             let oauth::Request {
                 authorization,
                 data,
-            } = self.build_query(signer);
+            } = self.inner.authorize_form(
+                "POST",
+                &self.endpoint,
+                self.token.consumer_key.borrow(),
+                self.token.consumer_secret.borrow(),
+                self.token.access_secret.borrow(),
+                oauth::HmacSha1,
+                &*oauth::Options::new().token(self.token.access_key.borrow()),
+            );
 
             req.uri(self.endpoint.clone())
                 .header(AUTHORIZATION, Bytes::from(authorization))
@@ -434,16 +460,18 @@ where
                 .body(data.into_bytes().into())
                 .unwrap()
         } else {
-            let signer = oauth::HmacSha1Signer::new(
-                self.method.as_ref(),
-                &self.endpoint,
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
-            );
             let oauth::Request {
                 authorization,
                 data: uri,
-            } = self.build_query(signer);
+            } = self.inner.authorize(
+                self.method.as_ref(),
+                &self.endpoint,
+                self.token.consumer_key.borrow(),
+                self.token.consumer_secret.borrow(),
+                self.token.access_secret.borrow(),
+                oauth::HmacSha1,
+                &*oauth::Options::new().token(self.token.access_key.borrow()),
+            );;
 
             req.uri(uri)
                 .header(AUTHORIZATION, Bytes::from(authorization))
@@ -455,55 +483,6 @@ where
         FutureTwitterStream {
             response: timeout(res, self.inner.timeout),
         }
-    }
-
-    fn build_query(&self, mut signer: oauth::HmacSha1Signer) -> oauth::Request {
-        const COMMA: &str = "%2C";
-        let this = &self.inner;
-        if let Some(n) = this.count {
-            signer.parameter_encoded("count", n);
-        }
-        if let Some(ref fl) = this.filter_level {
-            signer.parameter("filter_level", fl.as_ref());
-        }
-        if let Some(ids) = this.follow {
-            signer.parameter_encoded("follow", JoinDisplay(ids, COMMA));
-        }
-        if let Some(s) = this.language {
-            signer.parameter("language", s);
-        }
-        if let Some(locs) = this.locations {
-            struct LocationsDisplay<'a, D>(&'a [((f64, f64), (f64, f64))], D);
-            impl<'a, D: Display> Display for LocationsDisplay<'a, D> {
-                fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-                    macro_rules! push {
-                        ($($c:expr),*) => {{ $(write!(f, "{}{}", self.1, $c)?;)* }};
-                    }
-                    let mut iter = self.0.iter();
-                    if let Some(&((x1, y1), (x2, y2))) = iter.next() {
-                        write!(f, "{}", x1)?;
-                        push!(y1, x2, y2);
-                        for &((x1, y1), (x2, y2)) in iter {
-                            push!(x1, y1, x2, y2);
-                        }
-                    }
-                    Ok(())
-                }
-            }
-            signer.parameter_encoded("locations", LocationsDisplay(locs, COMMA));
-        }
-        let mut signer = signer.oauth_parameters(
-            self.token.consumer_key.borrow(),
-            &*oauth::Options::new().token(self.token.access_key.borrow()),
-        );
-        if this.stall_warnings {
-            signer.parameter_encoded("stall_warnings", "true");
-        }
-        if let Some(s) = this.track {
-            signer.parameter("track", s);
-        }
-
-        signer.finish()
     }
 }
 
@@ -559,34 +538,5 @@ impl Stream for TwitterStream {
                 None => return Ok(None.into()),
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn query_dictionary_order() {
-        let endpoint = "https://stream.twitter.com/1.1/statuses/filter.json"
-            .parse::<Uri>()
-            .unwrap();
-        TwitterStreamBuilder {
-            method: RequestMethod::GET,
-            endpoint: endpoint.clone(),
-            token: Token::new("", "", "", ""),
-            inner: BuilderInner {
-                timeout: None,
-                stall_warnings: true,
-                filter_level: Some(FilterLevel::Low),
-                language: Some("en"),
-                follow: Some(&[12]),
-                track: Some("\"User Stream\" to:TwitterDev"),
-                locations: Some(&[((37.7748, -122.4146), (37.7788, -122.4186))]),
-                count: Some(10),
-            },
-        }.build_query(oauth::Signer::new_form("", &endpoint, "", ""));
-        // `QueryBuilder::check_dictionary_order` will panic
-        // if the insertion order of query pairs is incorrect.
     }
 }

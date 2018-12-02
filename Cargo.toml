@@ -20,12 +20,14 @@ futures = "0.1.4"
 http = "0.1.11"
 hyper = { version = "0.12", default-features = false }
 libflate = "0.1.15"
-oauth1-request = "0.2"
+oauth1-request = "0.2.1"
+oauth1-request-derive = "0.2"
 string = "0.1.2"
 tokio-timer = "0.2.6"
 egg-mode = { version = "0.12", optional = true }
 hyper-tls = { version = "0.3", optional = true }
 oauthcli = { version = "1", optional = true }
+static_assertions = "0.3"
 serde = { version = "1", optional = true, features = ["derive"] }
 tokio = { version = "0.1", optional = true }
 tweetust = { version = "0.9", optional = true }

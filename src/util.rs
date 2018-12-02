@@ -45,6 +45,12 @@ macro_rules! string_enums {
                 }
             }
 
+            impl std::fmt::Display for $E {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    AsRef::<str>::as_ref(self).fmt(f)
+                }
+            }
+
             impl std::cmp::PartialEq for $E {
                 fn eq(&self, other: &$E) -> bool {
                     match *self {
@@ -79,8 +85,6 @@ pub enum EitherStream<A, B> {
     A(A),
     B(B),
 }
-
-pub struct JoinDisplay<'a, D: 'a, Sep: ?Sized + 'a>(pub &'a [D], pub &'a Sep);
 
 /// A stream over the lines (delimited by CRLF) of a `Body`.
 pub struct Lines<B>
@@ -171,23 +175,6 @@ where
 
     fn poll(&mut self) -> Poll<F::Item, Error> {
         MapErr(&mut self.tokio).poll()
-    }
-}
-
-impl<'a, D, Sep> Display for JoinDisplay<'a, D, Sep>
-where
-    D: Display + 'a,
-    Sep: Display + ?Sized + 'a,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut iter = self.0.iter();
-        if let Some(d) = iter.next() {
-            Display::fmt(d, f)?;
-            for d in iter {
-                write!(f, "{}{}", self.1, d)?;
-            }
-        }
-        Ok(())
     }
 }
 
@@ -303,6 +290,45 @@ impl<E: IntoError> IntoError for tokio_timer::timeout::Error<E> {
             None => Error::TimedOut,
         }
     }
+}
+
+pub fn fmt_join<T: Display>(t: &[T], sep: &str, f: &mut Formatter<'_>) -> fmt::Result {
+    let mut iter = t.iter();
+    if let Some(t) = iter.next() {
+        Display::fmt(t, f)?;
+        for t in iter {
+            write!(f, "{}{}", sep, t)?;
+        }
+    }
+    Ok(())
+}
+
+const COMMA: &str = "%2C";
+
+pub fn fmt_follow(ids: &[u64], f: &mut Formatter<'_>) -> fmt::Result {
+    fmt_join(ids, COMMA, f)
+}
+
+type Location = ((f64, f64), (f64, f64));
+
+pub fn fmt_locations(locs: &[Location], f: &mut Formatter<'_>) -> fmt::Result {
+    use std::mem::size_of;
+    use std::slice;
+
+    use static_assertions::const_assert;
+
+    let locs: &[f64] = unsafe {
+        let ptr: *const Location = locs.as_ptr();
+        const_assert!(size_of::<Location>() % size_of::<f64>() == 0);
+        let n = locs.len() * (size_of::<Location>() / size_of::<f64>());
+        slice::from_raw_parts(ptr as *const f64, n)
+    };
+
+    fmt_join(locs, COMMA, f)
+}
+
+pub fn not(p: &bool) -> bool {
+    !p
 }
 
 pub fn timeout<F>(fut: F, dur: Option<Duration>) -> MaybeTimeout<F> {
