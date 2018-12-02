@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/twitter-stream/0.8.0")]
+#![doc(html_root_url = "https://docs.rs/twitter-stream/0.9.0")]
 #![recursion_limit = "128"]
 
 /*!
@@ -12,7 +12,7 @@ Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-twitter-stream = "0.8"
+twitter-stream = "0.9"
 ```
 
 and this to your crate root:
