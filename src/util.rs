@@ -1,4 +1,3 @@
-use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::io::{self, BufRead, ErrorKind, Read};
 use std::mem;
@@ -114,10 +113,6 @@ pub struct Timeout<F> {
 pub type MaybeTimeout<F> = futures::future::Either<Timeout<F>, MapErr<F>>;
 
 pub type MaybeTimeoutStream<S> = Either<MapErr<tokio_timer::Timeout<S>>, MapErr<S>>;
-
-/// Represents an infallible operation in `default_connector::new`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub enum Never {}
 
 pub trait IntoError {
     fn into_error(self) -> Error;
@@ -302,18 +297,6 @@ where
 
     fn poll(&mut self) -> Poll<F::Item, Error> {
         MapErr(&mut self.tokio).poll()
-    }
-}
-
-impl error::Error for Never {
-    fn description(&self) -> &str {
-        match *self {}
-    }
-}
-
-impl Display for Never {
-    fn fmt(&self, _: &mut Formatter<'_>) -> fmt::Result {
-        match *self {}
     }
 }
 
