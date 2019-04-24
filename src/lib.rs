@@ -64,6 +64,7 @@ extern crate oauth1_request_derive;
 extern crate serde;
 extern crate static_assertions;
 extern crate string;
+extern crate tokio_io;
 extern crate tokio_timer;
 
 #[macro_use]
@@ -84,7 +85,7 @@ use std::borrow::Borrow;
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures::{try_ready, Future, Poll, Stream};
+use futures::{try_ready, Async, Future, Poll, Stream};
 use http::response::Parts;
 use hyper::body::{Body, Payload};
 use hyper::client::connect::Connect;
@@ -525,18 +526,33 @@ impl Stream for TwitterStream {
 
     fn poll(&mut self) -> Poll<Option<string::String<Bytes>>, Error> {
         loop {
-            match try_ready!(self.inner.poll()) {
-                Some(line) => {
+            match self.inner.poll() {
+                Ok(Async::Ready(Some(line))) => {
                     // Skip whitespaces (as in RFC7159 §2)
-                    let all_ws = line
+                    if line
                         .iter()
-                        .all(|&c| c == b'\n' || c == b'\r' || c == b' ' || c == b'\t');
-                    if !all_ws {
-                        let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
-                        return Ok(Some(line).into());
+                        .all(|&c| c == b'\n' || c == b'\r' || c == b' ' || c == b'\t')
+                    {
+                        continue;
                     }
+
+                    // TODO: change the return type to `std::string::String` in v0.10.
+                    let line = Bytes::from(line);
+                    let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
+                    return Ok(Async::Ready(Some(line)));
                 }
-                None => return Ok(None.into()),
+                Ok(Async::Ready(None)) => return Ok(Async::Ready(None)),
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Err(e) => match *self.inner.get_mut() {
+                    Either::A(ref mut gzip) => {
+                        if let Some(e) = gzip.get_mut().take_err() {
+                            return Err(e);
+                        } else {
+                            return Err(Error::Gzip(e));
+                        }
+                    }
+                    Either::B(ref mut stream_read) => return Err(stream_read.take_err().unwrap()),
+                },
             }
         }
     }

@@ -23,6 +23,7 @@ libflate = "0.1.15"
 oauth1-request = "0.2.1"
 oauth1-request-derive = "0.2"
 string = "0.1.2"
+tokio-io = "0.1"
 tokio-timer = "0.2.6"
 egg-mode = { version = "0.12", optional = true }
 hyper-tls = { version = "0.3", optional = true }
