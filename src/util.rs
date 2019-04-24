@@ -193,7 +193,7 @@ impl<B: BufRead> Stream for Lines<B> {
                 break;
             }
             if n == 0 {
-                if self.line.len() == 0 {
+                if self.line.is_empty() {
                     return Ok(None.into());
                 } else {
                     break;
@@ -331,10 +331,7 @@ impl IntoError for HyperError {
 
 impl<E: IntoError> IntoError for tokio_timer::timeout::Error<E> {
     fn into_error(self) -> Error {
-        match self.into_inner() {
-            Some(e) => e.into_error(),
-            None => Error::TimedOut,
-        }
+        self.into_inner().map_or(Error::TimedOut, E::into_error)
     }
 }
 
@@ -373,6 +370,7 @@ pub fn fmt_locations(locs: &[Location], f: &mut Formatter<'_>) -> fmt::Result {
     fmt_join(locs, COMMA, f)
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 pub fn not(p: &bool) -> bool {
     !p
 }

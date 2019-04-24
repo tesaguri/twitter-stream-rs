@@ -42,11 +42,12 @@ fn main() {
     let bot = stream
         .for_each(move |json| {
             if let Ok(StreamMessage::Tweet(tweet)) = StreamMessage::from_str(&json) {
-                if tweet.user.id != user.id as u64 && tweet
-                    .entities
-                    .user_mentions
-                    .iter()
-                    .any(|mention| mention.id == user.id as u64)
+                if tweet.user.id != user.id as u64
+                    && tweet
+                        .entities
+                        .user_mentions
+                        .iter()
+                        .any(|mention| mention.id == user.id as u64)
                 {
                     println!(
                         "On {}, @{} tweeted: {:?}",
@@ -63,7 +64,8 @@ fn main() {
             }
 
             Ok(())
-        }).map_err(|e| println!("error: {}", e));
+        })
+        .map_err(|e| println!("error: {}", e));
 
     rt::run(bot);
 }

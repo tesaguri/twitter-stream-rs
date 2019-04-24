@@ -376,7 +376,7 @@ def_stream! {
         ///
         /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
         #[oauth1(encoded, option, fmt = "fmt_locations")]
-        #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+        #[allow(clippy::type_complexity)]
         locations: Option<&'a [((f64, f64), (f64, f64))]> = None,
 
         /// The `count` parameter.
@@ -458,7 +458,8 @@ where
                 .header(
                     CONTENT_TYPE,
                     HeaderValue::from_static("application/x-www-form-urlencoded"),
-                ).header(CONTENT_LENGTH, Bytes::from(data.len().to_string()))
+                )
+                .header(CONTENT_LENGTH, Bytes::from(data.len().to_string()))
                 .body(data.into_bytes().into())
                 .unwrap()
         } else {
@@ -494,12 +495,10 @@ impl Future for FutureTwitterStream {
 
     fn poll(&mut self) -> Poll<TwitterStream, Error> {
         let res = try_ready!(self.response.poll());
-        let (
-            Parts {
-                status, headers, ..
-            },
-            body,
-        ) = res.into_parts();
+        let (parts, body) = res.into_parts();
+        let Parts {
+            status, headers, ..
+        } = parts;
 
         if StatusCode::OK != status {
             return Err(Error::Http(status));
