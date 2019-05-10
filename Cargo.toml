@@ -48,4 +48,3 @@ version-sync = "0.6"
 # examples/echo_bot
 serde_json = "1"
 tweetust = "0.9"
-twitter-stream-message = "0.3"
