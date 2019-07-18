@@ -19,17 +19,9 @@ Add this to your `Cargo.toml`:
 twitter-stream = "0.9"
 ```
 
-and this to your crate root:
-
-```rust
-extern crate twitter_stream;
-```
-
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust
-extern crate twitter_stream;
-
 use twitter_stream::{Token, TwitterStreamBuilder};
 use twitter_stream::rt::{self, Future, Stream};
 

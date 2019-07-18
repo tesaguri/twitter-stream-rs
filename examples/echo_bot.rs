@@ -1,8 +1,3 @@
-extern crate serde;
-extern crate serde_json as json;
-extern crate tweetust;
-extern crate twitter_stream;
-
 use std::fs::File;
 use std::path::PathBuf;
 

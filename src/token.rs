@@ -45,11 +45,9 @@ impl<C: Borrow<str>, A: Borrow<str>> Token<C, A> {
 
 cfg_if! {
     if #[cfg(feature = "egg-mode")] {
-        extern crate egg_mode;
-
         use std::borrow::Cow;
 
-        use self::egg_mode::KeyPair;
+        use egg_mode::KeyPair;
 
         impl<'a, C, A> From<Token<C, A>> for egg_mode::Token
             where C: Into<Cow<'static, str>>, A: Into<Cow<'static, str>>
@@ -66,19 +64,16 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(feature = "use-tweetust")] {
-        extern crate oauthcli;
-        extern crate tweetust;
-
-        use self::oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
-        use self::tweetust::conn::{Request, RequestContent};
-        use self::tweetust::conn::oauth_authenticator::OAuthAuthorizationScheme;
+        use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
+        use tweetust::conn::{Request, RequestContent};
+        use tweetust::conn::oauth_authenticator::OAuthAuthorizationScheme;
 
         impl<C, A> tweetust::conn::Authenticator for Token<C, A>
             where C: Borrow<str>, A: Borrow<str>
         {
             type Scheme = OAuthAuthorizationScheme;
 
-            fn create_authorization_header(&self, request: &Request)
+            fn create_authorization_header(&self, request: &Request<'_>)
                 -> Option<OAuthAuthorizationScheme>
             {
                 let mut header = OAuthAuthorizationHeaderBuilder::new(

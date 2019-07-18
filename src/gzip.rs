@@ -5,7 +5,7 @@ use futures::Stream;
 use libflate::non_blocking::gzip;
 use tokio_io::AsyncRead;
 
-use util::{Either, StreamRead};
+use crate::util::{Either, StreamRead};
 
 pub struct Gzip<S>
 where

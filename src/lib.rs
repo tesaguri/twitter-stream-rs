@@ -15,19 +15,11 @@ Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
 twitter-stream = "0.9"
 ```
 
-and this to your crate root:
-
-```rust,no_run
-extern crate twitter_stream;
-```
-
 ## Overview
 
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust,no_run
-extern crate twitter_stream;
-
 use twitter_stream::{Token, TwitterStreamBuilder};
 use twitter_stream::rt::{self, Future, Stream};
 
@@ -50,23 +42,6 @@ rt::run(future);
 ```
 */
 
-extern crate bytes;
-extern crate cfg_if;
-extern crate futures;
-extern crate http;
-extern crate hyper;
-#[cfg(feature = "tls")]
-extern crate hyper_tls;
-extern crate libflate;
-extern crate oauth1_request as oauth;
-extern crate oauth1_request_derive;
-#[cfg(feature = "serde")]
-extern crate serde;
-extern crate static_assertions;
-extern crate string;
-extern crate tokio_io;
-extern crate tokio_timer;
-
 #[macro_use]
 mod util;
 
@@ -78,8 +53,8 @@ pub mod types;
 mod gzip;
 mod token;
 
-pub use error::Error;
-pub use token::Token;
+pub use crate::error::Error;
+pub use crate::token::Token;
 
 use std::borrow::Borrow;
 use std::time::Duration;
@@ -98,17 +73,15 @@ use oauth::OAuth1Authorize;
 use oauth1_request_derive::OAuth1Authorize;
 use string::TryFrom;
 
-use gzip::MaybeGzip;
-use types::{FilterLevel, RequestMethod, StatusCode, Uri};
-use util::*;
+use crate::gzip::MaybeGzip;
+use crate::types::{FilterLevel, RequestMethod, StatusCode, Uri};
+use crate::util::*;
 
 /// A builder for `TwitterStream`.
 ///
 /// ## Example
 ///
 /// ```rust,no_run
-/// extern crate twitter_stream;
-///
 /// use twitter_stream::{Token, TwitterStreamBuilder};
 /// use twitter_stream::rt::{self, Future, Stream};
 ///

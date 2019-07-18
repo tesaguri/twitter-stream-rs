@@ -6,9 +6,8 @@ use std::time::Duration;
 use bytes::{Buf, IntoBuf, Reader};
 use futures::{Async, Future, Poll, Stream};
 use tokio_io::{try_nb, AsyncRead};
-use tokio_timer;
 
-use error::{Error, HyperError};
+use crate::error::{Error, HyperError};
 
 // Synonym of `twitter_stream_message::util::string_enums`
 macro_rules! string_enums {
