@@ -22,23 +22,25 @@ twitter-stream = "0.9"
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust
-use twitter_stream::{Token, TwitterStreamBuilder};
-use twitter_stream::rt::{self, Future, Stream};
+#![feature(async_await)]
 
-fn main() {
+use futures::prelude::*;
+use twitter_stream::{Token, TwitterStreamBuilder};
+
+#[tokio::main]
+async fn main() {
     let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-    let future = TwitterStreamBuilder::filter(token)
+    TwitterStreamBuilder::filter(token)
         .track(Some("@Twitter"))
         .listen()
-	.unwrap()
-        .flatten_stream()
-        .for_each(|json| {
+        .unwrap()
+        .try_flatten_stream()
+        .try_for_each(|json| {
             println!("{}", json);
-            Ok(())
+            future::ok(())
         })
-        .map_err(|e| println!("error: {}", e));
-
-    rt::run(future);
+        .await
+        .unwrap();
 }
 ```

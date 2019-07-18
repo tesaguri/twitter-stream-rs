@@ -20,24 +20,26 @@ twitter-stream = "0.9"
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust,no_run
-use twitter_stream::{Token, TwitterStreamBuilder};
-use twitter_stream::rt::{self, Future, Stream};
+#![feature(async_await)]
 
-# fn main() {
+use futures::prelude::*;
+use twitter_stream::{Token, TwitterStreamBuilder};
+
+# #[tokio::main]
+# async fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let future = TwitterStreamBuilder::filter(token)
+TwitterStreamBuilder::filter(token)
     .track(Some("@Twitter"))
     .listen()
     .unwrap()
-    .flatten_stream()
-    .for_each(|json| {
+    .try_flatten_stream()
+    .try_for_each(|json| {
         println!("{}", json);
-        Ok(())
+        future::ok(())
     })
-    .map_err(|e| println!("error: {}", e));
-
-rt::run(future);
+    .await
+    .unwrap();
 # }
 ```
 */
@@ -57,10 +59,15 @@ pub use crate::error::Error;
 pub use crate::token::Token;
 
 use std::borrow::Borrow;
+use std::future::Future;
+use std::marker::Unpin;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures::{try_ready, Async, Future, Poll, Stream};
+use futures_core::Stream;
+use futures_util::{ready, FutureExt, StreamExt};
 use http::response::Parts;
 use hyper::body::{Body, Payload};
 use hyper::client::connect::Connect;
@@ -82,24 +89,25 @@ use crate::util::*;
 /// ## Example
 ///
 /// ```rust,no_run
+/// # #![feature(async_await)]
+/// use futures::prelude::*;
 /// use twitter_stream::{Token, TwitterStreamBuilder};
-/// use twitter_stream::rt::{self, Future, Stream};
 ///
-/// # fn main() {
+/// # #[tokio::main]
+/// # async fn main() {
 /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 ///
-/// let future = TwitterStreamBuilder::sample(token)
+/// TwitterStreamBuilder::sample(token)
 ///     .timeout(None)
 ///     .listen()
 ///     .unwrap()
-///     .flatten_stream()
-///     .for_each(|json| {
+///     .try_flatten_stream()
+///     .try_for_each(|json| {
 ///         println!("{}", json);
-///         Ok(())
+///         future::ok(())
 ///     })
-///     .map_err(|e| println!("error: {}", e));
-///
-/// rt::run(future);
+///     .await
+///     .unwrap();
 /// # }
 /// ```
 #[derive(Clone, Debug)]
@@ -191,7 +199,7 @@ where
     /// to a `Stream` yielding JSON messages from the API.
     #[cfg(feature = "tls")]
     pub fn listen(&self) -> Result<FutureTwitterStream, error::TlsError> {
-        let conn = hyper_tls::HttpsConnector::new(1)?;
+        let conn = hyper_tls::HttpsConnector::new()?;
         Ok(self.listen_with_client(&Client::builder().build::<_, Body>(conn)))
     }
 
@@ -201,8 +209,8 @@ where
         Conn: Connect + Sync + 'static,
         Conn::Transport: 'static,
         Conn::Future: 'static,
-        B: Default + From<Vec<u8>> + Payload + Send + 'static,
-        B::Data: Send,
+        B: Default + From<Vec<u8>> + Payload + Unpin + Send + 'static,
+        B::Data: Send + Unpin,
     {
         let mut req = Request::builder();
         req.method(self.method.clone())
@@ -390,18 +398,17 @@ impl TwitterStream {
 }
 
 impl Future for FutureTwitterStream {
-    type Item = TwitterStream;
-    type Error = Error;
+    type Output = Result<TwitterStream, Error>;
 
-    fn poll(&mut self) -> Poll<TwitterStream, Error> {
-        let res = try_ready!(self.response.poll());
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let res = ready!(self.response.poll_unpin(cx))?;
         let (parts, body) = res.into_parts();
         let Parts {
             status, headers, ..
         } = parts;
 
         if StatusCode::OK != status {
-            return Err(Error::Http(status));
+            return Poll::Ready(Err(Error::Http(status)));
         }
 
         let body = timeout_to_stream(&self.response, body);
@@ -410,45 +417,27 @@ impl Future for FutureTwitterStream {
             .iter()
             .any(|e| e == "gzip");
         let inner = if use_gzip {
-            Lines::new(MaybeGzip::gzip(body))
+            Lines::new(gzip::gzip(body))
         } else {
-            Lines::new(MaybeGzip::identity(body))
+            Lines::new(gzip::identity(body))
         };
 
-        Ok(TwitterStream { inner }.into())
+        Poll::Ready(Ok(TwitterStream { inner }))
     }
 }
 
 impl Stream for TwitterStream {
-    type Item = string::String<Bytes>;
-    type Error = Error;
+    type Item = Result<string::String<Bytes>, Error>;
 
-    fn poll(&mut self) -> Poll<Option<string::String<Bytes>>, Error> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
-            match self.inner.poll() {
-                Ok(Async::Ready(Some(line))) => {
-                    if line.iter().all(|&c| is_json_whitespace(c)) {
-                        continue;
-                    }
-
-                    // TODO: change the return type to `std::string::String` in v0.10.
-                    let line = Bytes::from(line);
-                    let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
-                    return Ok(Async::Ready(Some(line)));
-                }
-                Ok(Async::Ready(None)) => return Ok(Async::Ready(None)),
-                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(e) => match *self.inner.get_mut() {
-                    Either::A(ref mut gzip) => {
-                        if let Some(e) = gzip.get_mut().take_err() {
-                            return Err(e);
-                        } else {
-                            return Err(Error::Gzip(e));
-                        }
-                    }
-                    Either::B(ref mut stream_read) => return Err(stream_read.take_err().unwrap()),
-                },
+            let line = ready_some!(self.inner.poll_next_unpin(cx))?;
+            if line.iter().all(|&c| is_json_whitespace(c)) {
+                continue;
             }
+
+            let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
+            return Poll::Ready(Some(Ok(line)));
         }
     }
 }

@@ -1,5 +1,5 @@
 //! Some reexports from `futures` and `tokio` crates.
 
-pub use futures::future::{lazy, poll_fn};
-pub use futures::{Future, Stream};
-pub use tokio::{run, spawn};
+pub use futures_core::Stream;
+pub use std::future::Future;
+pub use tokio::{main, spawn};

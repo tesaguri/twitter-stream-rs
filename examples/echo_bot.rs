@@ -1,10 +1,13 @@
+#![feature(async_await)]
+
 use std::fs::File;
 use std::path::PathBuf;
 
+use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
-use twitter_stream::rt::{self, Future, Stream};
-use twitter_stream::{Error, Token, TwitterStreamBuilder};
+use twitter_stream::rt;
+use twitter_stream::{Token, TwitterStreamBuilder};
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -38,7 +41,8 @@ struct User {
     screen_name: String,
 }
 
-fn main() {
+#[rt::main]
+async fn main() {
     const TRACK: &str = "@NAME_OF_YOUR_ACCOUNT";
 
     // `credential.json` must have the following form:
@@ -55,7 +59,7 @@ fn main() {
         .track(Some(TRACK))
         .listen()
         .unwrap()
-        .flatten_stream();
+        .try_flatten_stream();
     let rest = tweetust::TwitterClient::new(
         token,
         tweetust::DefaultHttpHandler::with_https_connector().unwrap(),
@@ -69,8 +73,8 @@ fn main() {
         .unwrap()
         .object;
 
-    let bot = stream
-        .for_each(move |json| {
+    stream
+        .try_for_each(move |json| {
             if let Ok(StreamMessage::Tweet(tweet)) = json::from_str(&json) {
                 if tweet.user.id != user.id
                     && tweet
@@ -89,13 +93,12 @@ fn main() {
                         .update(response)
                         .in_reply_to_status_id(tweet.id)
                         .execute()
-                        .map_err(Error::custom)?;
+                        .unwrap();
                 }
             }
 
-            Ok(())
+            future::ok(())
         })
-        .map_err(|e| println!("error: {}", e));
-
-    rt::run(bot);
+        .await
+        .unwrap();
 }
