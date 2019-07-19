@@ -527,11 +527,7 @@ impl Stream for TwitterStream {
         loop {
             match self.inner.poll() {
                 Ok(Async::Ready(Some(line))) => {
-                    // Skip whitespaces (as in RFC7159 §2)
-                    if line
-                        .iter()
-                        .all(|&c| c == b'\n' || c == b'\r' || c == b' ' || c == b'\t')
-                    {
+                    if line.iter().all(|&c| is_json_whitespace(c)) {
                         continue;
                     }
 
@@ -555,4 +551,9 @@ impl Stream for TwitterStream {
             }
         }
     }
+}
+
+fn is_json_whitespace(c: u8) -> bool {
+    // RFC7159 §2
+    b" \t\n\r".contains(&c)
 }
