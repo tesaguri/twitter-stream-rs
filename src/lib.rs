@@ -23,13 +23,13 @@ Here is a basic example that prints public mentions to @Twitter in JSON format:
 #![feature(async_await)]
 
 use futures::prelude::*;
-use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::Token;
 
 # #[tokio::main]
 # async fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-TwitterStreamBuilder::filter(token)
+twitter_stream::Builder::filter(token)
     .track(Some("@Twitter"))
     .listen()
     .unwrap()
@@ -91,13 +91,13 @@ use crate::util::*;
 /// ```rust,no_run
 /// # #![feature(async_await)]
 /// use futures::prelude::*;
-/// use twitter_stream::{Token, TwitterStreamBuilder};
+/// use twitter_stream::Token;
 ///
 /// # #[tokio::main]
 /// # async fn main() {
 /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 ///
-/// TwitterStreamBuilder::sample(token)
+/// twitter_stream::Builder::sample(token)
 ///     .timeout(None)
 ///     .listen()
 ///     .unwrap()
@@ -111,7 +111,7 @@ use crate::util::*;
 /// # }
 /// ```
 #[derive(Clone, Debug)]
-pub struct TwitterStreamBuilder<'a, T = Token> {
+pub struct Builder<'a, T = Token> {
     method: RequestMethod,
     endpoint: Uri,
     token: T,
@@ -151,7 +151,7 @@ struct BuilderInner<'a> {
     count: Option<i32>,
 }
 
-impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>>
+impl<'a, C, A> Builder<'a, Token<C, A>>
 where
     C: Borrow<str>,
     A: Borrow<str>,
@@ -266,7 +266,7 @@ where
     }
 }
 
-impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>> {
+impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Reset the HTTP request method to be used when connecting
     /// to the server.
     pub fn method(&mut self, method: RequestMethod) -> &mut Self {
@@ -378,22 +378,22 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>> {
 
 #[cfg(feature = "tls")]
 impl TwitterStream {
-    /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
+    /// A shorthand for `Builder::filter().listen()`.
     pub fn filter<C, A>(token: Token<C, A>) -> Result<FutureTwitterStream, error::TlsError>
     where
         C: Borrow<str>,
         A: Borrow<str>,
     {
-        TwitterStreamBuilder::filter(token).listen()
+        Builder::filter(token).listen()
     }
 
-    /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
+    /// A shorthand for `Builder::sample().listen()`.
     pub fn sample<C, A>(token: Token<C, A>) -> Result<FutureTwitterStream, error::TlsError>
     where
         C: Borrow<str>,
         A: Borrow<str>,
     {
-        TwitterStreamBuilder::sample(token).listen()
+        Builder::sample(token).listen()
     }
 }
 

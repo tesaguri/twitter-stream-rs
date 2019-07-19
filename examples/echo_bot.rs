@@ -6,8 +6,7 @@ use std::path::PathBuf;
 use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
-use twitter_stream::rt;
-use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::{rt, Token};
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -55,7 +54,7 @@ async fn main() {
     let credential = File::open(credential_path).unwrap();
     let token: Token = json::from_reader(credential).unwrap();
 
-    let stream = TwitterStreamBuilder::filter(token.borrowed())
+    let stream = twitter_stream::Builder::filter(token.borrowed())
         .track(Some(TRACK))
         .listen()
         .unwrap()

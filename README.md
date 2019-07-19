@@ -25,13 +25,13 @@ Here is a basic example that prints public mentions to @Twitter in JSON format:
 #![feature(async_await)]
 
 use futures::prelude::*;
-use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::Token;
 
 #[tokio::main]
 async fn main() {
     let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-    TwitterStreamBuilder::filter(token)
+    twitter_stream::Builder::filter(token)
         .track(Some("@Twitter"))
         .listen()
         .unwrap()
