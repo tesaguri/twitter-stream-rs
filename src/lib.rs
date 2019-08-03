@@ -318,7 +318,11 @@ def_stream! {
 
         // Setters:
 
-        /// Set a timeout for the stream. `None` means infinity.
+        /// Set a timeout for the stream.
+        ///
+        /// Passing `None` disables the timeout.
+        ///
+        /// Default is 90 seconds.
         #[oauth1(skip)]
         timeout: Option<Duration> = Some(Duration::from_secs(90)),
 
