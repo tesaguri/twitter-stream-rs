@@ -3,14 +3,14 @@ use std::future::Future;
 use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
+use cfg_if::cfg_if;
 use futures_core::{Stream, TryFuture, TryStream};
-use futures_util::future::{self, Either, FutureExt};
+use futures_util::future::FutureExt;
 use futures_util::ready;
 use futures_util::stream::{Fuse, StreamExt};
-use futures_util::try_future::{IntoFuture, TryFutureExt};
+use futures_util::try_future::TryFutureExt;
 use futures_util::try_stream::{IntoStream, TryStreamExt};
 
 use crate::error::{Error, HyperError};
@@ -96,8 +96,6 @@ macro_rules! string_enums {
     }
 }
 
-pub struct Flatten<S>(IntoStream<S>);
-
 pub struct Lines<S> {
     stream: Fuse<IntoStream<S>>,
     buf: BytesMut,
@@ -106,40 +104,8 @@ pub struct Lines<S> {
 /// Wrapper to map `T::Error` onto `Error`.
 pub struct MapErr<T>(T);
 
-/// A `tokio_timer::Timeout`-like type that holds the original `Duration` which can be used to
-/// create another `Timeout`.
-pub struct Timeout<F> {
-    tokio: tokio_timer::Timeout<IntoFuture<F>>,
-    dur: Duration,
-}
-
-pub type MaybeTimeout<F> = Either<Timeout<F>, MapErr<F>>;
-
-pub type MaybeTimeoutStream<S> = Either<Flatten<tokio_timer::Timeout<IntoStream<S>>>, MapErr<S>>;
-
 pub trait IntoError {
     fn into_error(self) -> Error;
-}
-
-impl<S: TryStream> Flatten<S> {
-    pub fn new(s: S) -> Self {
-        Flatten(s.into_stream())
-    }
-}
-
-impl<S: TryStream<Ok = Result<T, E>> + Unpin, T, E> Stream for Flatten<S>
-where
-    S::Error: IntoError,
-    E: IntoError,
-{
-    type Item = Result<T, Error>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        (&mut self.0)
-            .map_err(IntoError::into_error)
-            .and_then(|r| future::ready(r.map_err(IntoError::into_error)))
-            .poll_next_unpin(cx)
-    }
 }
 
 impl<S: TryStream> Lines<S> {
@@ -220,29 +186,6 @@ where
     }
 }
 
-impl<F: TryFuture> Timeout<F> {
-    pub fn new(fut: F, dur: Duration) -> Self {
-        Timeout {
-            tokio: tokio_timer::Timeout::new(fut.into_future(), dur),
-            dur,
-        }
-    }
-}
-
-impl<F: TryFuture + Unpin> Future for Timeout<F>
-where
-    F::Error: IntoError,
-{
-    type Output = Result<F::Ok, Error>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        (&mut self.tokio)
-            .map_err(IntoError::into_error)
-            .and_then(|r| future::ready(r.map_err(IntoError::into_error)))
-            .poll_unpin(cx)
-    }
-}
-
 impl IntoError for Error {
     fn into_error(self) -> Error {
         self
@@ -252,12 +195,6 @@ impl IntoError for Error {
 impl IntoError for HyperError {
     fn into_error(self) -> Error {
         Error::Hyper(self)
-    }
-}
-
-impl IntoError for tokio_timer::timeout::Elapsed {
-    fn into_error(self) -> Error {
-        Error::TimedOut
     }
 }
 
@@ -301,26 +238,6 @@ pub fn not(p: &bool) -> bool {
     !p
 }
 
-pub fn timeout<F: TryFuture>(fut: F, dur: Option<Duration>) -> MaybeTimeout<F> {
-    match dur {
-        Some(dur) => Either::Left(Timeout::new(fut, dur)),
-        None => Either::Right(MapErr(fut)),
-    }
-}
-
-pub fn timeout_to_stream<F, S>(timeout: &MaybeTimeout<F>, s: S) -> MaybeTimeoutStream<S>
-where
-    S: TryStream,
-{
-    match *timeout {
-        Either::Left(ref t) => {
-            let timeout = tokio_timer::Timeout::new(s.into_stream(), t.dur);
-            Either::Left(Flatten::new(timeout))
-        }
-        Either::Right(_) => Either::Right(MapErr(s)),
-    }
-}
-
 fn remove_first_line(buf: &mut BytesMut) -> Option<BytesMut> {
     if buf.len() < 2 {
         return None;
@@ -335,6 +252,115 @@ fn remove_first_line(buf: &mut BytesMut) -> Option<BytesMut> {
     }
 
     None
+}
+
+cfg_if! {
+    if #[cfg(feature = "runtime")] {
+        use std::time::Duration;
+
+        use futures_util::future::{self, Either};
+        use futures_util::try_future::IntoFuture;
+
+        pub struct Flatten<S>(IntoStream<S>);
+
+        /// A `tokio_timer::Timeout`-like type that holds the original `Duration`
+        /// which can be used to create another `Timeout`.
+        pub struct Timeout<F> {
+            tokio: tokio_timer::Timeout<IntoFuture<F>>,
+            dur: Duration,
+        }
+
+        pub type MaybeTimeout<F> = Either<Timeout<F>, MapErr<F>>;
+
+        pub type MaybeTimeoutStream<S> = Either<
+            Flatten<tokio_timer::Timeout<IntoStream<S>>>, MapErr<S>,
+        >;
+
+        impl<S: TryStream> Flatten<S> {
+            pub fn new(s: S) -> Self {
+                Flatten(s.into_stream())
+            }
+        }
+
+        impl<S: TryStream<Ok = Result<T, E>> + Unpin, T, E> Stream for Flatten<S>
+        where
+            S::Error: IntoError,
+            E: IntoError,
+        {
+            type Item = Result<T, Error>;
+
+            fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                (&mut self.0)
+                    .map_err(IntoError::into_error)
+                    .and_then(|r| future::ready(r.map_err(IntoError::into_error)))
+                    .poll_next_unpin(cx)
+            }
+        }
+
+        impl<F: TryFuture> Timeout<F> {
+            pub fn new(fut: F, dur: Duration) -> Self {
+                Timeout {
+                    tokio: tokio_timer::Timeout::new(fut.into_future(), dur),
+                    dur,
+                }
+            }
+        }
+
+        impl<F: TryFuture + Unpin> Future for Timeout<F>
+        where
+            F::Error: IntoError,
+        {
+            type Output = Result<F::Ok, Error>;
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                (&mut self.tokio)
+                    .map_err(IntoError::into_error)
+                    .and_then(|r| future::ready(r.map_err(IntoError::into_error)))
+                    .poll_unpin(cx)
+            }
+        }
+
+        impl IntoError for tokio_timer::timeout::Elapsed {
+            fn into_error(self) -> Error {
+                Error::TimedOut
+            }
+        }
+
+        pub fn timeout<F: TryFuture>(fut: F, dur: Option<Duration>) -> MaybeTimeout<F> {
+            match dur {
+                Some(dur) => Either::Left(Timeout::new(fut, dur)),
+                None => Either::Right(MapErr(fut)),
+            }
+        }
+
+        pub fn timeout_to_stream<F, S>(timeout: &MaybeTimeout<F>, s: S) -> MaybeTimeoutStream<S>
+        where
+            S: TryStream,
+        {
+            match *timeout {
+                Either::Left(ref t) => {
+                    let timeout = tokio_timer::Timeout::new(s.into_stream(), t.dur);
+                    Either::Left(Flatten::new(timeout))
+                }
+                Either::Right(_) => Either::Right(MapErr(s)),
+            }
+        }
+    } else {
+        pub type MaybeTimeout<F> = MapErr<F>;
+
+        pub type MaybeTimeoutStream<S> = MapErr<S>;
+
+        pub fn timeout<F: TryFuture>(fut: F) -> MaybeTimeout<F> {
+            MapErr(fut)
+        }
+
+        pub fn timeout_to_stream<F, S>(_: &MaybeTimeout<F>, s: S) -> MaybeTimeoutStream<S>
+        where
+            S: TryStream,
+        {
+            MapErr(s)
+        }
+    }
 }
 
 #[cfg(test)]

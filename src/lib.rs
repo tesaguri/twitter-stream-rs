@@ -63,6 +63,7 @@ use std::future::Future;
 use std::marker::Unpin;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+#[cfg(feature = "runtime")]
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -133,6 +134,7 @@ pub struct TwitterStream {
 #[derive(Clone, Debug, OAuth1Authorize)]
 struct BuilderInner<'a> {
     #[oauth1(skip)]
+    #[cfg(feature = "runtime")]
     timeout: Option<Duration>,
     #[oauth1(skip_if = "not")]
     stall_warnings: bool,
@@ -183,6 +185,7 @@ where
             endpoint,
             token,
             inner: BuilderInner {
+                #[cfg(feature = "runtime")]
                 timeout: Some(Duration::from_secs(90)),
                 stall_warnings: false,
                 filter_level: None,
@@ -261,7 +264,10 @@ where
 
         let res = client.request(req);
         FutureTwitterStream {
+            #[cfg(feature = "runtime")]
             response: timeout(res, self.inner.timeout),
+            #[cfg(not(feature = "runtime"))]
+            response: timeout(res),
         }
     }
 }
@@ -291,6 +297,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Passing `None` disables the timeout.
     ///
     /// Default is 90 seconds.
+    #[cfg(feature = "runtime")]
     pub fn timeout(&mut self, timeout: impl Into<Option<Duration>>) -> &mut Self {
         self.inner.timeout = timeout.into();
         self
