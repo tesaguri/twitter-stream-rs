@@ -55,6 +55,8 @@ pub mod types;
 mod gzip;
 mod token;
 
+pub use oauth::Credentials;
+
 pub use crate::error::Error;
 pub use crate::token::Token;
 
@@ -77,7 +79,6 @@ use hyper::header::{
     HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
 };
 use hyper::Request;
-use oauth::OAuth1Authorize;
 use oauth1_request_derive::OAuth1Authorize;
 use string::TryFrom;
 
@@ -219,19 +220,13 @@ where
         req.method(self.method.clone())
             .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
 
+        let mut oauth = oauth::Builder::new(self.token.client.as_ref(), oauth::HmacSha1);
+        oauth.token(self.token.token.as_ref());
         let req = if RequestMethod::POST == self.method {
             let oauth::Request {
                 authorization,
                 data,
-            } = self.inner.authorize_form(
-                "POST",
-                &self.endpoint,
-                self.token.consumer_key.borrow(),
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
-                oauth::HmacSha1,
-                &*oauth::Options::new().token(self.token.access_key.borrow()),
-            );
+            } = oauth.post_form(&self.endpoint, &self.inner);
 
             req.uri(self.endpoint.clone())
                 .header(AUTHORIZATION, Bytes::from(authorization))
@@ -246,15 +241,7 @@ where
             let oauth::Request {
                 authorization,
                 data: uri,
-            } = self.inner.authorize(
-                self.method.as_ref(),
-                &self.endpoint,
-                self.token.consumer_key.borrow(),
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
-                oauth::HmacSha1,
-                &*oauth::Options::new().token(self.token.access_key.borrow()),
-            );
+            } = oauth.build(self.method.as_ref(), &self.endpoint, &self.inner);
 
             req.uri(uri)
                 .header(AUTHORIZATION, Bytes::from(authorization))

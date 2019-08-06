@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
-use twitter_stream::{rt, Token};
+use twitter_stream::{rt, Credentials, Token};
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -40,21 +40,47 @@ struct User {
     screen_name: String,
 }
 
+#[derive(Deserialize)]
+#[serde(remote = "Token")]
+struct TokenDef {
+    #[serde(flatten)]
+    #[serde(with = "Consumer")]
+    client: Credentials,
+    #[serde(flatten)]
+    #[serde(with = "Access")]
+    token: Credentials,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "Credentials")]
+struct Consumer {
+    #[serde(rename = "consumer_key")]
+    identifier: String,
+    #[serde(rename = "consumer_secret")]
+    secret: String,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "Credentials")]
+struct Access {
+    #[serde(rename = "access_key")]
+    identifier: String,
+    #[serde(rename = "access_secret")]
+    secret: String,
+}
+
 #[rt::main]
 async fn main() {
     const TRACK: &str = "@NAME_OF_YOUR_ACCOUNT";
-
-    // `credential.json` must have the following form:
-    // {"consumer_key": "...", "consumer_secret": "...", "access_key": "...", "access_secret": "..."}
 
     let mut credential_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     credential_path.pop();
     credential_path.push("credential.json");
 
     let credential = File::open(credential_path).unwrap();
-    let token: Token = json::from_reader(credential).unwrap();
+    let token = TokenDef::deserialize(&mut json::Deserializer::from_reader(credential)).unwrap();
 
-    let stream = twitter_stream::Builder::filter(token.borrowed())
+    let stream = twitter_stream::Builder::filter(token.as_ref())
         .track(Some(TRACK))
         .listen()
         .unwrap()

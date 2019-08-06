@@ -24,14 +24,13 @@ futures-util-preview = "0.3.0-alpha.17"
 http = "0.1.11"
 hyper = { version = "0.13.0-alpha.1", default-features = false }
 memchr = "2"
-oauth = { version = "0.2.1", package = "oauth1-request" }
+oauth = { version = "0.2.2", package = "oauth1-request" }
 oauth1-request-derive = "0.2"
 string = "0.2"
 egg-mode = { version = "0.13", optional = true }
 hyper-tls = { version = "0.4.0-alpha.1", optional = true }
 oauthcli = { version = "1", optional = true }
 static_assertions = "0.3"
-serde = { version = "1", optional = true, features = ["derive"] }
 tokio = { version = "0.2.0-alpha.1", optional = true }
 tokio-timer = { version = "0.3.0-alpha.1", optional = true }
 tweetust = { version = "0.9", optional = true }
@@ -44,11 +43,12 @@ use-tweetust = ["oauthcli", "tweetust"]
 
 [[example]]
 name = "echo_bot"
-required-features = ["serde", "use-tweetust"]
+required-features = ["use-tweetust"]
 
 [dev-dependencies]
 futures-preview = { version = "0.3.0-alpha.17" }
 version-sync = "0.8"
 # examples/echo_bot
 json = { version = "1", package = "serde_json" }
+serde = { version = "1", features = ["derive"] }
 tweetust = "0.9"
