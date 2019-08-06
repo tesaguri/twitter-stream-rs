@@ -88,6 +88,7 @@ cfg_if! {
                     self.consumer_secret.borrow(),
                     SignatureMethod::HmacSha1,
                 );
+                header.token(self.access_key.borrow(), self.access_secret.borrow());
 
                 if let RequestContent::WwwForm(ref params) = request.content {
                     header.request_parameters(
