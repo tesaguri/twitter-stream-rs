@@ -1,5 +1,7 @@
 #![feature(async_await)]
 
+extern crate tweetust_pkg as tweetust;
+
 use std::fs::File;
 use std::path::PathBuf;
 

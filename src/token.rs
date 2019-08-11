@@ -59,7 +59,9 @@ cfg_if! {
 }
 
 cfg_if! {
-    if #[cfg(feature = "use-tweetust")] {
+    if #[cfg(feature = "tweetust")] {
+        extern crate tweetust_pkg as tweetust;
+
         use oauthcli::{OAuthAuthorizationHeaderBuilder, SignatureMethod};
         use tweetust::conn::{Request, RequestContent};
         use tweetust::conn::oauth_authenticator::OAuthAuthorizationScheme;

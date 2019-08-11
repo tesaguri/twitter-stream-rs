@@ -33,17 +33,17 @@ oauthcli = { version = "1", optional = true }
 static_assertions = "0.3"
 tokio = { version = "0.2.0-alpha.1", optional = true }
 tokio-timer = { version = "0.3.0-alpha.1", optional = true }
-tweetust = { version = "0.9", optional = true }
+tweetust-pkg = { version = "0.9", optional = true, package = "tweetust" }
 
 [features]
 default = ["runtime", "tls"]
 runtime = ["hyper/runtime", "tokio", "tokio-timer"]
 tls = ["hyper-tls", "runtime"]
-use-tweetust = ["oauthcli", "tweetust"]
+tweetust = ["oauthcli", "tweetust-pkg"]
 
 [[example]]
 name = "echo_bot"
-required-features = ["use-tweetust"]
+required-features = ["tweetust"]
 
 [dev-dependencies]
 futures-preview = { version = "0.3.0-alpha.17" }
@@ -51,4 +51,3 @@ version-sync = "0.8"
 # examples/echo_bot
 json = { version = "1", package = "serde_json" }
 serde = { version = "1", features = ["derive"] }
-tweetust = "0.9"
