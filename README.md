@@ -22,8 +22,6 @@ twitter-stream = "0.9"
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust
-#![feature(async_await)]
-
 use futures::prelude::*;
 use twitter_stream::Token;
 
