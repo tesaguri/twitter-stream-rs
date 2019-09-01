@@ -233,7 +233,7 @@ where
     {
         let mut req = Request::builder();
         req.method(self.method.clone())
-            .header(ACCEPT_ENCODING, HeaderValue::from_static("chunked,gzip"));
+            .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
 
         let req = if RequestMethod::POST == self.method {
             let oauth::Request {
@@ -270,7 +270,7 @@ where
                 self.token.access_secret.borrow(),
                 oauth::HmacSha1,
                 &*oauth::Options::new().token(self.token.access_key.borrow()),
-            );;
+            );
 
             req.uri(uri)
                 .header(AUTHORIZATION, Bytes::from(authorization))
