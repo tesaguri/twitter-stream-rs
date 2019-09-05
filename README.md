@@ -19,34 +19,26 @@ Add this to your `Cargo.toml`:
 twitter-stream = "0.9"
 ```
 
-and this to your crate root:
-
-```rust
-extern crate twitter_stream;
-```
-
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust
-extern crate twitter_stream;
+use futures::prelude::*;
+use twitter_stream::Token;
 
-use twitter_stream::{Token, TwitterStreamBuilder};
-use twitter_stream::rt::{self, Future, Stream};
-
-fn main() {
+#[tokio::main]
+async fn main() {
     let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-    let future = TwitterStreamBuilder::filter(token)
+    twitter_stream::Builder::filter(token)
         .track(Some("@Twitter"))
         .listen()
-	.unwrap()
-        .flatten_stream()
-        .for_each(|json| {
+        .unwrap()
+        .try_flatten_stream()
+        .try_for_each(|json| {
             println!("{}", json);
-            Ok(())
+            future::ok(())
         })
-        .map_err(|e| println!("error: {}", e));
-
-    rt::run(future);
+        .await
+        .unwrap();
 }
 ```

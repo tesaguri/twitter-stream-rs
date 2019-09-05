@@ -1,5 +1,6 @@
 [package]
 name = "twitter-stream"
+edition = "2018"
 version = "0.9.0"
 authors = ["Daiki Mizukami <tesaguriguma@gmail.com>"]
 license = "MIT"
@@ -14,37 +15,39 @@ A library for listening on Twitter Streaming API.
 """
 
 [dependencies]
+async-compression = { version = "0.1.0-alpha.1", default-features = false, features = ["gzip", "stream"] }
 bytes = "0.4.4"
 cfg-if = "0.1"
-futures = "0.1.4"
+futures-core-preview = "0.3.0-alpha.17"
+futures-executor-preview = "0.3.0-alpha.17"
+futures-util-preview = "0.3.0-alpha.17"
 http = "0.1.11"
-hyper = { version = "0.12", default-features = false }
-libflate = "0.1.15"
-oauth1-request = "0.2.1"
+hyper = { version = "0.13.0-alpha.1", default-features = false }
+memchr = "2"
+oauth = { version = "0.2.2", package = "oauth1-request" }
 oauth1-request-derive = "0.2"
-string = "0.1.2"
-tokio-io = "0.1"
-tokio-timer = "0.2.6"
-egg-mode = { version = "0.12", optional = true }
-hyper-tls = { version = "0.3", optional = true }
+string = "0.2"
+egg-mode = { version = "0.13", optional = true }
+hyper-tls = { version = "0.4.0-alpha.1", optional = true }
 oauthcli = { version = "1", optional = true }
 static_assertions = "0.3"
-serde = { version = "1", optional = true, features = ["derive"] }
-tokio = { version = "0.1", optional = true }
-tweetust = { version = "0.9", optional = true }
+tokio = { version = "0.2.0-alpha.1", optional = true }
+tokio-timer = { version = "0.3.0-alpha.1", optional = true }
+tweetust-pkg = { version = "0.9", optional = true, package = "tweetust" }
 
 [features]
 default = ["runtime", "tls"]
-runtime = ["hyper/runtime", "tokio"]
+runtime = ["hyper/runtime", "tokio", "tokio-timer"]
 tls = ["hyper-tls", "runtime"]
-use-tweetust = ["oauthcli", "tweetust"]
+tweetust = ["oauthcli", "tweetust-pkg"]
 
 [[example]]
 name = "echo_bot"
-required-features = ["serde", "use-tweetust"]
+required-features = ["tweetust"]
 
 [dev-dependencies]
-version-sync = "0.6"
+futures-preview = { version = "0.3.0-alpha.17" }
+version-sync = "0.8"
 # examples/echo_bot
-serde_json = "1"
-tweetust = "0.9"
+json = { version = "1", package = "serde_json" }
+serde = { version = "1", features = ["derive"] }

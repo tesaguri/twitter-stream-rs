@@ -1,15 +1,12 @@
-extern crate serde;
-extern crate serde_json as json;
-extern crate tweetust;
-extern crate twitter_stream;
+extern crate tweetust_pkg as tweetust;
 
 use std::fs::File;
 use std::path::PathBuf;
 
+use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
-use twitter_stream::rt::{self, Future, Stream};
-use twitter_stream::{Error, Token, TwitterStreamBuilder};
+use twitter_stream::{rt, Credentials, Token};
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -43,24 +40,51 @@ struct User {
     screen_name: String,
 }
 
-fn main() {
-    const TRACK: &str = "@NAME_OF_YOUR_ACCOUNT";
+#[derive(Deserialize)]
+#[serde(remote = "Token")]
+struct TokenDef {
+    #[serde(flatten)]
+    #[serde(with = "Consumer")]
+    client: Credentials,
+    #[serde(flatten)]
+    #[serde(with = "Access")]
+    token: Credentials,
+}
 
-    // `credential.json` must have the following form:
-    // {"consumer_key": "...", "consumer_secret": "...", "access_key": "...", "access_secret": "..."}
+#[derive(Deserialize)]
+#[serde(remote = "Credentials")]
+struct Consumer {
+    #[serde(rename = "consumer_key")]
+    identifier: String,
+    #[serde(rename = "consumer_secret")]
+    secret: String,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "Credentials")]
+struct Access {
+    #[serde(rename = "access_key")]
+    identifier: String,
+    #[serde(rename = "access_secret")]
+    secret: String,
+}
+
+#[rt::main]
+async fn main() {
+    const TRACK: &str = "@NAME_OF_YOUR_ACCOUNT";
 
     let mut credential_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     credential_path.pop();
     credential_path.push("credential.json");
 
     let credential = File::open(credential_path).unwrap();
-    let token: Token = json::from_reader(credential).unwrap();
+    let token = TokenDef::deserialize(&mut json::Deserializer::from_reader(credential)).unwrap();
 
-    let stream = TwitterStreamBuilder::filter(token.borrowed())
+    let stream = twitter_stream::Builder::filter(token.as_ref())
         .track(Some(TRACK))
         .listen()
         .unwrap()
-        .flatten_stream();
+        .try_flatten_stream();
     let rest = tweetust::TwitterClient::new(
         token,
         tweetust::DefaultHttpHandler::with_https_connector().unwrap(),
@@ -74,8 +98,8 @@ fn main() {
         .unwrap()
         .object;
 
-    let bot = stream
-        .for_each(move |json| {
+    stream
+        .try_for_each(move |json| {
             if let Ok(StreamMessage::Tweet(tweet)) = json::from_str(&json) {
                 if tweet.user.id != user.id
                     && tweet
@@ -94,13 +118,12 @@ fn main() {
                         .update(response)
                         .in_reply_to_status_id(tweet.id)
                         .execute()
-                        .map_err(Error::custom)?;
+                        .unwrap();
                 }
             }
 
-            Ok(())
+            future::ok(())
         })
-        .map_err(|e| println!("error: {}", e));
-
-    rt::run(bot);
+        .await
+        .unwrap();
 }

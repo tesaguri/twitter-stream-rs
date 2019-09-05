@@ -9,7 +9,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
 
-use types::StatusCode;
+use crate::types::StatusCode;
 
 /// An error occurred while trying to connect to a Stream.
 #[derive(Debug)]
@@ -39,7 +39,7 @@ impl Error {
 
 impl error::Error for Error {
     fn description(&self) -> &str {
-        use Error::*;
+        use crate::Error::*;
 
         match *self {
             Gzip(ref e) => e.description(),
@@ -52,7 +52,7 @@ impl error::Error for Error {
     }
 
     fn cause(&self) -> Option<&dyn error::Error> {
-        use Error::*;
+        use crate::Error::*;
 
         match *self {
             Gzip(ref e) => Some(e),
@@ -66,7 +66,7 @@ impl error::Error for Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use Error::*;
+        use crate::Error::*;
 
         match *self {
             Gzip(ref e) => Display::fmt(e, f),

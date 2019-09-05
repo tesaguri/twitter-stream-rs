@@ -15,57 +15,32 @@ Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
 twitter-stream = "0.9"
 ```
 
-and this to your crate root:
-
-```rust,no_run
-extern crate twitter_stream;
-```
-
 ## Overview
 
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust,no_run
-extern crate twitter_stream;
+use futures::prelude::*;
+use twitter_stream::Token;
 
-use twitter_stream::{Token, TwitterStreamBuilder};
-use twitter_stream::rt::{self, Future, Stream};
-
-# fn main() {
+# #[tokio::main]
+# async fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-let future = TwitterStreamBuilder::filter(token)
+twitter_stream::Builder::filter(token)
     .track(Some("@Twitter"))
     .listen()
     .unwrap()
-    .flatten_stream()
-    .for_each(|json| {
+    .try_flatten_stream()
+    .try_for_each(|json| {
         println!("{}", json);
-        Ok(())
+        future::ok(())
     })
-    .map_err(|e| println!("error: {}", e));
-
-rt::run(future);
+    .await
+    .unwrap();
 # }
 ```
 */
-
-extern crate bytes;
-extern crate cfg_if;
-extern crate futures;
-extern crate http;
-extern crate hyper;
-#[cfg(feature = "tls")]
-extern crate hyper_tls;
-extern crate libflate;
-extern crate oauth1_request as oauth;
-extern crate oauth1_request_derive;
-#[cfg(feature = "serde")]
-extern crate serde;
-extern crate static_assertions;
-extern crate string;
-extern crate tokio_io;
-extern crate tokio_timer;
 
 #[macro_use]
 mod util;
@@ -78,14 +53,22 @@ pub mod types;
 mod gzip;
 mod token;
 
-pub use error::Error;
-pub use token::Token;
+pub use oauth::Credentials;
+
+pub use crate::error::Error;
+pub use crate::token::Token;
 
 use std::borrow::Borrow;
+use std::future::Future;
+use std::marker::Unpin;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+#[cfg(feature = "runtime")]
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures::{try_ready, Async, Future, Poll, Stream};
+use futures_core::Stream;
+use futures_util::{ready, FutureExt, StreamExt};
 use http::response::Parts;
 use hyper::body::{Body, Payload};
 use hyper::client::connect::Connect;
@@ -94,43 +77,40 @@ use hyper::header::{
     HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
 };
 use hyper::Request;
-use oauth::OAuth1Authorize;
 use oauth1_request_derive::OAuth1Authorize;
 use string::TryFrom;
 
-use gzip::MaybeGzip;
-use types::{FilterLevel, RequestMethod, StatusCode, Uri};
-use util::*;
+use crate::gzip::MaybeGzip;
+use crate::types::{FilterLevel, RequestMethod, StatusCode, Uri};
+use crate::util::*;
 
 /// A builder for `TwitterStream`.
 ///
 /// ## Example
 ///
 /// ```rust,no_run
-/// extern crate twitter_stream;
+/// use futures::prelude::*;
+/// use twitter_stream::Token;
 ///
-/// use twitter_stream::{Token, TwitterStreamBuilder};
-/// use twitter_stream::rt::{self, Future, Stream};
-///
-/// # fn main() {
+/// # #[tokio::main]
+/// # async fn main() {
 /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 ///
-/// let future = TwitterStreamBuilder::sample(token)
+/// twitter_stream::Builder::sample(token)
 ///     .timeout(None)
 ///     .listen()
 ///     .unwrap()
-///     .flatten_stream()
-///     .for_each(|json| {
+///     .try_flatten_stream()
+///     .try_for_each(|json| {
 ///         println!("{}", json);
-///         Ok(())
+///         future::ok(())
 ///     })
-///     .map_err(|e| println!("error: {}", e));
-///
-/// rt::run(future);
+///     .await
+///     .unwrap();
 /// # }
 /// ```
 #[derive(Clone, Debug)]
-pub struct TwitterStreamBuilder<'a, T = Token> {
+pub struct Builder<'a, T = Token> {
     method: RequestMethod,
     endpoint: Uri,
     token: T,
@@ -152,6 +132,7 @@ pub struct TwitterStream {
 #[derive(Clone, Debug, OAuth1Authorize)]
 struct BuilderInner<'a> {
     #[oauth1(skip)]
+    #[cfg(feature = "runtime")]
     timeout: Option<Duration>,
     #[oauth1(skip_if = "not")]
     stall_warnings: bool,
@@ -170,7 +151,7 @@ struct BuilderInner<'a> {
     count: Option<i32>,
 }
 
-impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>>
+impl<'a, C, A> Builder<'a, Token<C, A>>
 where
     C: Borrow<str>,
     A: Borrow<str>,
@@ -202,6 +183,7 @@ where
             endpoint,
             token,
             inner: BuilderInner {
+                #[cfg(feature = "runtime")]
                 timeout: Some(Duration::from_secs(90)),
                 stall_warnings: false,
                 filter_level: None,
@@ -218,7 +200,7 @@ where
     /// to a `Stream` yielding JSON messages from the API.
     #[cfg(feature = "tls")]
     pub fn listen(&self) -> Result<FutureTwitterStream, error::TlsError> {
-        let conn = hyper_tls::HttpsConnector::new(1)?;
+        let conn = hyper_tls::HttpsConnector::new()?;
         Ok(self.listen_with_client(&Client::builder().build::<_, Body>(conn)))
     }
 
@@ -228,26 +210,20 @@ where
         Conn: Connect + Sync + 'static,
         Conn::Transport: 'static,
         Conn::Future: 'static,
-        B: Default + From<Vec<u8>> + Payload + Send + 'static,
-        B::Data: Send,
+        B: Default + From<Vec<u8>> + Payload + Unpin + Send + 'static,
+        B::Data: Send + Unpin,
     {
         let mut req = Request::builder();
         req.method(self.method.clone())
             .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
 
+        let mut oauth = oauth::Builder::new(self.token.client.as_ref(), oauth::HmacSha1);
+        oauth.token(self.token.token.as_ref());
         let req = if RequestMethod::POST == self.method {
             let oauth::Request {
                 authorization,
                 data,
-            } = self.inner.authorize_form(
-                "POST",
-                &self.endpoint,
-                self.token.consumer_key.borrow(),
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
-                oauth::HmacSha1,
-                &*oauth::Options::new().token(self.token.access_key.borrow()),
-            );
+            } = oauth.post_form(&self.endpoint, &self.inner);
 
             req.uri(self.endpoint.clone())
                 .header(AUTHORIZATION, Bytes::from(authorization))
@@ -262,15 +238,7 @@ where
             let oauth::Request {
                 authorization,
                 data: uri,
-            } = self.inner.authorize(
-                self.method.as_ref(),
-                &self.endpoint,
-                self.token.consumer_key.borrow(),
-                self.token.consumer_secret.borrow(),
-                self.token.access_secret.borrow(),
-                oauth::HmacSha1,
-                &*oauth::Options::new().token(self.token.access_key.borrow()),
-            );
+            } = oauth.build(self.method.as_ref(), &self.endpoint, &self.inner);
 
             req.uri(uri)
                 .header(AUTHORIZATION, Bytes::from(authorization))
@@ -280,12 +248,15 @@ where
 
         let res = client.request(req);
         FutureTwitterStream {
+            #[cfg(feature = "runtime")]
             response: timeout(res, self.inner.timeout),
+            #[cfg(not(feature = "runtime"))]
+            response: timeout(res),
         }
     }
 }
 
-impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>> {
+impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Reset the HTTP request method to be used when connecting
     /// to the server.
     pub fn method(&mut self, method: RequestMethod) -> &mut Self {
@@ -310,6 +281,7 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>> {
     /// Passing `None` disables the timeout.
     ///
     /// Default is 90 seconds.
+    #[cfg(feature = "runtime")]
     pub fn timeout(&mut self, timeout: impl Into<Option<Duration>>) -> &mut Self {
         self.inner.timeout = timeout.into();
         self
@@ -397,38 +369,37 @@ impl<'a, C, A> TwitterStreamBuilder<'a, Token<C, A>> {
 
 #[cfg(feature = "tls")]
 impl TwitterStream {
-    /// A shorthand for `TwitterStreamBuilder::filter().listen()`.
+    /// A shorthand for `Builder::filter().listen()`.
     pub fn filter<C, A>(token: Token<C, A>) -> Result<FutureTwitterStream, error::TlsError>
     where
         C: Borrow<str>,
         A: Borrow<str>,
     {
-        TwitterStreamBuilder::filter(token).listen()
+        Builder::filter(token).listen()
     }
 
-    /// A shorthand for `TwitterStreamBuilder::sample().listen()`.
+    /// A shorthand for `Builder::sample().listen()`.
     pub fn sample<C, A>(token: Token<C, A>) -> Result<FutureTwitterStream, error::TlsError>
     where
         C: Borrow<str>,
         A: Borrow<str>,
     {
-        TwitterStreamBuilder::sample(token).listen()
+        Builder::sample(token).listen()
     }
 }
 
 impl Future for FutureTwitterStream {
-    type Item = TwitterStream;
-    type Error = Error;
+    type Output = Result<TwitterStream, Error>;
 
-    fn poll(&mut self) -> Poll<TwitterStream, Error> {
-        let res = try_ready!(self.response.poll());
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let res = ready!(self.response.poll_unpin(cx))?;
         let (parts, body) = res.into_parts();
         let Parts {
             status, headers, ..
         } = parts;
 
         if StatusCode::OK != status {
-            return Err(Error::Http(status));
+            return Poll::Ready(Err(Error::Http(status)));
         }
 
         let body = timeout_to_stream(&self.response, body);
@@ -437,45 +408,27 @@ impl Future for FutureTwitterStream {
             .iter()
             .any(|e| e == "gzip");
         let inner = if use_gzip {
-            Lines::new(MaybeGzip::gzip(body))
+            Lines::new(gzip::gzip(body))
         } else {
-            Lines::new(MaybeGzip::identity(body))
+            Lines::new(gzip::identity(body))
         };
 
-        Ok(TwitterStream { inner }.into())
+        Poll::Ready(Ok(TwitterStream { inner }))
     }
 }
 
 impl Stream for TwitterStream {
-    type Item = string::String<Bytes>;
-    type Error = Error;
+    type Item = Result<string::String<Bytes>, Error>;
 
-    fn poll(&mut self) -> Poll<Option<string::String<Bytes>>, Error> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
-            match self.inner.poll() {
-                Ok(Async::Ready(Some(line))) => {
-                    if line.iter().all(|&c| is_json_whitespace(c)) {
-                        continue;
-                    }
-
-                    // TODO: change the return type to `std::string::String` in v0.10.
-                    let line = Bytes::from(line);
-                    let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
-                    return Ok(Async::Ready(Some(line)));
-                }
-                Ok(Async::Ready(None)) => return Ok(Async::Ready(None)),
-                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(e) => match *self.inner.get_mut() {
-                    Either::A(ref mut gzip) => {
-                        if let Some(e) = gzip.get_mut().take_err() {
-                            return Err(e);
-                        } else {
-                            return Err(Error::Gzip(e));
-                        }
-                    }
-                    Either::B(ref mut stream_read) => return Err(stream_read.take_err().unwrap()),
-                },
+            let line = ready_some!(self.inner.poll_next_unpin(cx))?;
+            if line.iter().all(|&c| is_json_whitespace(c)) {
+                continue;
             }
+
+            let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
+            return Poll::Ready(Some(Ok(line)));
         }
     }
 }

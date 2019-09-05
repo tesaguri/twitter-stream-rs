@@ -1,14 +1,29 @@
 use std::fmt::{self, Display, Formatter};
-use std::io::{self, BufRead, ErrorKind, Read};
+use std::future::Future;
 use std::mem;
-use std::time::Duration;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use bytes::{Buf, IntoBuf, Reader};
-use futures::{Async, Future, Poll, Stream};
-use tokio_io::{try_nb, AsyncRead};
-use tokio_timer;
+use bytes::{Bytes, BytesMut};
+use cfg_if::cfg_if;
+use futures_core::{Stream, TryFuture, TryStream};
+use futures_util::future::FutureExt;
+use futures_util::ready;
+use futures_util::stream::{Fuse, StreamExt};
+use futures_util::try_future::TryFutureExt;
+use futures_util::try_stream::{IntoStream, TryStreamExt};
 
-use error::{Error, HyperError};
+use crate::error::{Error, HyperError};
+
+macro_rules! ready_some {
+    ($e:expr) => {
+        match $e {
+            std::task::Poll::Ready(Some(t)) => t,
+            std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
+            std::task::Poll::Pending => return std::task::Poll::Pending,
+        }
+    };
+}
 
 // Synonym of `twitter_stream_message::util::string_enums`
 macro_rules! string_enums {
@@ -81,222 +96,93 @@ macro_rules! string_enums {
     }
 }
 
-pub enum Either<A, B> {
-    A(A),
-    B(B),
-}
-
-pub struct Lines<B> {
-    read: B,
-    line: Vec<u8>,
+pub struct Lines<S> {
+    stream: Fuse<IntoStream<S>>,
+    buf: BytesMut,
 }
 
 /// Wrapper to map `T::Error` onto `Error`.
 pub struct MapErr<T>(T);
 
-pub struct StreamRead<S: Stream>
-where
-    S::Item: IntoBuf,
-{
-    body: S,
-    buf: Reader<<S::Item as IntoBuf>::Buf>,
-    error: Option<S::Error>,
-}
-
-/// A `tokio_timer::Timeout`-like type that holds the original `Duration` which can be used to
-/// create another `Timeout`.
-pub struct Timeout<F> {
-    tokio: tokio_timer::Timeout<F>,
-    dur: Duration,
-}
-
-pub type MaybeTimeout<F> = futures::future::Either<Timeout<F>, MapErr<F>>;
-
-pub type MaybeTimeoutStream<S> = Either<MapErr<tokio_timer::Timeout<S>>, MapErr<S>>;
-
 pub trait IntoError {
     fn into_error(self) -> Error;
 }
 
-impl<A: Read, B: Read> Read for Either<A, B> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match *self {
-            Either::A(ref mut a) => a.read(buf),
-            Either::B(ref mut b) => b.read(buf),
-        }
-    }
-}
-
-impl<A: BufRead, B: BufRead> BufRead for Either<A, B> {
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        match *self {
-            Either::A(ref mut a) => a.fill_buf(),
-            Either::B(ref mut b) => b.fill_buf(),
-        }
-    }
-
-    fn consume(&mut self, amt: usize) {
-        match *self {
-            Either::A(ref mut a) => a.consume(amt),
-            Either::B(ref mut b) => b.consume(amt),
-        }
-    }
-}
-
-impl<A: AsyncRead, B: AsyncRead> AsyncRead for Either<A, B> {}
-
-impl<A, B> Stream for Either<A, B>
-where
-    A: Stream,
-    B: Stream<Item = A::Item, Error = A::Error>,
-{
-    type Item = A::Item;
-    type Error = A::Error;
-
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        match *self {
-            Either::A(ref mut a) => a.poll(),
-            Either::B(ref mut b) => b.poll(),
-        }
-    }
-}
-
-impl<B> Lines<B> {
-    pub fn new(read: B) -> Self {
+impl<S: TryStream> Lines<S> {
+    pub fn new(stream: S) -> Self {
         Lines {
-            read,
-            line: Vec::new(),
+            stream: stream.into_stream().fuse(),
+            buf: BytesMut::new(),
         }
-    }
-
-    pub fn get_mut(&mut self) -> &mut B {
-        &mut self.read
     }
 }
 
-impl<B: BufRead> Stream for Lines<B> {
-    type Item = Vec<u8>;
-    type Error = io::Error;
+impl<S: TryStream<Error = Error> + Unpin> Stream for Lines<S>
+where
+    S::Ok: Into<Bytes>,
+{
+    type Item = Result<Bytes, Error>;
 
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if let Some(line) = remove_first_line(&mut self.buf) {
+            return Poll::Ready(Some(Ok(line.freeze())));
+        }
+
+        // Now `self.buf` does not have a CRLF.
+        // Extend the buffer until a CRLF is found.
+
         loop {
-            let n = try_nb!(self.read.read_until(b'\n', &mut self.line));
-            if self.line.ends_with(b"\r\n") {
-                // TODO: remove CRLF in v0.10
-                // let len = self.line.len();
-                // self.line.truncate(len - 2);
-                break;
-            }
-            if n == 0 {
-                if self.line.is_empty() {
-                    return Ok(None.into());
+            let mut chunk: BytesMut = loop {
+                if let Some(c) = ready!(self.stream.poll_next_unpin(cx)) {
+                    let c: Bytes = c?.into();
+                    if !c.is_empty() {
+                        break c.into();
+                    }
+                } else if !self.buf.is_empty() {
+                    let ret = mem::replace(&mut self.buf, BytesMut::new()).freeze();
+                    return Poll::Ready(Some(Ok(ret)));
                 } else {
-                    break;
+                    return Poll::Ready(None);
                 }
-            }
-            // Not EOF nor CRLF, continue reading.
-        }
+            };
 
-        Ok(Some(mem::replace(&mut self.line, Vec::new())).into())
+            if chunk[0] == b'\n' && self.buf.last() == Some(&b'\r') {
+                // Drop the CRLF
+                chunk.advance(1);
+                let line_len = self.buf.len() - 1;
+                self.buf.truncate(line_len);
+                return Poll::Ready(Some(Ok(mem::replace(&mut self.buf, chunk).freeze())));
+            } else if let Some(line) = remove_first_line(&mut chunk) {
+                self.buf.unsplit(line);
+                return Poll::Ready(Some(Ok(mem::replace(&mut self.buf, chunk).freeze())));
+            } else {
+                self.buf.unsplit(chunk);
+            }
+        }
     }
 }
 
-impl<F: Future> Future for MapErr<F>
+impl<F: TryFuture + Unpin> Future for MapErr<F>
 where
     F::Error: IntoError,
 {
-    type Item = F::Item;
-    type Error = Error;
+    type Output = Result<F::Ok, Error>;
 
-    fn poll(&mut self) -> Poll<F::Item, Error> {
-        self.0.poll().map_err(IntoError::into_error)
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.0.try_poll_unpin(cx).map_err(IntoError::into_error)
     }
 }
 
-impl<S: Stream> Stream for MapErr<S>
+impl<S: TryStream + Unpin> Stream for MapErr<S>
 where
     S::Error: IntoError,
 {
-    type Item = S::Item;
-    type Error = Error;
+    type Item = Result<S::Ok, Error>;
 
-    fn poll(&mut self) -> Poll<Option<S::Item>, Error> {
-        self.0.poll().map_err(IntoError::into_error)
-    }
-}
-
-impl<S: Stream> StreamRead<S>
-where
-    S::Item: IntoBuf + Default,
-{
-    pub fn new(body: S) -> Self {
-        StreamRead {
-            body,
-            buf: S::Item::default().into_buf().reader(),
-            error: None,
-        }
-    }
-
-    pub fn take_err(&mut self) -> Option<S::Error> {
-        self.error.take()
-    }
-}
-
-impl<S: Stream> Read for StreamRead<S>
-where
-    S::Item: IntoBuf,
-{
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.fill_buf()?;
-        self.buf.read(buf)
-    }
-}
-
-impl<S: Stream> BufRead for StreamRead<S>
-where
-    S::Item: IntoBuf,
-{
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        while !self.buf.get_ref().has_remaining() {
-            match self.body.poll() {
-                Ok(Async::Ready(Some(data))) => self.buf = data.into_buf().reader(),
-                Ok(Async::Ready(None)) => break,
-                Ok(Async::NotReady) => return Err(ErrorKind::WouldBlock.into()),
-                Err(e) => {
-                    self.error = Some(e);
-                    return Err(ErrorKind::Other.into());
-                }
-            }
-        }
-
-        Ok(self.buf.get_ref().bytes())
-    }
-
-    fn consume(&mut self, amt: usize) {
-        BufRead::consume(&mut self.buf, amt)
-    }
-}
-
-impl<S: Stream> AsyncRead for StreamRead<S> where S::Item: IntoBuf {}
-
-impl<F> Timeout<F> {
-    pub fn new(fut: F, dur: Duration) -> Self {
-        Timeout {
-            tokio: tokio_timer::Timeout::new(fut, dur),
-            dur,
-        }
-    }
-}
-
-impl<F: Future> Future for Timeout<F>
-where
-    F::Error: IntoError,
-{
-    type Item = F::Item;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<F::Item, Error> {
-        MapErr(&mut self.tokio).poll()
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.0
+            .try_poll_next_unpin(cx)
+            .map(|opt| opt.map(|result| result.map_err(IntoError::into_error)))
     }
 }
 
@@ -309,12 +195,6 @@ impl IntoError for Error {
 impl IntoError for HyperError {
     fn into_error(self) -> Error {
         Error::Hyper(self)
-    }
-}
-
-impl<E: IntoError> IntoError for tokio_timer::timeout::Error<E> {
-    fn into_error(self) -> Error {
-        self.into_inner().map_or(Error::TimedOut, E::into_error)
     }
 }
 
@@ -358,93 +238,159 @@ pub fn not(p: &bool) -> bool {
     !p
 }
 
-pub fn timeout<F>(fut: F, dur: Option<Duration>) -> MaybeTimeout<F> {
-    use futures::future::Either;
-
-    match dur {
-        Some(dur) => Either::A(Timeout::new(fut, dur)),
-        None => Either::B(MapErr(fut)),
+fn remove_first_line(buf: &mut BytesMut) -> Option<BytesMut> {
+    if buf.len() < 2 {
+        return None;
     }
+
+    if let Some(i) = memchr::memchr(b'\n', &buf[1..]) {
+        if buf[i] == b'\r' {
+            let mut line = buf.split_to(i + 2);
+            line.split_off(i); // Drop the CRLF
+            return Some(line);
+        }
+    }
+
+    None
 }
 
-pub fn timeout_to_stream<F, S>(timeout: &MaybeTimeout<F>, s: S) -> MaybeTimeoutStream<S> {
-    use futures::future::Either as EitherFut;
+cfg_if! {
+    if #[cfg(feature = "runtime")] {
+        use std::time::Duration;
 
-    match *timeout {
-        EitherFut::A(ref t) => Either::A(MapErr(tokio_timer::Timeout::new(s, t.dur))),
-        EitherFut::B(_) => Either::B(MapErr(s)),
+        use futures_util::future::{self, Either};
+        use futures_util::try_future::IntoFuture;
+
+        pub struct Flatten<S>(IntoStream<S>);
+
+        /// A `tokio_timer::Timeout`-like type that holds the original `Duration`
+        /// which can be used to create another `Timeout`.
+        pub struct Timeout<F> {
+            tokio: tokio_timer::Timeout<IntoFuture<F>>,
+            dur: Duration,
+        }
+
+        pub type MaybeTimeout<F> = Either<Timeout<F>, MapErr<F>>;
+
+        pub type MaybeTimeoutStream<S> = Either<
+            Flatten<tokio_timer::Timeout<IntoStream<S>>>, MapErr<S>,
+        >;
+
+        impl<S: TryStream> Flatten<S> {
+            pub fn new(s: S) -> Self {
+                Flatten(s.into_stream())
+            }
+        }
+
+        impl<S: TryStream<Ok = Result<T, E>> + Unpin, T, E> Stream for Flatten<S>
+        where
+            S::Error: IntoError,
+            E: IntoError,
+        {
+            type Item = Result<T, Error>;
+
+            fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+                (&mut self.0)
+                    .map_err(IntoError::into_error)
+                    .and_then(|r| future::ready(r.map_err(IntoError::into_error)))
+                    .poll_next_unpin(cx)
+            }
+        }
+
+        impl<F: TryFuture> Timeout<F> {
+            pub fn new(fut: F, dur: Duration) -> Self {
+                Timeout {
+                    tokio: tokio_timer::Timeout::new(fut.into_future(), dur),
+                    dur,
+                }
+            }
+        }
+
+        impl<F: TryFuture + Unpin> Future for Timeout<F>
+        where
+            F::Error: IntoError,
+        {
+            type Output = Result<F::Ok, Error>;
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                (&mut self.tokio)
+                    .map_err(IntoError::into_error)
+                    .and_then(|r| future::ready(r.map_err(IntoError::into_error)))
+                    .poll_unpin(cx)
+            }
+        }
+
+        impl IntoError for tokio_timer::timeout::Elapsed {
+            fn into_error(self) -> Error {
+                Error::TimedOut
+            }
+        }
+
+        pub fn timeout<F: TryFuture>(fut: F, dur: Option<Duration>) -> MaybeTimeout<F> {
+            match dur {
+                Some(dur) => Either::Left(Timeout::new(fut, dur)),
+                None => Either::Right(MapErr(fut)),
+            }
+        }
+
+        pub fn timeout_to_stream<F, S>(timeout: &MaybeTimeout<F>, s: S) -> MaybeTimeoutStream<S>
+        where
+            S: TryStream,
+        {
+            match *timeout {
+                Either::Left(ref t) => {
+                    let timeout = tokio_timer::Timeout::new(s.into_stream(), t.dur);
+                    Either::Left(Flatten::new(timeout))
+                }
+                Either::Right(_) => Either::Right(MapErr(s)),
+            }
+        }
+    } else {
+        pub type MaybeTimeout<F> = MapErr<F>;
+
+        pub type MaybeTimeoutStream<S> = MapErr<S>;
+
+        pub fn timeout<F: TryFuture>(fut: F) -> MaybeTimeout<F> {
+            MapErr(fut)
+        }
+
+        pub fn timeout_to_stream<F, S>(_: &MaybeTimeout<F>, s: S) -> MaybeTimeoutStream<S>
+        where
+            S: TryStream,
+        {
+            MapErr(s)
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::io::{Cursor, Read};
-
-    use bytes::Bytes;
-    use futures::stream;
-
+mod test {
     use super::*;
-
-    const BUF_SIZE: usize = 8 * 1024;
+    use bytes::Bytes;
+    use futures_executor::block_on_stream;
+    use futures_util::stream;
 
     #[test]
     fn lines() {
-        let lines = [
+        let body = [
             "abc\r\n",
-            "d\r\n",
-            "efg\r\n",
-            "hijk\r\n",
+            "d\r\nefg\r\n",
+            "hi",
+            "jk",
+            "",
             "\r\n",
-            "lmn\r\n",
-            "opq\rrs\r\n",
-            "\n\rtuv\r\r\n",
+            "\r\n",
+            "lmn\r\nop",
+            "q\rrs\r",
+            "\n\n\rtuv\r\r\n",
             "wxyz\n",
         ];
-        let body = [
-            b"abc\r\n" as &[_],
-            b"d\r\nefg\r\n" as &[_],
-            b"hi" as &[_],
-            b"jk" as &[_],
-            b"" as &[_],
-            b"\r\n" as &[_],
-            b"\r\n" as &[_],
-            b"lmn\r\nop" as &[_],
-            b"q\rrs\r" as &[_],
-            b"\n\n\rtuv\r\r\n" as &[_],
-            b"wxyz\n" as &[_],
-        ];
 
-        let mut iter1 = lines.iter().cloned();
-        let mut iter2 = Lines::new(StreamRead::new(stream::iter_ok::<_, ()>(
-            body.iter().cloned(),
-        )))
-        .wait()
-        .map(|s| String::from_utf8(s.unwrap().to_vec()).unwrap());
+        let concat = body.concat();
+        let expected = concat.split("\r\n");
+        let lines = Lines::new(stream::iter(&body).map(|&c| Ok(Bytes::from_static(c.as_bytes()))));
+        let lines = block_on_stream(lines).map(|s| String::from_utf8(s.unwrap().to_vec()).unwrap());
 
-        for _ in 0..(lines.len() + 1) {
-            assert_eq!(iter1.next(), iter2.next().as_ref().map(String::as_str));
-        }
-    }
-
-    #[test]
-    fn stream_read() {
-        macro_rules! assert_id {
-            ($($elm:expr),*) => {{
-                let elms = [$(Bytes::from(&$elm[..])),*];
-                let mut buf = Vec::new();
-                StreamRead {
-                    body: stream::iter_ok::<_,()>(
-                        elms.iter().cloned().map(Cursor::new)
-                    ),
-                    buf: Cursor::new(Bytes::new()).reader(),
-                    error: None,
-                }.read_to_end(&mut buf).unwrap();
-                assert_eq!(buf, elms.concat());
-            }};
-        }
-        assert_id!();
-        assert_id!([]);
-        assert_id!([], [0], [], [], [1, 2]);
-        assert_id!([0; BUF_SIZE + 1], [1; BUF_SIZE - 1], [2; BUF_SIZE * 5 / 2]);
+        assert_eq!(lines.collect::<Vec<_>>(), expected.collect::<Vec<_>>());
     }
 }
