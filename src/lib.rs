@@ -77,7 +77,6 @@ use hyper::header::{
     HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
 };
 use hyper::Request;
-use oauth1_request_derive::OAuth1Authorize;
 use string::TryFrom;
 
 use crate::gzip::MaybeGzip;
@@ -129,25 +128,22 @@ pub struct TwitterStream {
     inner: Lines<MaybeGzip<MaybeTimeoutStream<Body>>>,
 }
 
-#[derive(Clone, Debug, OAuth1Authorize)]
+#[derive(Clone, Debug, oauth::Authorize)]
 struct BuilderInner<'a> {
     #[oauth1(skip)]
     #[cfg(feature = "runtime")]
     timeout: Option<Duration>,
     #[oauth1(skip_if = "not")]
     stall_warnings: bool,
-    #[oauth1(option)]
     filter_level: Option<FilterLevel>,
-    #[oauth1(option)]
     language: Option<&'a str>,
-    #[oauth1(option, encoded, fmt = "fmt_follow")]
+    #[oauth1(encoded, fmt = "fmt_follow")]
     follow: Option<&'a [u64]>,
-    #[oauth1(option)]
     track: Option<&'a str>,
-    #[oauth1(encoded, option, fmt = "fmt_locations")]
+    #[oauth1(encoded, fmt = "fmt_locations")]
     #[allow(clippy::type_complexity)]
     locations: Option<&'a [((f64, f64), (f64, f64))]>,
-    #[oauth1(encoded, option)]
+    #[oauth1(encoded)]
     count: Option<i32>,
 }
 

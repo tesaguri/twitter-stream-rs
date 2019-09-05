@@ -24,8 +24,7 @@ futures-util-preview = "0.3.0-alpha.17"
 http = "0.1.11"
 hyper = { version = "0.13.0-alpha.1", default-features = false }
 memchr = "2"
-oauth = { version = "0.2.2", package = "oauth1-request" }
-oauth1-request-derive = "0.2"
+oauth = { version = "0.3.0", package = "oauth1-request" }
 string = "0.2"
 egg-mode = { version = "0.13", optional = true }
 hyper-tls = { version = "0.4.0-alpha.1", optional = true }
