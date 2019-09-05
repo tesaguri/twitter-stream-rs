@@ -7,7 +7,6 @@ use std::task::{Context, Poll};
 use bytes::{Bytes, BytesMut};
 use cfg_if::cfg_if;
 use futures_core::{Stream, TryFuture, TryStream};
-use futures_util::future::FutureExt;
 use futures_util::ready;
 use futures_util::stream::{Fuse, StreamExt};
 use futures_util::try_future::TryFutureExt;
@@ -258,7 +257,7 @@ cfg_if! {
     if #[cfg(feature = "runtime")] {
         use std::time::Duration;
 
-        use futures_util::future::{self, Either};
+        use futures_util::future::{self, Either, FutureExt};
         use futures_util::try_future::IntoFuture;
 
         pub struct Flatten<S>(IntoStream<S>);
