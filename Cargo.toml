@@ -22,7 +22,7 @@ futures-core-preview = "0.3.0-alpha.17"
 futures-executor-preview = "0.3.0-alpha.17"
 futures-util-preview = "0.3.0-alpha.17"
 http = "0.1.11"
-hyper = { version = "0.13.0-alpha.1", default-features = false }
+hyper = { version = "0.13.0-alpha.2", default-features = false, features = ["unstable-stream"] }
 memchr = "2"
 oauth = { version = "0.3.0", package = "oauth1-request" }
 string = "0.2"
