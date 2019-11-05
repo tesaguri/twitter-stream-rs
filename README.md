@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-twitter-stream = "0.10.0-alpha.1"
+twitter-stream = "0.10.0-alpha.2"
 ```
 
 Here is a basic example that prints public mentions to @Twitter in JSON format:
