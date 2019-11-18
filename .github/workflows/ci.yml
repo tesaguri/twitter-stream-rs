@@ -1,0 +1,57 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+          - stable
+          - beta
+          - nightly
+          - '1.39.0'
+        features:
+          - ''
+          - runtime
+          - tls
+          - egg-mode,tweetust
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1.0.3
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          profile: minimal
+          override: true
+      - name: Cache Cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.*') }}
+      - name: Cache Cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.*') }}
+      - name: Build
+        if: matrix.features == 'tls'
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --verbose --no-default-features --features=${{ matrix.features }}
+      - name: Test
+        if: matrix.features == 'tls'
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features --features=${{ matrix.features }}
+      - name: Check
+        if: matrix.features != 'tls'
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --verbose --no-default-features --features=${{ matrix.features }}
