@@ -18,7 +18,6 @@ jobs:
           - ''
           - runtime
           - tls
-          - egg-mode,tweetust
     steps:
       - uses: actions/checkout@v1
       - name: Install Rust toolchain

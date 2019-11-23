@@ -1,12 +1,11 @@
-extern crate tweetust_pkg as tweetust;
-
 use std::fs::File;
 use std::path::PathBuf;
 
 use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
-use twitter_stream::{rt, Credentials, Token};
+use tokio01::runtime::current_thread::block_on_all as block_on_all01;
+use twitter_stream::{rt, Credentials};
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -19,7 +18,7 @@ enum StreamMessage {
 struct Tweet {
     created_at: String,
     entities: Entities,
-    id: i64,
+    id: u64,
     text: String,
     user: User,
 }
@@ -31,17 +30,17 @@ struct Entities {
 
 #[derive(Deserialize)]
 struct UserMention {
-    id: i64,
+    id: u64,
 }
 
 #[derive(Deserialize)]
 struct User {
-    id: i64,
+    id: u64,
     screen_name: String,
 }
 
 #[derive(Deserialize)]
-#[serde(remote = "Token")]
+#[serde(remote = "twitter_stream::Token")]
 struct TokenDef {
     #[serde(flatten)]
     #[serde(with = "Consumer")]
@@ -85,18 +84,15 @@ async fn main() {
         .listen()
         .unwrap()
         .try_flatten_stream();
-    let rest = tweetust::TwitterClient::new(
-        token,
-        tweetust::DefaultHttpHandler::with_https_connector().unwrap(),
-    );
+
+    let twitter_stream::Token { client, token } = token;
+    let token = egg_mode::Token::Access {
+        consumer: egg_mode::KeyPair::new(client.identifier, client.secret),
+        access: egg_mode::KeyPair::new(token.identifier, token.secret),
+    };
 
     // Information of the authenticated user:
-    let user = rest
-        .account()
-        .verify_credentials()
-        .execute()
-        .unwrap()
-        .object;
+    let user = block_on_all01(egg_mode::verify_tokens(&token)).unwrap();
 
     stream
         .try_for_each(move |json| {
@@ -114,11 +110,8 @@ async fn main() {
                     );
 
                     let response = format!("@{} {}", tweet.user.screen_name, tweet.text);
-                    rest.statuses()
-                        .update(response)
-                        .in_reply_to_status_id(tweet.id)
-                        .execute()
-                        .unwrap();
+                    let response = egg_mode::tweet::DraftTweet::new(response).in_reply_to(tweet.id);
+                    block_on_all01(response.send(&token)).unwrap();
                 }
             }
 
