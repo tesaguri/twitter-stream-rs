@@ -30,12 +30,12 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.*') }}
+          key: ${{ runner.os }}-${{ matrix.toolchain }}-cargo-registry-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
       - name: Cache Cargo build
         uses: actions/cache@v1
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.*') }}
+          key: ${{ runner.os }}-${{ matrix.toolchain }}-cargo-build-target-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
       - name: Build
         if: matrix.features == 'tls'
         uses: actions-rs/cargo@v1
