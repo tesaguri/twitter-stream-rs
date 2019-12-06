@@ -12,7 +12,9 @@ Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-twitter-stream = "0.10.0-alpha.3"
+futures-preview = "=0.3.0-alpha.19"
+tokio = "=0.2.0-alpha.6"
+twitter-stream = "=0.10.0-alpha.3"
 ```
 
 ## Overview
