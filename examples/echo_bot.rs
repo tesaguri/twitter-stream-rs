@@ -5,7 +5,7 @@ use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
 use tokio01::runtime::current_thread::block_on_all as block_on_all01;
-use twitter_stream::{rt, Credentials};
+use twitter_stream::Credentials;
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -68,7 +68,7 @@ struct Access {
     secret: String,
 }
 
-#[rt::main]
+#[tokio::main]
 async fn main() {
     const TRACK: &str = "@NAME_OF_YOUR_ACCOUNT";
 

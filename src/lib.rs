@@ -48,8 +48,6 @@ twitter_stream::Builder::filter(token)
 mod util;
 
 pub mod error;
-#[cfg(feature = "runtime")]
-pub mod rt;
 pub mod types;
 
 mod gzip;
