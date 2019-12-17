@@ -1,8 +1,6 @@
 //! Error types
 
 pub use hyper::Error as HyperError;
-#[cfg(feature = "tls")]
-pub use hyper_tls::Error as TlsError;
 
 use std::error::{self, Error as _Error};
 use std::fmt::{self, Display, Formatter};

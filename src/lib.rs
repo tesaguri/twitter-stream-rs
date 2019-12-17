@@ -32,7 +32,6 @@ let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_
 twitter_stream::Builder::filter(token)
     .track(Some("@Twitter"))
     .listen()
-    .unwrap()
     .try_flatten_stream()
     .try_for_each(|json| {
         println!("{}", json);
@@ -62,6 +61,7 @@ use std::borrow::Borrow;
 use std::future::Future;
 use std::marker::Unpin;
 use std::pin::Pin;
+use std::str;
 use std::task::{Context, Poll};
 #[cfg(feature = "runtime")]
 use std::time::Duration;
@@ -70,14 +70,14 @@ use bytes::Bytes;
 use futures_core::Stream;
 use futures_util::{ready, FutureExt, StreamExt};
 use http::response::Parts;
-use hyper::body::{Body, Payload};
-use hyper::client::connect::Connect;
-use hyper::client::{Client, ResponseFuture};
+use http_body::Body as HttpBody;
+use hyper::body::Body;
+use hyper::client::{connect::Connection, Client, ResponseFuture};
 use hyper::header::{
     HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
 };
 use hyper::Request;
-use string::TryFrom;
+use tokio::io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite};
 
 use crate::gzip::MaybeGzip;
 use crate::types::{FilterLevel, RequestMethod, StatusCode, Uri};
@@ -98,7 +98,6 @@ use crate::util::*;
 /// twitter_stream::Builder::sample(token)
 ///     .timeout(None)
 ///     .listen()
-///     .unwrap()
 ///     .try_flatten_stream()
 ///     .try_for_each(|json| {
 ///         println!("{}", json);
@@ -194,23 +193,29 @@ where
 
     /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
     /// to a `Stream` yielding JSON messages from the API.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the underlying HTTPS connector failed to initialize.
     #[cfg(feature = "tls")]
-    pub fn listen(&self) -> Result<FutureTwitterStream, error::TlsError> {
-        let conn = hyper_tls::HttpsConnector::new()?;
-        Ok(self.listen_with_client(&Client::builder().build::<_, Body>(conn)))
+    pub fn listen(&self) -> FutureTwitterStream {
+        let conn = hyper_tls::HttpsConnector::new();
+        self.listen_with_client(&Client::builder().build::<_, Body>(conn))
     }
 
     /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
     pub fn listen_with_client<Conn, B>(&self, client: &Client<Conn, B>) -> FutureTwitterStream
     where
-        Conn: Connect + Sync + 'static,
-        Conn::Transport: 'static,
-        Conn::Future: 'static,
-        B: Default + From<Vec<u8>> + Payload + Unpin + Send + 'static,
+        Conn: Clone + tower_service::Service<Uri> + Send + Sync + 'static,
+        Conn::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        Conn::Future: Unpin + Send,
+        Conn::Response: TokioAsyncRead + TokioAsyncWrite + Connection + Unpin + Send + 'static,
+        B: Default + From<Vec<u8>> + HttpBody + Send + Unpin + 'static,
         B::Data: Send + Unpin,
+        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        let mut req = Request::builder();
-        req.method(self.method.clone())
+        let req = Request::builder()
+            .method(self.method.clone())
             .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
 
         let mut oauth = oauth::Builder::new(self.token.client.as_ref(), oauth::HmacSha1);
@@ -222,12 +227,12 @@ where
             } = oauth.post_form(&self.endpoint, &self.inner);
 
             req.uri(self.endpoint.clone())
-                .header(AUTHORIZATION, Bytes::from(authorization))
+                .header(AUTHORIZATION, authorization)
                 .header(
                     CONTENT_TYPE,
                     HeaderValue::from_static("application/x-www-form-urlencoded"),
                 )
-                .header(CONTENT_LENGTH, Bytes::from(data.len().to_string()))
+                .header(CONTENT_LENGTH, data.len())
                 .body(data.into_bytes().into())
                 .unwrap()
         } else {
@@ -237,7 +242,7 @@ where
             } = oauth.build(self.method.as_ref(), &self.endpoint, &self.inner);
 
             req.uri(uri)
-                .header(AUTHORIZATION, Bytes::from(authorization))
+                .header(AUTHORIZATION, authorization)
                 .body(B::default())
                 .unwrap()
         };
@@ -366,7 +371,11 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
 #[cfg(feature = "tls")]
 impl TwitterStream {
     /// A shorthand for `Builder::filter().listen()`.
-    pub fn filter<C, A>(token: Token<C, A>) -> Result<FutureTwitterStream, error::TlsError>
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the underlying HTTPS connector failed to initialize.
+    pub fn filter<C, A>(token: Token<C, A>) -> FutureTwitterStream
     where
         C: Borrow<str>,
         A: Borrow<str>,
@@ -375,7 +384,11 @@ impl TwitterStream {
     }
 
     /// A shorthand for `Builder::sample().listen()`.
-    pub fn sample<C, A>(token: Token<C, A>) -> Result<FutureTwitterStream, error::TlsError>
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the underlying HTTPS connector failed to initialize.
+    pub fn sample<C, A>(token: Token<C, A>) -> FutureTwitterStream
     where
         C: Borrow<str>,
         A: Borrow<str>,
@@ -423,7 +436,14 @@ impl Stream for TwitterStream {
                 continue;
             }
 
-            let line = string::String::<Bytes>::try_from(line).map_err(Error::Utf8)?;
+            str::from_utf8(&line).map_err(Error::Utf8)?;
+            let line = unsafe {
+                // Safety:
+                // - We have checked above that `line` is valid as UTF-8.
+                // - `Bytes` satisfies the requirements of `string::StableAsRef` trait
+                // (https://github.com/carllerche/string/pull/17)
+                string::String::<Bytes>::from_utf8_unchecked(line)
+            };
             return Poll::Ready(Some(Ok(line)));
         }
     }

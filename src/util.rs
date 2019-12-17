@@ -4,13 +4,11 @@ use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use cfg_if::cfg_if;
-use futures_core::{Stream, TryFuture, TryStream};
+use futures_util::future::{TryFuture, TryFutureExt};
 use futures_util::ready;
-use futures_util::stream::{Fuse, StreamExt};
-use futures_util::try_future::TryFutureExt;
-use futures_util::try_stream::{IntoStream, TryStreamExt};
+use futures_util::stream::{Fuse, IntoStream, Stream, StreamExt, TryStream, TryStreamExt};
 
 use crate::error::{Error, HyperError};
 
@@ -116,10 +114,7 @@ impl<S: TryStream> Lines<S> {
     }
 }
 
-impl<S: TryStream<Error = Error> + Unpin> Stream for Lines<S>
-where
-    S::Ok: Into<Bytes>,
-{
+impl<S: TryStream<Ok = Bytes, Error = Error> + Unpin> Stream for Lines<S> {
     type Item = Result<Bytes, Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -133,9 +128,11 @@ where
         loop {
             let mut chunk: BytesMut = loop {
                 if let Some(c) = ready!(self.stream.poll_next_unpin(cx)) {
-                    let c: Bytes = c?.into();
+                    let c = c?;
                     if !c.is_empty() {
-                        break c.into();
+                        // XXX: Copying data to a newly created `BytesMut` because
+                        // `impl From<Bytes> for BytesMut` was removed in `bytes` 0.5.
+                        break c[..].into();
                     }
                 } else if !self.buf.is_empty() {
                     let ret = mem::replace(&mut self.buf, BytesMut::new()).freeze();
@@ -245,7 +242,7 @@ fn remove_first_line(buf: &mut BytesMut) -> Option<BytesMut> {
     if let Some(i) = memchr::memchr(b'\n', &buf[1..]) {
         if buf[i] == b'\r' {
             let mut line = buf.split_to(i + 2);
-            line.split_off(i); // Drop the CRLF
+            line.truncate(i); // Drop the CRLF
             return Some(line);
         }
     }
@@ -257,22 +254,21 @@ cfg_if! {
     if #[cfg(feature = "runtime")] {
         use std::time::Duration;
 
-        use futures_util::future::{self, Either, FutureExt};
-        use futures_util::try_future::IntoFuture;
+        use futures_util::future::{self, Either, FutureExt, IntoFuture};
 
         pub struct Flatten<S>(IntoStream<S>);
 
         /// A `tokio_timer::Timeout`-like type that holds the original `Duration`
         /// which can be used to create another `Timeout`.
         pub struct Timeout<F> {
-            tokio: tokio_timer::Timeout<IntoFuture<F>>,
+            tokio: tokio::time::Timeout<IntoFuture<F>>,
             dur: Duration,
         }
 
         pub type MaybeTimeout<F> = Either<Timeout<F>, MapErr<F>>;
 
         pub type MaybeTimeoutStream<S> = Either<
-            Flatten<tokio_timer::Timeout<IntoStream<S>>>, MapErr<S>,
+            Flatten<tokio::time::Timeout<IntoStream<S>>>, MapErr<S>,
         >;
 
         impl<S: TryStream> Flatten<S> {
@@ -299,7 +295,7 @@ cfg_if! {
         impl<F: TryFuture> Timeout<F> {
             pub fn new(fut: F, dur: Duration) -> Self {
                 Timeout {
-                    tokio: tokio_timer::Timeout::new(fut.into_future(), dur),
+                    tokio: tokio::time::timeout(dur, fut.into_future()),
                     dur,
                 }
             }
@@ -319,7 +315,7 @@ cfg_if! {
             }
         }
 
-        impl IntoError for tokio_timer::timeout::Elapsed {
+        impl IntoError for tokio::time::Elapsed {
             fn into_error(self) -> Error {
                 Error::TimedOut
             }
@@ -338,7 +334,7 @@ cfg_if! {
         {
             match *timeout {
                 Either::Left(ref t) => {
-                    let timeout = tokio_timer::Timeout::new(s.into_stream(), t.dur);
+                    let timeout = tokio::time::timeout(t.dur, s.into_stream());
                     Either::Left(Flatten::new(timeout))
                 }
                 Either::Right(_) => Either::Right(MapErr(s)),

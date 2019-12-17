@@ -15,35 +15,37 @@ A library for listening on Twitter Streaming API.
 """
 
 [dependencies]
-async-compression = { version = "=0.1.0-alpha.7", default-features = false, features = ["gzip", "stream"] }
-bytes = "0.4.4"
+async-compression = { version = "0.2", default-features = false, features = ["gzip", "stream"] }
+bytes = "0.5"
 cfg-if = "0.1"
-futures-core-preview = "=0.3.0-alpha.19"
-futures-executor-preview = "=0.3.0-alpha.19"
-futures-util-preview = "=0.3.0-alpha.19"
-http = "0.1.11"
-hyper = { version = "=0.13.0-alpha.4", default-features = false, features = ["unstable-stream"] }
+futures-core = "0.3"
+futures-executor = "0.3"
+futures-util = "0.3"
+http = "0.2"
+http-body = "0.3"
+hyper = { version = "0.13", default-features = false, features = ["stream"] }
 memchr = "2"
 oauth = { version = "0.3.0", package = "oauth1-request" }
+static_assertions = "1"
 string = "0.2"
-hyper-tls = { version = "0.4.0-alpha.1", optional = true }
-static_assertions = "0.3"
-tokio = { version = "=0.2.0-alpha.6", optional = true, default-features = false, features = ["macros"] }
-tokio-timer = { version = "=0.3.0-alpha.6", optional = true }
+tokio = { version = "0.2", default-features = false }
+tower-service = "0.3"
+hyper-tls = { version = "0.4", optional = true }
 
 [features]
 default = ["runtime", "tls"]
-runtime = ["hyper/runtime", "tokio", "tokio-timer"]
+runtime = ["hyper/runtime", "tokio/time"]
 tls = ["hyper-tls", "runtime"]
 
 [[example]]
 name = "echo_bot"
 
 [dev-dependencies]
-futures-preview = "=0.3.0-alpha.19"
+futures = "0.3"
 version-sync = "0.8"
 # examples/echo_bot
 egg-mode = "0.13"
 json = { version = "1", package = "serde_json" }
 serde = { version = "1", features = ["derive"] }
+tokio = { version = "0.2", features = ["macros"] }
 tokio01 = { version = "0.1", package = "tokio" }

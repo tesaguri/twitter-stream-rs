@@ -82,7 +82,6 @@ async fn main() {
     let stream = twitter_stream::Builder::filter(token.as_ref())
         .track(Some(TRACK))
         .listen()
-        .unwrap()
         .try_flatten_stream();
 
     let twitter_stream::Token { client, token } = token;

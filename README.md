@@ -34,7 +34,6 @@ async fn main() {
     twitter_stream::Builder::filter(token)
         .track(Some("@Twitter"))
         .listen()
-        .unwrap()
         .try_flatten_stream()
         .try_for_each(|json| {
             println!("{}", json);
