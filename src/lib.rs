@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/twitter-stream/0.10.0-alpha.3")]
+#![doc(html_root_url = "https://docs.rs/twitter-stream/0.10.0-alpha.4")]
 
 /*!
 # Twitter Stream
@@ -13,7 +13,7 @@ Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
 [dependencies]
 futures = "0.3"
 tokio = { version = "0.2", features = ["macros"] }
-twitter-stream = "=0.10.0-alpha.3"
+twitter-stream = "=0.10.0-alpha.4"
 ```
 
 ## Overview
