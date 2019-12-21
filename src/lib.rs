@@ -1,5 +1,4 @@
 #![doc(html_root_url = "https://docs.rs/twitter-stream/0.10.0-alpha.3")]
-#![recursion_limit = "128"]
 
 /*!
 # Twitter Stream
