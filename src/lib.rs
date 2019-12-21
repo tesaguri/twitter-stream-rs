@@ -63,8 +63,6 @@ use std::marker::Unpin;
 use std::pin::Pin;
 use std::str;
 use std::task::{Context, Poll};
-#[cfg(feature = "runtime")]
-use std::time::Duration;
 
 use bytes::Bytes;
 use futures_core::Stream;
@@ -96,7 +94,6 @@ use crate::util::*;
 /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 ///
 /// twitter_stream::Builder::sample(token)
-///     .timeout(None)
 ///     .listen()
 ///     .try_flatten_stream()
 ///     .try_for_each(|json| {
@@ -118,20 +115,17 @@ pub struct Builder<'a, T = Token> {
 /// A future returned by constructor methods
 /// which resolves to a `TwitterStream`.
 pub struct FutureTwitterStream {
-    response: MaybeTimeout<ResponseFuture>,
+    response: ResponseFuture,
 }
 
 /// A listener for Twitter Streaming API.
 /// It yields JSON strings returned from the API.
 pub struct TwitterStream {
-    inner: Lines<MaybeGzip<MaybeTimeoutStream<Body>>>,
+    inner: Lines<MaybeGzip<WrapHyperError<Body>>>,
 }
 
 #[derive(Clone, Debug, oauth::Authorize)]
 struct BuilderInner<'a> {
-    #[oauth1(skip)]
-    #[cfg(feature = "runtime")]
-    timeout: Option<Duration>,
     #[oauth1(skip_if = "not")]
     stall_warnings: bool,
     filter_level: Option<FilterLevel>,
@@ -178,8 +172,6 @@ where
             endpoint,
             token,
             inner: BuilderInner {
-                #[cfg(feature = "runtime")]
-                timeout: Some(Duration::from_secs(90)),
                 stall_warnings: false,
                 filter_level: None,
                 language: None,
@@ -247,13 +239,8 @@ where
                 .unwrap()
         };
 
-        let res = client.request(req);
-        FutureTwitterStream {
-            #[cfg(feature = "runtime")]
-            response: timeout(res, self.inner.timeout),
-            #[cfg(not(feature = "runtime"))]
-            response: timeout(res),
-        }
+        let response = client.request(req);
+        FutureTwitterStream { response }
     }
 }
 
@@ -274,17 +261,6 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Reset the token to be used to log into Twitter.
     pub fn token(&mut self, token: Token<C, A>) -> &mut Self {
         self.token = token;
-        self
-    }
-
-    /// Set a timeout for the stream.
-    ///
-    /// Passing `None` disables the timeout.
-    ///
-    /// Default is 90 seconds.
-    #[cfg(feature = "runtime")]
-    pub fn timeout(&mut self, timeout: impl Into<Option<Duration>>) -> &mut Self {
-        self.inner.timeout = timeout.into();
         self
     }
 
@@ -401,7 +377,10 @@ impl Future for FutureTwitterStream {
     type Output = Result<TwitterStream, Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let res = ready!(self.response.poll_unpin(cx))?;
+        let res = match ready!(self.response.poll_unpin(cx)) {
+            Ok(res) => res,
+            Err(e) => return Poll::Ready(Err(Error::Hyper(e))),
+        };
         let (parts, body) = res.into_parts();
         let Parts {
             status, headers, ..
@@ -411,15 +390,14 @@ impl Future for FutureTwitterStream {
             return Poll::Ready(Err(Error::Http(status)));
         }
 
-        let body = timeout_to_stream(&self.response, body);
         let use_gzip = headers
             .get_all(CONTENT_ENCODING)
             .iter()
             .any(|e| e == "gzip");
         let inner = if use_gzip {
-            Lines::new(gzip::gzip(body))
+            Lines::new(gzip::gzip(WrapHyperError(body)))
         } else {
-            Lines::new(gzip::identity(body))
+            Lines::new(gzip::identity(WrapHyperError(body)))
         };
 
         Poll::Ready(Ok(TwitterStream { inner }))

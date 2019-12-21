@@ -2,7 +2,7 @@
 
 pub use hyper::Error as HyperError;
 
-use std::error::{self, Error as _Error};
+use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
@@ -18,8 +18,6 @@ pub enum Error {
     Http(StatusCode),
     /// An error from the `hyper` crate.
     Hyper(HyperError),
-    /// The stream has timed out.
-    TimedOut,
     /// Twitter returned a non-UTF-8 string.
     Utf8(Utf8Error),
     /// User-defined error.
@@ -43,7 +41,6 @@ impl error::Error for Error {
             Gzip(ref e) => e.description(),
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Hyper(ref e) => e.description(),
-            TimedOut => "timed out",
             Utf8(ref e) => e.description(),
             Custom(ref e) => e.description(),
         }
@@ -54,7 +51,7 @@ impl error::Error for Error {
 
         match *self {
             Gzip(ref e) => Some(e),
-            Http(_) | TimedOut => None,
+            Http(_) => None,
             Hyper(ref e) => Some(e),
             Utf8(ref e) => Some(e),
             Custom(ref e) => Some(&**e),
@@ -70,7 +67,6 @@ impl Display for Error {
             Gzip(ref e) => Display::fmt(e, f),
             Http(ref code) => Display::fmt(code, f),
             Hyper(ref e) => Display::fmt(e, f),
-            TimedOut => Display::fmt(self.description(), f),
             Utf8(ref e) => Display::fmt(e, f),
             Custom(ref e) => Display::fmt(e, f),
         }

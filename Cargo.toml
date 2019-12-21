@@ -17,7 +17,6 @@ A library for listening on Twitter Streaming API.
 [dependencies]
 async-compression = { version = "0.2", default-features = false, features = ["gzip", "stream"] }
 bytes = "0.5"
-cfg-if = "0.1"
 futures-core = "0.3"
 futures-executor = "0.3"
 futures-util = "0.3"
@@ -33,9 +32,8 @@ tower-service = "0.3"
 hyper-tls = { version = "0.4", optional = true }
 
 [features]
-default = ["runtime", "tls"]
-runtime = ["hyper/runtime", "tokio/time"]
-tls = ["hyper-tls", "runtime"]
+default = ["tls"]
+tls = ["hyper/runtime", "hyper-tls"]
 
 [[example]]
 name = "echo_bot"
