@@ -16,8 +16,8 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-futures-preview = "=0.3.0-alpha.19"
-tokio = "=0.2.0-alpha.6"
+futures = "0.3"
+tokio = { version = "0.2", features = ["macros"] }
 twitter-stream = "=0.10.0-alpha.3"
 ```
 
