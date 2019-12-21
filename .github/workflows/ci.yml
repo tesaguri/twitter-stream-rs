@@ -16,8 +16,7 @@ jobs:
           - '1.39.0'
         features:
           - ''
-          - runtime
-          - tls
+          - hyper
     steps:
       - uses: actions/checkout@v1
       - name: Install Rust toolchain

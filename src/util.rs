@@ -6,8 +6,10 @@ use std::task::{Context, Poll};
 use bytes::{Buf, Bytes, BytesMut};
 use futures_util::ready;
 use futures_util::stream::{Fuse, IntoStream, Stream, StreamExt, TryStream, TryStreamExt};
+use http_body::Body;
+use pin_project::pin_project;
 
-use crate::error::{Error, HyperError};
+use crate::error::Error;
 
 macro_rules! ready_some {
     ($e:expr) => {
@@ -90,13 +92,16 @@ macro_rules! string_enums {
     }
 }
 
+#[pin_project]
 pub struct Lines<S> {
+    #[pin]
     stream: Fuse<IntoStream<S>>,
     buf: BytesMut,
 }
 
-/// Wraps `HyperError` of underlying `TryStream` with `Error::Hyper`.
-pub struct WrapHyperError<T>(pub T);
+/// Wraps `http_body::Body` to make it a `Stream`.
+#[pin_project]
+pub struct HttpBodyAsStream<B>(#[pin] pub B);
 
 impl<S: TryStream> Lines<S> {
     pub fn new(stream: S) -> Self {
@@ -107,11 +112,13 @@ impl<S: TryStream> Lines<S> {
     }
 }
 
-impl<S: TryStream<Ok = Bytes, Error = Error> + Unpin> Stream for Lines<S> {
-    type Item = Result<Bytes, Error>;
+impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
+    type Item = Result<Bytes, Error<E>>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let Some(line) = remove_first_line(&mut self.buf) {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut this = self.project();
+
+        if let Some(line) = remove_first_line(&mut this.buf) {
             return Poll::Ready(Some(Ok(line.freeze())));
         }
 
@@ -120,44 +127,45 @@ impl<S: TryStream<Ok = Bytes, Error = Error> + Unpin> Stream for Lines<S> {
 
         loop {
             let mut chunk: BytesMut = loop {
-                if let Some(c) = ready!(self.stream.poll_next_unpin(cx)) {
+                if let Some(c) = ready!(this.stream.as_mut().poll_next(cx)) {
                     let c = c?;
                     if !c.is_empty() {
                         // XXX: Copying data to a newly created `BytesMut` because
                         // `impl From<Bytes> for BytesMut` was removed in `bytes` 0.5.
                         break c[..].into();
                     }
-                } else if !self.buf.is_empty() {
-                    let ret = mem::replace(&mut self.buf, BytesMut::new()).freeze();
+                } else if !this.buf.is_empty() {
+                    let ret = mem::replace(this.buf, BytesMut::new()).freeze();
                     return Poll::Ready(Some(Ok(ret)));
                 } else {
                     return Poll::Ready(None);
                 }
             };
 
-            if chunk[0] == b'\n' && self.buf.last() == Some(&b'\r') {
+            if chunk[0] == b'\n' && this.buf.last() == Some(&b'\r') {
                 // Drop the CRLF
                 chunk.advance(1);
-                let line_len = self.buf.len() - 1;
-                self.buf.truncate(line_len);
-                return Poll::Ready(Some(Ok(mem::replace(&mut self.buf, chunk).freeze())));
+                let line_len = this.buf.len() - 1;
+                this.buf.truncate(line_len);
+                return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk).freeze())));
             } else if let Some(line) = remove_first_line(&mut chunk) {
-                self.buf.unsplit(line);
-                return Poll::Ready(Some(Ok(mem::replace(&mut self.buf, chunk).freeze())));
+                this.buf.unsplit(line);
+                return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk).freeze())));
             } else {
-                self.buf.unsplit(chunk);
+                this.buf.unsplit(chunk);
             }
         }
     }
 }
 
-impl<S: TryStream<Error = HyperError> + Unpin> Stream for WrapHyperError<S> {
-    type Item = Result<S::Ok, Error>;
+impl<B: Body> Stream for HttpBodyAsStream<B> {
+    type Item = Result<B::Data, Error<B::Error>>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.0
-            .try_poll_next_unpin(cx)
-            .map(|opt| opt.map(|result| result.map_err(Error::Hyper)))
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.project()
+            .0
+            .poll_data(cx)
+            .map(|opt| opt.map(|result| result.map_err(Error::Service)))
     }
 }
 
@@ -243,7 +251,8 @@ mod test {
         let concat = body.concat();
         let expected = concat.split("\r\n");
         let lines = Lines::new(stream::iter(&body).map(|&c| Ok(Bytes::from_static(c.as_bytes()))));
-        let lines = block_on_stream(lines).map(|s| String::from_utf8(s.unwrap().to_vec()).unwrap());
+        let lines = block_on_stream(lines)
+            .map(|s: Result<_, Error>| String::from_utf8(s.unwrap().to_vec()).unwrap());
 
         assert_eq!(lines.collect::<Vec<_>>(), expected.collect::<Vec<_>>());
     }

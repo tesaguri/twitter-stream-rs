@@ -43,6 +43,9 @@ twitter_stream::Builder::filter(token)
 ```
 */
 
+#[cfg(feature = "hyper")]
+extern crate hyper_pkg as hyper;
+
 #[macro_use]
 mod util;
 
@@ -59,23 +62,21 @@ pub use crate::token::Token;
 
 use std::borrow::Borrow;
 use std::future::Future;
-use std::marker::Unpin;
 use std::pin::Pin;
 use std::str;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
 use futures_core::Stream;
-use futures_util::{ready, FutureExt, StreamExt};
-use http::response::Parts;
-use http_body::Body as HttpBody;
-use hyper::body::Body;
-use hyper::client::{connect::Connection, Client, ResponseFuture};
-use hyper::header::{
+use futures_util::ready;
+use http::header::{
     HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
 };
-use hyper::Request;
-use tokio::io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite};
+use http::response::Parts;
+use http::{Request, Response};
+use http_body::Body;
+use pin_project::pin_project;
+use tower_service::Service;
 
 use crate::gzip::MaybeGzip;
 use crate::types::{FilterLevel, RequestMethod, StatusCode, Uri};
@@ -114,14 +115,18 @@ pub struct Builder<'a, T = Token> {
 
 /// A future returned by constructor methods
 /// which resolves to a `TwitterStream`.
-pub struct FutureTwitterStream {
-    response: ResponseFuture,
+#[pin_project]
+pub struct FutureTwitterStream<F> {
+    #[pin]
+    response: F,
 }
 
 /// A listener for Twitter Streaming API.
 /// It yields JSON strings returned from the API.
-pub struct TwitterStream {
-    inner: Lines<MaybeGzip<WrapHyperError<Body>>>,
+#[pin_project]
+pub struct TwitterStream<B: Body<Data = Bytes>> {
+    #[pin]
+    inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
 }
 
 #[derive(Clone, Debug, oauth::Authorize)]
@@ -189,22 +194,23 @@ where
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    #[cfg(feature = "tls")]
-    pub fn listen(&self) -> FutureTwitterStream {
+    #[cfg(feature = "hyper")]
+    pub fn listen(&self) -> FutureTwitterStream<hyper::client::ResponseFuture> {
         let conn = hyper_tls::HttpsConnector::new();
-        self.listen_with_client(&Client::builder().build::<_, Body>(conn))
+        self.listen_with_client(hyper::Client::builder().build::<_, hyper::Body>(conn))
     }
 
     /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
-    pub fn listen_with_client<Conn, B>(&self, client: &Client<Conn, B>) -> FutureTwitterStream
+    ///
+    /// # Panics
+    ///
+    /// This will call `<S as Service>::call` without checking for `<S as Service>::poll_ready`
+    /// and may cause a panic if `client` is not ready to send an HTTP request yet.
+    pub fn listen_with_client<S, ReqB, ResB>(&self, mut client: S) -> FutureTwitterStream<S::Future>
     where
-        Conn: Clone + tower_service::Service<Uri> + Send + Sync + 'static,
-        Conn::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        Conn::Future: Unpin + Send,
-        Conn::Response: TokioAsyncRead + TokioAsyncWrite + Connection + Unpin + Send + 'static,
-        B: Default + From<Vec<u8>> + HttpBody + Send + Unpin + 'static,
-        B::Data: Send + Unpin,
-        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        S: Service<Request<ReqB>, Response = Response<ResB>>,
+        ReqB: Default + From<Vec<u8>>,
+        ResB: Body<Data = Bytes>,
     {
         let req = Request::builder()
             .method(self.method.clone())
@@ -235,11 +241,11 @@ where
 
             req.uri(uri)
                 .header(AUTHORIZATION, authorization)
-                .body(B::default())
+                .body(ReqB::default())
                 .unwrap()
         };
 
-        let response = client.request(req);
+        let response = client.call(req);
         FutureTwitterStream { response }
     }
 }
@@ -344,14 +350,14 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     }
 }
 
-#[cfg(feature = "tls")]
-impl TwitterStream {
+#[cfg(feature = "hyper")]
+impl<B: Body<Data = Bytes>> TwitterStream<B> {
     /// A shorthand for `Builder::filter().listen()`.
     ///
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn filter<C, A>(token: Token<C, A>) -> FutureTwitterStream
+    pub fn filter<C, A>(token: Token<C, A>) -> FutureTwitterStream<hyper::client::ResponseFuture>
     where
         C: Borrow<str>,
         A: Borrow<str>,
@@ -364,7 +370,7 @@ impl TwitterStream {
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn sample<C, A>(token: Token<C, A>) -> FutureTwitterStream
+    pub fn sample<C, A>(token: Token<C, A>) -> FutureTwitterStream<hyper::client::ResponseFuture>
     where
         C: Borrow<str>,
         A: Borrow<str>,
@@ -373,13 +379,17 @@ impl TwitterStream {
     }
 }
 
-impl Future for FutureTwitterStream {
-    type Output = Result<TwitterStream, Error>;
+impl<F, B, E> Future for FutureTwitterStream<F>
+where
+    F: Future<Output = Result<Response<B>, E>>,
+    B: Body<Data = Bytes>,
+{
+    type Output = Result<TwitterStream<B>, Error<E>>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let res = match ready!(self.response.poll_unpin(cx)) {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let res = match ready!(self.project().response.poll(cx)) {
             Ok(res) => res,
-            Err(e) => return Poll::Ready(Err(Error::Hyper(e))),
+            Err(e) => return Poll::Ready(Err(Error::Service(e))),
         };
         let (parts, body) = res.into_parts();
         let Parts {
@@ -395,21 +405,26 @@ impl Future for FutureTwitterStream {
             .iter()
             .any(|e| e == "gzip");
         let inner = if use_gzip {
-            Lines::new(gzip::gzip(WrapHyperError(body)))
+            Lines::new(gzip::gzip(HttpBodyAsStream(body)))
         } else {
-            Lines::new(gzip::identity(WrapHyperError(body)))
+            Lines::new(gzip::identity(HttpBodyAsStream(body)))
         };
 
         Poll::Ready(Ok(TwitterStream { inner }))
     }
 }
 
-impl Stream for TwitterStream {
-    type Item = Result<string::String<Bytes>, Error>;
+impl<B> Stream for TwitterStream<B>
+where
+    B: Body<Data = Bytes>,
+{
+    type Item = Result<string::String<Bytes>, Error<B::Error>>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut this = self.project();
+
         loop {
-            let line = ready_some!(self.inner.poll_next_unpin(cx))?;
+            let line = ready_some!(this.inner.as_mut().poll_next(cx))?;
             if line.iter().all(|&c| is_json_whitespace(c)) {
                 continue;
             }
