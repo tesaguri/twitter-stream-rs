@@ -43,12 +43,14 @@ twitter_stream::Builder::filter(token)
 */
 
 #[cfg(feature = "hyper")]
-extern crate hyper_pkg as hyper;
+extern crate hyper_pkg;
 
 #[macro_use]
 mod util;
 
 pub mod error;
+#[cfg(feature = "hyper")]
+pub mod hyper;
 pub mod types;
 
 mod gzip;
@@ -194,9 +196,9 @@ where
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
     #[cfg(feature = "hyper")]
-    pub fn listen(&self) -> FutureTwitterStream<hyper::client::ResponseFuture> {
+    pub fn listen(&self) -> crate::hyper::FutureTwitterStream {
         let conn = hyper_tls::HttpsConnector::new();
-        self.listen_with_client(hyper::Client::builder().build::<_, hyper::Body>(conn))
+        self.listen_with_client(hyper_pkg::Client::builder().build::<_, hyper_pkg::Body>(conn))
     }
 
     /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
@@ -356,7 +358,7 @@ impl<B: Body<Data = Bytes>> TwitterStream<B> {
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn filter<C, A>(token: Token<C, A>) -> FutureTwitterStream<hyper::client::ResponseFuture>
+    pub fn filter<C, A>(token: Token<C, A>) -> crate::hyper::FutureTwitterStream
     where
         C: Borrow<str>,
         A: Borrow<str>,
@@ -369,7 +371,7 @@ impl<B: Body<Data = Bytes>> TwitterStream<B> {
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn sample<C, A>(token: Token<C, A>) -> FutureTwitterStream<hyper::client::ResponseFuture>
+    pub fn sample<C, A>(token: Token<C, A>) -> crate::hyper::FutureTwitterStream
     where
         C: Borrow<str>,
         A: Borrow<str>,
