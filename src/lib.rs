@@ -42,7 +42,10 @@ twitter_stream::Builder::filter(token)
 ```
 */
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 #[cfg(feature = "hyper")]
+#[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
 extern crate hyper_pkg;
 
 #[macro_use]
@@ -50,6 +53,7 @@ mod util;
 
 pub mod error;
 #[cfg(feature = "hyper")]
+#[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
 pub mod hyper;
 pub mod types;
 
@@ -196,6 +200,7 @@ where
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
     #[cfg(feature = "hyper")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
     pub fn listen(&self) -> crate::hyper::FutureTwitterStream {
         let conn = hyper_tls::HttpsConnector::new();
         self.listen_with_client(hyper_pkg::Client::builder().build::<_, hyper_pkg::Body>(conn))
