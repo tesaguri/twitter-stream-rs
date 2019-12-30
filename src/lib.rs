@@ -129,7 +129,7 @@ pub struct FutureTwitterStream<F> {
 /// A listener for Twitter Streaming API.
 /// It yields JSON strings returned from the API.
 #[pin_project]
-pub struct TwitterStream<B: Body<Data = Bytes>> {
+pub struct TwitterStream<B: Body> {
     #[pin]
     inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
 }
@@ -216,7 +216,7 @@ where
     where
         S: Service<Request<ReqB>, Response = Response<ResB>>,
         ReqB: Default + From<Vec<u8>>,
-        ResB: Body<Data = Bytes>,
+        ResB: Body,
     {
         let req = Request::builder()
             .method(self.method.clone())
@@ -357,7 +357,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
 }
 
 #[cfg(feature = "hyper")]
-impl<B: Body<Data = Bytes>> TwitterStream<B> {
+impl<B: Body> TwitterStream<B> {
     /// A shorthand for `Builder::filter().listen()`.
     ///
     /// # Panics
@@ -388,7 +388,7 @@ impl<B: Body<Data = Bytes>> TwitterStream<B> {
 impl<F, B, E> Future for FutureTwitterStream<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
-    B: Body<Data = Bytes>,
+    B: Body,
 {
     type Output = Result<TwitterStream<B>, Error<E>>;
 
@@ -422,7 +422,7 @@ where
 
 impl<B> Stream for TwitterStream<B>
 where
-    B: Body<Data = Bytes>,
+    B: Body,
 {
     type Item = Result<string::String<Bytes>, Error<B::Error>>;
 

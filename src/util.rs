@@ -159,13 +159,12 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
 }
 
 impl<B: Body> Stream for HttpBodyAsStream<B> {
-    type Item = Result<B::Data, Error<B::Error>>;
+    type Item = Result<Bytes, Error<B::Error>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project()
-            .0
-            .poll_data(cx)
-            .map(|opt| opt.map(|result| result.map_err(Error::Service)))
+        self.project().0.poll_data(cx).map(|opt| {
+            opt.map(|result| result.map(|mut buf| buf.to_bytes()).map_err(Error::Service))
+        })
     }
 }
 
