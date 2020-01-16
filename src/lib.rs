@@ -80,7 +80,7 @@ use http::header::{
 use http::response::Parts;
 use http::{Request, Response};
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use tower_service::Service;
 
 use crate::gzip::MaybeGzip;
@@ -118,20 +118,22 @@ pub struct Builder<'a, T = Token> {
     inner: BuilderInner<'a>,
 }
 
-/// A future returned by constructor methods
-/// which resolves to a `TwitterStream`.
-#[pin_project]
-pub struct FutureTwitterStream<F> {
-    #[pin]
-    response: F,
+pin_project! {
+    /// A future returned by constructor methods
+    /// which resolves to a `TwitterStream`.
+    pub struct FutureTwitterStream<F> {
+        #[pin]
+        response: F,
+    }
 }
 
-/// A listener for Twitter Streaming API.
-/// It yields JSON strings returned from the API.
-#[pin_project]
-pub struct TwitterStream<B: Body> {
-    #[pin]
-    inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
+pin_project! {
+    /// A listener for Twitter Streaming API.
+    /// It yields JSON strings returned from the API.
+    pub struct TwitterStream<B: Body> {
+        #[pin]
+        inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
+    }
 }
 
 #[derive(Clone, Debug, oauth::Authorize)]
@@ -411,9 +413,9 @@ where
             .iter()
             .any(|e| e == "gzip");
         let inner = if use_gzip {
-            Lines::new(gzip::gzip(HttpBodyAsStream(body)))
+            Lines::new(gzip::gzip(HttpBodyAsStream::new(body)))
         } else {
-            Lines::new(gzip::identity(HttpBodyAsStream(body)))
+            Lines::new(gzip::identity(HttpBodyAsStream::new(body)))
         };
 
         Poll::Ready(Ok(TwitterStream { inner }))

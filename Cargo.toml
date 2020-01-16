@@ -24,7 +24,7 @@ http = "0.2"
 http-body = "0.3"
 memchr = "2"
 oauth = { version = "0.3.0", package = "oauth1-request" }
-pin-project = "0.4"
+pin-project-lite = "0.1"
 static_assertions = "1"
 string = "0.2"
 tower-service = "0.3"

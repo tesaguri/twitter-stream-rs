@@ -7,31 +7,38 @@ use bytes::Bytes;
 use futures_core::{Stream, TryStream};
 use futures_util::future::Either;
 use futures_util::ready;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 
 use crate::error::Error;
 
-#[pin_project]
-pub struct Gzip<S: TryStream<Ok = Bytes>>(#[pin] GzipDecoder<Adapter<S>>);
+pin_project! {
+    pub struct Gzip<S: TryStream<Ok = Bytes>> {
+        #[pin]
+        inner: GzipDecoder<Adapter<S>>,
+    }
+}
 
-#[pin_project]
-struct Adapter<S>
-where
-    S: TryStream,
-{
-    #[pin]
-    inner: S,
-    error: Option<S::Error>,
+pin_project! {
+    struct Adapter<S>
+    where
+        S: TryStream,
+    {
+        #[pin]
+        inner: S,
+        error: Option<S::Error>,
+    }
 }
 
 pub type MaybeGzip<S> = Either<Gzip<S>, S>;
 
 impl<S: TryStream<Ok = Bytes>> Gzip<S> {
     fn new(s: S) -> Self {
-        Gzip(GzipDecoder::new(Adapter {
-            inner: s,
-            error: None,
-        }))
+        Gzip {
+            inner: GzipDecoder::new(Adapter {
+                inner: s,
+                error: None,
+            }),
+        }
     }
 }
 
@@ -42,10 +49,10 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Gzip<S> {
         let mut this = self.project();
         // This cannot be `this.map_ok(..).map_err(..).poll_next(..)`
         // because `this` is borrowed inside `map_err`.
-        this.0.as_mut().poll_next(cx).map(|option| {
+        this.inner.as_mut().poll_next(cx).map(|option| {
             option.map(|result| {
                 result.map_err(|e| {
-                    this.0
+                    this.inner
                         .get_pin_mut()
                         .project()
                         .error

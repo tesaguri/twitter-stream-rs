@@ -7,7 +7,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures_util::ready;
 use futures_util::stream::{Fuse, IntoStream, Stream, StreamExt, TryStream, TryStreamExt};
 use http_body::Body;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 
 use crate::error::Error;
 
@@ -92,16 +92,21 @@ macro_rules! string_enums {
     }
 }
 
-#[pin_project]
-pub struct Lines<S> {
-    #[pin]
-    stream: Fuse<IntoStream<S>>,
-    buf: BytesMut,
+pin_project! {
+    pub struct Lines<S> {
+        #[pin]
+        stream: Fuse<IntoStream<S>>,
+        buf: BytesMut,
+    }
 }
 
-/// Wraps `http_body::Body` to make it a `Stream`.
-#[pin_project]
-pub struct HttpBodyAsStream<B>(#[pin] pub B);
+pin_project! {
+    /// Wraps `http_body::Body` to make it a `Stream`.
+    pub struct HttpBodyAsStream<B> {
+        #[pin]
+        pub inner: B,
+    }
+}
 
 impl<S: TryStream> Lines<S> {
     pub fn new(stream: S) -> Self {
@@ -158,11 +163,17 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
     }
 }
 
+impl<B: Body> HttpBodyAsStream<B> {
+    pub fn new(inner: B) -> Self {
+        HttpBodyAsStream { inner }
+    }
+}
+
 impl<B: Body> Stream for HttpBodyAsStream<B> {
     type Item = Result<Bytes, Error<B::Error>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().0.poll_data(cx).map(|opt| {
+        self.project().inner.poll_data(cx).map(|opt| {
             opt.map(|result| result.map(|mut buf| buf.to_bytes()).map_err(Error::Service))
         })
     }
