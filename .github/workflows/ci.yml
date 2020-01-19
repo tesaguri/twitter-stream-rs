@@ -53,3 +53,8 @@ jobs:
         with:
           command: check
           args: --verbose --no-default-features --features=${{ matrix.features }}
+      - name: Check Rustdoc
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --no-deps --no-default-features --features=${{ matrix.features }}

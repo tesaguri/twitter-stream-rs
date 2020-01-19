@@ -43,6 +43,7 @@ twitter_stream::Builder::filter(token)
 */
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![deny(intra_doc_link_resolution_failure)]
 
 #[cfg(feature = "hyper")]
 #[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
@@ -55,6 +56,7 @@ pub mod error;
 #[cfg(feature = "hyper")]
 #[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
 pub mod hyper;
+pub mod service;
 pub mod types;
 
 mod gzip;
@@ -81,9 +83,9 @@ use http::response::Parts;
 use http::{Request, Response};
 use http_body::Body;
 use pin_project_lite::pin_project;
-use tower_service::Service;
 
 use crate::gzip::MaybeGzip;
+use crate::service::HttpService;
 use crate::types::{FilterLevel, RequestMethod, StatusCode, Uri};
 use crate::util::*;
 
@@ -214,11 +216,10 @@ where
     ///
     /// This will call `<S as Service>::call` without checking for `<S as Service>::poll_ready`
     /// and may cause a panic if `client` is not ready to send an HTTP request yet.
-    pub fn listen_with_client<S, ReqB, ResB>(&self, mut client: S) -> FutureTwitterStream<S::Future>
+    pub fn listen_with_client<S, B>(&self, mut client: S) -> FutureTwitterStream<S::Future>
     where
-        S: Service<Request<ReqB>, Response = Response<ResB>>,
-        ReqB: Default + From<Vec<u8>>,
-        ResB: Body,
+        S: HttpService<B>,
+        B: Default + From<Vec<u8>>,
     {
         let req = Request::builder()
             .method(self.method.clone())
@@ -249,7 +250,7 @@ where
 
             req.uri(uri)
                 .header(AUTHORIZATION, authorization)
-                .body(ReqB::default())
+                .body(B::default())
                 .unwrap()
         };
 
