@@ -36,19 +36,19 @@ jobs:
           path: target
           key: ${{ runner.os }}-${{ matrix.toolchain }}-cargo-build-target-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
       - name: Build
-        if: matrix.features == 'tls'
+        if: matrix.features == 'hyper'
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --verbose --no-default-features --features=${{ matrix.features }}
       - name: Test
-        if: matrix.features == 'tls'
+        if: matrix.features == 'hyper'
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --no-default-features --features=${{ matrix.features }}
       - name: Check
-        if: matrix.features != 'tls'
+        if: matrix.features != 'hyper'
         uses: actions-rs/cargo@v1
         with:
           command: check
