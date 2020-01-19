@@ -80,12 +80,13 @@ use http::header::{
     HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
 };
 use http::response::Parts;
-use http::{Request, Response};
+use http::Request;
 use http_body::Body;
 use pin_project_lite::pin_project;
+use tower_util::{Oneshot, ServiceExt};
 
 use crate::gzip::MaybeGzip;
-use crate::service::HttpService;
+use crate::service::{HttpService, IntoService};
 use crate::types::{FilterLevel, RequestMethod, StatusCode, Uri};
 use crate::util::*;
 
@@ -121,11 +122,13 @@ pub struct Builder<'a, T = Token> {
 }
 
 pin_project! {
-    /// A future returned by constructor methods
-    /// which resolves to a `TwitterStream`.
-    pub struct FutureTwitterStream<F> {
+    /// A future returned by constructor methods which resolves to a `TwitterStream`.
+    pub struct FutureTwitterStream<S, B>
+    where
+        S: HttpService<B>,
+    {
         #[pin]
-        response: F,
+        response: Oneshot<IntoService<S>, Request<B>>,
     }
 }
 
@@ -211,12 +214,7 @@ where
     }
 
     /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
-    ///
-    /// # Panics
-    ///
-    /// This will call `<S as Service>::call` without checking for `<S as Service>::poll_ready`
-    /// and may cause a panic if `client` is not ready to send an HTTP request yet.
-    pub fn listen_with_client<S, B>(&self, mut client: S) -> FutureTwitterStream<S::Future>
+    pub fn listen_with_client<S, B>(&self, client: S) -> FutureTwitterStream<S, B>
     where
         S: HttpService<B>,
         B: Default + From<Vec<u8>>,
@@ -254,7 +252,7 @@ where
                 .unwrap()
         };
 
-        let response = client.call(req);
+        let response = client.into_service().oneshot(req);
         FutureTwitterStream { response }
     }
 }
@@ -388,12 +386,11 @@ impl<B: Body> TwitterStream<B> {
     }
 }
 
-impl<F, B, E> Future for FutureTwitterStream<F>
+impl<S, B> Future for FutureTwitterStream<S, B>
 where
-    F: Future<Output = Result<Response<B>, E>>,
-    B: Body,
+    S: HttpService<B>,
 {
-    type Output = Result<TwitterStream<B>, Error<E>>;
+    type Output = Result<TwitterStream<S::ResponseBody>, Error<S::Error>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = match ready!(self.project().response.poll(cx)) {
