@@ -31,7 +31,6 @@ pin-project-lite = "0.1"
 static_assertions = "1"
 string = "0.2"
 tower-service = "0.3"
-tower-util = "0.3"
 hyper-pkg = { version = "0.13", package = "hyper", default-features = false, optional = true }
 hyper-tls = { version = "0.4", optional = true }
 
