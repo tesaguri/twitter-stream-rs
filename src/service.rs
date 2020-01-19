@@ -11,6 +11,7 @@ use tower_service::Service;
 
 use private::Sealed;
 
+#[cfg_attr(not(feature = "hyper"), allow(intra_doc_link_resolution_failure))]
 /// An HTTP client (like [`hyper::Client`](hyper_pkg::client::Client)).
 ///
 /// This is just an alias for [`tower_service::Service`](tower_service::Service)
