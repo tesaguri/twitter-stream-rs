@@ -22,7 +22,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 async-compression = { version = "0.2", default-features = false, features = ["gzip", "stream"] }
 bytes = "0.5"
 futures-core = "0.3"
-futures-executor = "0.3"
 futures-util = "0.3"
 http = "0.2"
 http-body = "0.3"

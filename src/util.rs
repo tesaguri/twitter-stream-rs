@@ -239,7 +239,7 @@ fn remove_first_line(buf: &mut BytesMut) -> Option<BytesMut> {
 mod test {
     use super::*;
     use bytes::Bytes;
-    use futures_executor::block_on_stream;
+    use futures::executor::block_on_stream;
     use futures_util::stream;
 
     #[test]
