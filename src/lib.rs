@@ -216,6 +216,22 @@ where
     ///
     /// This will call `<S as Service>::call` without checking for `<S as Service>::poll_ready`
     /// and may cause a panic if `client` is not ready to send an HTTP request yet.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use tower::ServiceExt;
+    ///
+    /// # async fn doc() {
+    /// # let mut client = hyper_pkg::Client::new();
+    /// # let token = twitter_stream::Token::new("", "", "", "");
+    /// client.ready().await; // Ensure that the client is ready to send a request.
+    /// let stream = twitter_stream::Builder::sample(token)
+    ///     .listen_with_client(&mut client)
+    ///     .await
+    ///     .unwrap();
+    /// # }
+    /// ```
     pub fn listen_with_client<S, B>(&self, mut client: S) -> FutureTwitterStream<S::Future>
     where
         S: HttpService<B>,

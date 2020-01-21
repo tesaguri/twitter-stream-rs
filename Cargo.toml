@@ -43,6 +43,8 @@ name = "echo_bot"
 
 [dev-dependencies]
 futures = "0.3"
+hyper-pkg = { version = "0.13", package = "hyper", default-features = false }
+tower = "0.3"
 version-sync = "0.8"
 # examples/echo_bot
 egg-mode = "0.13"
