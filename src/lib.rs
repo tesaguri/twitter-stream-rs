@@ -45,10 +45,6 @@ twitter_stream::Builder::filter(token)
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(intra_doc_link_resolution_failure)]
 
-#[cfg(feature = "hyper")]
-#[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
-extern crate hyper_pkg;
-
 #[macro_use]
 mod util;
 
