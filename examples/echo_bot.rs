@@ -5,7 +5,6 @@ use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
 use tokio01::runtime::current_thread::block_on_all as block_on_all01;
-use twitter_stream::Credentials;
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -42,30 +41,24 @@ struct User {
 #[derive(Deserialize)]
 #[serde(remote = "twitter_stream::Token")]
 struct TokenDef {
-    #[serde(flatten)]
-    #[serde(with = "Consumer")]
-    client: Credentials,
-    #[serde(flatten)]
-    #[serde(with = "Access")]
-    token: Credentials,
+    // The `getter` attribute is required to make the `Deserialize` impl use the `From` conversion,
+    // even if we are not deriving `Serialize` here.
+    #[serde(getter = "__")]
+    consumer_key: String,
+    consumer_secret: String,
+    access_key: String,
+    access_secret: String,
 }
 
-#[derive(Deserialize)]
-#[serde(remote = "Credentials")]
-struct Consumer {
-    #[serde(rename = "consumer_key")]
-    identifier: String,
-    #[serde(rename = "consumer_secret")]
-    secret: String,
-}
-
-#[derive(Deserialize)]
-#[serde(remote = "Credentials")]
-struct Access {
-    #[serde(rename = "access_key")]
-    identifier: String,
-    #[serde(rename = "access_secret")]
-    secret: String,
+impl From<TokenDef> for twitter_stream::Token {
+    fn from(def: TokenDef) -> twitter_stream::Token {
+        twitter_stream::Token::new(
+            def.consumer_key,
+            def.consumer_secret,
+            def.access_key,
+            def.access_secret,
+        )
+    }
 }
 
 #[tokio::main]
