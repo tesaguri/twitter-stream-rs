@@ -8,7 +8,7 @@ A Rust library for listening on Twitter Streaming API.
 
 ## Requirements
 
-This library requires Rust 1.39.0 or later.
+This library requires Rust 1.40.0 or later.
 
 ## Usage
 
