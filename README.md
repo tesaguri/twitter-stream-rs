@@ -1,6 +1,6 @@
 # Twitter Stream
 
-![Build Status](https://github.com/tesaguri/twitter-stream-rs/workflows/CI/badge.svg)
+[![Build Status](https://github.com/tesaguri/twitter-stream-rs/workflows/CI/badge.svg)](https://github.com/tesaguri/twitter-stream-rs/actions)
 [![Current Version](https://img.shields.io/crates/v/twitter-stream.svg)](https://crates.io/crates/twitter-stream)
 [![Documentation](https://docs.rs/twitter-stream/badge.svg)](https://docs.rs/twitter-stream/)
 
