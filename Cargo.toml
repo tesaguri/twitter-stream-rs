@@ -41,6 +41,9 @@ hyper = ["hyper-pkg/runtime", "hyper-tls"]
 [[example]]
 name = "echo_bot"
 
+[[example]]
+name = "timeout"
+
 [dev-dependencies]
 futures = "0.3"
 hyper-pkg = { version = "0.13", package = "hyper", default-features = false }
@@ -52,3 +55,6 @@ json = { version = "1", package = "serde_json" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "0.2", features = ["macros"] }
 tokio01 = { version = "0.1", package = "tokio" }
+# examples/timeout
+native-tls = "0.2"
+pin-project = "0.4"

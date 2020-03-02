@@ -43,3 +43,7 @@ async fn main() {
         .unwrap();
 }
 ```
+
+## License
+
+This project is licensed under the MIT license ([LICENSE](LICENSE) or https://opensource.org/licenses/MIT) unless explicitly stated otherwise.
