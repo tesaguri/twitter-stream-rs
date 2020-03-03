@@ -11,74 +11,32 @@ use pin_project_lite::pin_project;
 
 use crate::error::Error;
 
-// Synonym of `twitter_stream_message::util::string_enums`
-macro_rules! string_enums {
+/// Creates an enum with `AsRef<str>` impl.
+macro_rules! str_enum {
     (
-        $(
-            $(#[$attr:meta])*
-            pub enum $E:ident {
-                $(
-                    $(#[$v_attr:meta])*
-                    $V:ident($by:expr)
-                ),*;
-                $(#[$u_attr:meta])*
-                $U:ident(_),
-            }
-        )*
+        $(#[$attr:meta])*
+        pub enum $E:ident {
+            $(
+                $(#[$v_attr:meta])*
+                $V:ident = $by:expr
+            ),*$(,)?
+        }
     ) => {
-        $(
-            $(#[$attr])*
-            pub enum $E {
-                $(
-                    $(#[$v_attr])*
-                    $V,
-                )*
-                $(#[$u_attr])*
-                $U(String),
-            }
+        $(#[$attr])*
+        pub enum $E {
+            $(
+                $(#[$v_attr])*
+                $V,
+            )*
+        }
 
-            impl std::convert::AsRef<str> for $E {
-                fn as_ref(&self) -> &str {
-                    match *self {
-                        $($E::$V => $by,)*
-                        $E::$U(ref s) => s,
-                    }
+        impl std::convert::AsRef<str> for $E {
+            fn as_ref(&self) -> &str {
+                match *self {
+                    $($E::$V => $by,)*
                 }
             }
-
-            impl std::fmt::Display for $E {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    AsRef::<str>::as_ref(self).fmt(f)
-                }
-            }
-
-            impl std::cmp::PartialEq for $E {
-                fn eq(&self, other: &$E) -> bool {
-                    match *self {
-                        $($E::$V => match *other {
-                            $E::$V => true,
-                            $E::$U(ref s) if $by == s => true,
-                            _ => false,
-                        },)*
-                        $E::$U(ref s) => match *other {
-                            $($E::$V => $by == s,)*
-                            $E::$U(ref t) => s == t,
-                        },
-                    }
-                }
-            }
-
-            impl std::hash::Hash for $E {
-                fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                    match *self {
-                        $($E::$V => $by.hash(state),)*
-                        $E::$U(ref s) => s.hash(state),
-                    }
-                }
-            }
-
-            impl std::cmp::Eq for $E {}
-        )*
+        }
     }
 }
 
