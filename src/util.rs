@@ -11,16 +11,6 @@ use pin_project_lite::pin_project;
 
 use crate::error::Error;
 
-macro_rules! ready_some {
-    ($e:expr) => {
-        match $e {
-            std::task::Poll::Ready(Some(t)) => t,
-            std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
-            std::task::Poll::Pending => return std::task::Poll::Pending,
-        }
-    };
-}
-
 // Synonym of `twitter_stream_message::util::string_enums`
 macro_rules! string_enums {
     (

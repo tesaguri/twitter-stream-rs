@@ -445,7 +445,11 @@ where
         let mut this = self.project();
 
         loop {
-            let line = ready_some!(this.inner.as_mut().poll_next(cx))?;
+            let line = match ready!(this.inner.as_mut().poll_next(cx)?) {
+                Some(t) => t,
+                None => return std::task::Poll::Ready(None),
+            };
+
             if line.iter().all(|&c| is_json_whitespace(c)) {
                 continue;
             }
