@@ -113,7 +113,7 @@ pub struct Builder<'a, T = Token> {
     method: RequestMethod,
     endpoint: Uri,
     token: T,
-    inner: BuilderInner<'a>,
+    parameters: Parameters<'a>,
 }
 
 pin_project! {
@@ -134,8 +134,9 @@ pin_project! {
     }
 }
 
+/// Parameters to the Streaming API.
 #[derive(Clone, Debug, oauth::Authorize)]
-struct BuilderInner<'a> {
+struct Parameters<'a> {
     #[oauth1(skip_if = "not")]
     stall_warnings: bool,
     filter_level: Option<FilterLevel>,
@@ -181,7 +182,7 @@ where
             method,
             endpoint,
             token,
-            inner: BuilderInner {
+            parameters: Parameters {
                 stall_warnings: false,
                 filter_level: None,
                 language: None,
@@ -243,7 +244,7 @@ where
             let oauth::Request {
                 authorization,
                 data,
-            } = oauth.post_form(&self.endpoint, &self.inner);
+            } = oauth.post_form(&self.endpoint, &self.parameters);
 
             req.uri(self.endpoint.clone())
                 .header(AUTHORIZATION, authorization)
@@ -258,7 +259,7 @@ where
             let oauth::Request {
                 authorization,
                 data: uri,
-            } = oauth.build(self.method.as_ref(), &self.endpoint, &self.inner);
+            } = oauth.build(self.method.as_ref(), &self.endpoint, &self.parameters);
 
             req.uri(uri)
                 .header(AUTHORIZATION, authorization)
@@ -298,7 +299,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#stall-warnings
     pub fn stall_warnings(&mut self, stall_warnings: bool) -> &mut Self {
-        self.inner.stall_warnings = stall_warnings;
+        self.parameters.stall_warnings = stall_warnings;
         self
     }
 
@@ -309,7 +310,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#filter-level
     pub fn filter_level(&mut self, filter_level: impl Into<Option<FilterLevel>>) -> &mut Self {
-        self.inner.filter_level = filter_level.into();
+        self.parameters.filter_level = filter_level.into();
         self
     }
 
@@ -320,7 +321,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#language
     pub fn language(&mut self, language: impl Into<Option<&'a str>>) -> &mut Self {
-        self.inner.language = language.into();
+        self.parameters.language = language.into();
         self
     }
 
@@ -330,7 +331,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#follow
     pub fn follow(&mut self, follow: impl Into<Option<&'a [u64]>>) -> &mut Self {
-        self.inner.follow = follow.into();
+        self.parameters.follow = follow.into();
         self
     }
 
@@ -340,7 +341,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#track
     pub fn track(&mut self, track: impl Into<Option<&'a str>>) -> &mut Self {
-        self.inner.track = track.into();
+        self.parameters.track = track.into();
         self
     }
 
@@ -351,7 +352,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
     pub fn locations(&mut self, locations: impl Into<Option<&'a [BoundingBox]>>) -> &mut Self {
-        self.inner.locations = locations.into();
+        self.parameters.locations = locations.into();
         self
     }
 
@@ -362,7 +363,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#count
     pub fn count(&mut self, count: impl Into<Option<i32>>) -> &mut Self {
-        self.inner.count = count.into();
+        self.parameters.count = count.into();
         self
     }
 }
