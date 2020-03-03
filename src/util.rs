@@ -10,6 +10,7 @@ use http_body::Body;
 use pin_project_lite::pin_project;
 
 use crate::error::Error;
+use crate::types::BoundingBox;
 
 /// Creates an enum with `AsRef<str>` impl.
 macro_rules! str_enum {
@@ -144,18 +145,21 @@ pub fn fmt_follow(ids: &[u64], f: &mut Formatter<'_>) -> fmt::Result {
     fmt_join(ids, COMMA, f)
 }
 
-type Location = ((f64, f64), (f64, f64));
-
-pub fn fmt_locations(locs: &[Location], f: &mut Formatter<'_>) -> fmt::Result {
+pub fn fmt_locations(locs: &[BoundingBox], f: &mut Formatter<'_>) -> fmt::Result {
     use std::mem::size_of;
     use std::slice;
 
     use static_assertions::const_assert;
 
     let locs: &[f64] = unsafe {
-        let ptr: *const Location = locs.as_ptr();
-        const_assert!(size_of::<Location>() % size_of::<f64>() == 0);
-        let n = locs.len() * (size_of::<Location>() / size_of::<f64>());
+        // Safety:
+        // `BoundingBox` is defined with the `#[repr(C)]` attribute so it is sound to interpret
+        // the struct as a `[f64; 4]` and also the fields are guaranteed to be placed in
+        // `[west_longitude, south_latitude, east_longitude, north_latitude]` order.
+        // We are checking the size of `BoundingBox` here just to be sure.
+        const_assert!(size_of::<BoundingBox>() == 4 * size_of::<f64>());
+        let ptr: *const BoundingBox = locs.as_ptr();
+        let n = 4 * <[BoundingBox]>::len(locs);
         slice::from_raw_parts(ptr as *const f64, n)
     };
 

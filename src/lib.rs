@@ -82,7 +82,7 @@ use pin_project_lite::pin_project;
 
 use crate::gzip::MaybeGzip;
 use crate::service::HttpService;
-use crate::types::{FilterLevel, RequestMethod, StatusCode, Uri};
+use crate::types::{BoundingBox, FilterLevel, RequestMethod, StatusCode, Uri};
 use crate::util::*;
 
 /// A builder for `TwitterStream`.
@@ -145,7 +145,7 @@ struct BuilderInner<'a> {
     track: Option<&'a str>,
     #[oauth1(encoded, fmt = "fmt_locations")]
     #[allow(clippy::type_complexity)]
-    locations: Option<&'a [((f64, f64), (f64, f64))]>,
+    locations: Option<&'a [BoundingBox]>,
     #[oauth1(encoded)]
     count: Option<i32>,
 }
@@ -344,17 +344,13 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
         self
     }
 
-    /// Set a list of bounding boxes to filter Tweets by,
-    /// specified by a pair of coordinates in the form of
-    /// `((longitude, latitude), (longitude, latitude))` tuple.
+    /// Set a list of bounding boxes to filter Tweets by.
     ///
-    /// See the [Twitter Developer Documentation][1] for more information.
+    /// See [`BoundingBox`](types/struct.BoundingBox.html) and
+    /// the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
-    pub fn locations(
-        &mut self,
-        locations: impl Into<Option<&'a [((f64, f64), (f64, f64))]>>,
-    ) -> &mut Self {
+    pub fn locations(&mut self, locations: impl Into<Option<&'a [BoundingBox]>>) -> &mut Self {
         self.inner.locations = locations.into();
         self
     }
