@@ -98,7 +98,7 @@ async fn main() {
     let token = TokenDef::deserialize(&mut json::Deserializer::from_reader(credential)).unwrap();
 
     let stream = twitter_stream::Builder::filter(token.as_ref())
-        .track(Some(TRACK))
+        .track(TRACK)
         .listen()
         .try_flatten_stream();
 

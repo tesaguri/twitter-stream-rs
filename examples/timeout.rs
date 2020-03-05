@@ -51,7 +51,7 @@ async fn main() {
     let client = timeout::Timeout::new(client, TIMEOUT);
 
     let result = twitter_stream::Builder::filter(token)
-        .track(Some("@Twitter"))
+        .track("@Twitter")
         .listen_with_client(client)
         .try_flatten_stream()
         .try_for_each(|json| {

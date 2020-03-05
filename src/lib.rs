@@ -63,7 +63,7 @@ pub use oauth::Credentials;
 pub use crate::error::Error;
 pub use crate::token::Token;
 
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::future::Future;
 use std::pin::Pin;
 use std::str;
@@ -135,18 +135,20 @@ pin_project! {
 }
 
 /// Parameters to the Streaming API.
-#[derive(Clone, Debug, oauth::Authorize)]
+#[derive(Clone, Debug, Default, oauth::Authorize)]
 struct Parameters<'a> {
     #[oauth1(skip_if = "not")]
     stall_warnings: bool,
     filter_level: Option<FilterLevel>,
-    language: Option<&'a str>,
-    #[oauth1(encoded, fmt = "fmt_follow")]
-    follow: Option<&'a [u64]>,
-    track: Option<&'a str>,
-    #[oauth1(encoded, fmt = "fmt_locations")]
+    #[oauth1(skip_if = "str::is_empty")]
+    language: Cow<'a, str>,
+    #[oauth1(encoded, fmt = "fmt_follow", skip_if = "<[_]>::is_empty")]
+    follow: Cow<'a, [u64]>,
+    #[oauth1(skip_if = "str::is_empty")]
+    track: Cow<'a, str>,
+    #[oauth1(encoded, fmt = "fmt_locations", skip_if = "<[_]>::is_empty")]
     #[allow(clippy::type_complexity)]
-    locations: Option<&'a [BoundingBox]>,
+    locations: Cow<'a, [BoundingBox]>,
     #[oauth1(encoded)]
     count: Option<i32>,
 }
@@ -182,15 +184,7 @@ where
             method,
             endpoint,
             token,
-            parameters: Parameters {
-                stall_warnings: false,
-                filter_level: None,
-                language: None,
-                follow: None,
-                track: None,
-                locations: None,
-                count: None,
-            },
+            parameters: Parameters::default(),
         }
     }
 
@@ -317,41 +311,49 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Set a comma-separated language identifiers to receive Tweets
     /// written in the specified languages only.
     ///
+    /// Setting an empty string will unset this parameter.
+    ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#language
-    pub fn language(&mut self, language: impl Into<Option<&'a str>>) -> &mut Self {
+    pub fn language(&mut self, language: impl Into<Cow<'a, str>>) -> &mut Self {
         self.parameters.language = language.into();
         self
     }
 
     /// Set a list of user IDs to receive Tweets from the specified users.
     ///
+    /// Setting an empty slice will unset this parameter.
+    ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#follow
-    pub fn follow(&mut self, follow: impl Into<Option<&'a [u64]>>) -> &mut Self {
+    pub fn follow(&mut self, follow: impl Into<Cow<'a, [u64]>>) -> &mut Self {
         self.parameters.follow = follow.into();
         self
     }
 
     /// A comma separated list of phrases to filter Tweets by.
     ///
+    /// Setting an empty string will unset this parameter.
+    ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#track
-    pub fn track(&mut self, track: impl Into<Option<&'a str>>) -> &mut Self {
+    pub fn track(&mut self, track: impl Into<Cow<'a, str>>) -> &mut Self {
         self.parameters.track = track.into();
         self
     }
 
     /// Set a list of bounding boxes to filter Tweets by.
     ///
+    /// Setting an empty slice will unset this parameter.
+    ///
     /// See [`BoundingBox`](types/struct.BoundingBox.html) and
     /// the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
-    pub fn locations(&mut self, locations: impl Into<Option<&'a [BoundingBox]>>) -> &mut Self {
+    pub fn locations(&mut self, locations: impl Into<Cow<'a, [BoundingBox]>>) -> &mut Self {
         self.parameters.locations = locations.into();
         self
     }

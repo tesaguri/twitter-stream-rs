@@ -27,6 +27,7 @@ http = "0.2"
 http-body = "0.3"
 memchr = "2"
 oauth = { version = "0.3.0", package = "oauth1-request" }
+oauth1-request-derive = "0.3.2"
 pin-project-lite = "0.1"
 static_assertions = "1"
 string = "0.2"
