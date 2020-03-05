@@ -48,22 +48,23 @@ twitter_stream::Builder::filter(token)
 #[macro_use]
 mod util;
 
+pub mod builder;
 pub mod error;
 #[cfg(feature = "hyper")]
 #[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
 pub mod hyper;
 pub mod service;
-pub mod types;
 
 mod gzip;
 mod token;
 
 pub use oauth::Credentials;
 
+pub use crate::builder::Builder;
 pub use crate::error::Error;
 pub use crate::token::Token;
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::future::Future;
 use std::pin::Pin;
 use std::str;
@@ -72,49 +73,15 @@ use std::task::{Context, Poll};
 use bytes::Bytes;
 use futures_core::Stream;
 use futures_util::ready;
-use http::header::{
-    HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE,
-};
+use http::header::CONTENT_ENCODING;
 use http::response::Parts;
-use http::{Request, Response};
+use http::Response;
+use http::StatusCode;
 use http_body::Body;
 use pin_project_lite::pin_project;
 
 use crate::gzip::MaybeGzip;
-use crate::service::HttpService;
-use crate::types::{BoundingBox, FilterLevel, RequestMethod, StatusCode, Uri};
-use crate::util::*;
-
-/// A builder for `TwitterStream`.
-///
-/// ## Example
-///
-/// ```rust,no_run
-/// use futures::prelude::*;
-/// use twitter_stream::Token;
-///
-/// # #[tokio::main]
-/// # async fn main() {
-/// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
-///
-/// twitter_stream::Builder::sample(token)
-///     .listen()
-///     .try_flatten_stream()
-///     .try_for_each(|json| {
-///         println!("{}", json);
-///         future::ok(())
-///     })
-///     .await
-///     .unwrap();
-/// # }
-/// ```
-#[derive(Clone, Debug)]
-pub struct Builder<'a, T = Token> {
-    method: RequestMethod,
-    endpoint: Uri,
-    token: T,
-    parameters: Parameters<'a>,
-}
+use crate::util::{HttpBodyAsStream, Lines};
 
 pin_project! {
     /// A future returned by constructor methods
@@ -131,242 +98,6 @@ pin_project! {
     pub struct TwitterStream<B: Body> {
         #[pin]
         inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
-    }
-}
-
-/// Parameters to the Streaming API.
-#[derive(Clone, Debug, Default, oauth::Authorize)]
-struct Parameters<'a> {
-    #[oauth1(skip_if = "not")]
-    stall_warnings: bool,
-    filter_level: Option<FilterLevel>,
-    #[oauth1(skip_if = "str::is_empty")]
-    language: Cow<'a, str>,
-    #[oauth1(encoded, fmt = "fmt_follow", skip_if = "<[_]>::is_empty")]
-    follow: Cow<'a, [u64]>,
-    #[oauth1(skip_if = "str::is_empty")]
-    track: Cow<'a, str>,
-    #[oauth1(encoded, fmt = "fmt_locations", skip_if = "<[_]>::is_empty")]
-    #[allow(clippy::type_complexity)]
-    locations: Cow<'a, [BoundingBox]>,
-    #[oauth1(encoded)]
-    count: Option<i32>,
-}
-
-impl<'a, C, A> Builder<'a, Token<C, A>>
-where
-    C: Borrow<str>,
-    A: Borrow<str>,
-{
-    /// Create a builder for `POST statuses/filter` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
-    pub fn filter(token: Token<C, A>) -> Self {
-        const URI: &str = "https://stream.twitter.com/1.1/statuses/filter.json";
-        Self::custom(RequestMethod::POST, Uri::from_static(URI), token)
-    }
-
-    /// Create a builder for `GET statuses/sample` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
-    pub fn sample(token: Token<C, A>) -> Self {
-        const URI: &str = "https://stream.twitter.com/1.1/statuses/sample.json";
-        Self::custom(RequestMethod::GET, Uri::from_static(URI), token)
-    }
-
-    /// Constructs a builder for a Stream at a custom endpoint.
-    pub fn custom(method: RequestMethod, endpoint: Uri, token: Token<C, A>) -> Self {
-        Self {
-            method,
-            endpoint,
-            token,
-            parameters: Parameters::default(),
-        }
-    }
-
-    /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
-    /// to a `Stream` yielding JSON messages from the API.
-    ///
-    /// # Panics
-    ///
-    /// This will panic if the underlying HTTPS connector failed to initialize.
-    #[cfg(feature = "hyper")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "hyper")))]
-    pub fn listen(&self) -> crate::hyper::FutureTwitterStream {
-        let conn = hyper_tls::HttpsConnector::new();
-        self.listen_with_client(hyper_pkg::Client::builder().build::<_, hyper_pkg::Body>(conn))
-    }
-
-    /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
-    ///
-    /// # Panics
-    ///
-    /// This will call `<S as Service>::call` without checking for `<S as Service>::poll_ready`
-    /// and may cause a panic if `client` is not ready to send an HTTP request yet.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// use tower::ServiceExt;
-    ///
-    /// # async fn doc() {
-    /// # let mut client = hyper_pkg::Client::new();
-    /// # let token = twitter_stream::Token::new("", "", "", "");
-    /// client.ready().await; // Ensure that the client is ready to send a request.
-    /// let stream = twitter_stream::Builder::sample(token)
-    ///     .listen_with_client(&mut client)
-    ///     .await
-    ///     .unwrap();
-    /// # }
-    /// ```
-    pub fn listen_with_client<S, B>(&self, mut client: S) -> FutureTwitterStream<S::Future>
-    where
-        S: HttpService<B>,
-        B: Default + From<Vec<u8>>,
-    {
-        let req = Request::builder()
-            .method(self.method.clone())
-            .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
-
-        let mut oauth = oauth::Builder::new(self.token.client.as_ref(), oauth::HmacSha1);
-        oauth.token(self.token.token.as_ref());
-        let req = if RequestMethod::POST == self.method {
-            let oauth::Request {
-                authorization,
-                data,
-            } = oauth.post_form(&self.endpoint, &self.parameters);
-
-            req.uri(self.endpoint.clone())
-                .header(AUTHORIZATION, authorization)
-                .header(
-                    CONTENT_TYPE,
-                    HeaderValue::from_static("application/x-www-form-urlencoded"),
-                )
-                .header(CONTENT_LENGTH, data.len())
-                .body(data.into_bytes().into())
-                .unwrap()
-        } else {
-            let oauth::Request {
-                authorization,
-                data: uri,
-            } = oauth.build(self.method.as_ref(), &self.endpoint, &self.parameters);
-
-            req.uri(uri)
-                .header(AUTHORIZATION, authorization)
-                .body(B::default())
-                .unwrap()
-        };
-
-        let response = client.call(req);
-        FutureTwitterStream { response }
-    }
-}
-
-impl<'a, C, A> Builder<'a, Token<C, A>> {
-    /// Reset the HTTP request method to be used when connecting
-    /// to the server.
-    pub fn method(&mut self, method: RequestMethod) -> &mut Self {
-        self.method = method;
-        self
-    }
-
-    /// Reset the API endpoint URI to be connected.
-    pub fn endpoint(&mut self, endpoint: Uri) -> &mut Self {
-        self.endpoint = endpoint;
-        self
-    }
-
-    /// Reset the token to be used to log into Twitter.
-    pub fn token(&mut self, token: Token<C, A>) -> &mut Self {
-        self.token = token;
-        self
-    }
-
-    /// Set whether to receive messages when in danger of
-    /// being disconnected.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#stall-warnings
-    pub fn stall_warnings(&mut self, stall_warnings: bool) -> &mut Self {
-        self.parameters.stall_warnings = stall_warnings;
-        self
-    }
-
-    /// Set the minimum `filter_level` Tweet attribute to receive.
-    /// The default is `FilterLevel::None`.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#filter-level
-    pub fn filter_level(&mut self, filter_level: impl Into<Option<FilterLevel>>) -> &mut Self {
-        self.parameters.filter_level = filter_level.into();
-        self
-    }
-
-    /// Set a comma-separated language identifiers to receive Tweets
-    /// written in the specified languages only.
-    ///
-    /// Setting an empty string will unset this parameter.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#language
-    pub fn language(&mut self, language: impl Into<Cow<'a, str>>) -> &mut Self {
-        self.parameters.language = language.into();
-        self
-    }
-
-    /// Set a list of user IDs to receive Tweets from the specified users.
-    ///
-    /// Setting an empty slice will unset this parameter.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#follow
-    pub fn follow(&mut self, follow: impl Into<Cow<'a, [u64]>>) -> &mut Self {
-        self.parameters.follow = follow.into();
-        self
-    }
-
-    /// A comma separated list of phrases to filter Tweets by.
-    ///
-    /// Setting an empty string will unset this parameter.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#track
-    pub fn track(&mut self, track: impl Into<Cow<'a, str>>) -> &mut Self {
-        self.parameters.track = track.into();
-        self
-    }
-
-    /// Set a list of bounding boxes to filter Tweets by.
-    ///
-    /// Setting an empty slice will unset this parameter.
-    ///
-    /// See [`BoundingBox`](types/struct.BoundingBox.html) and
-    /// the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
-    pub fn locations(&mut self, locations: impl Into<Cow<'a, [BoundingBox]>>) -> &mut Self {
-        self.parameters.locations = locations.into();
-        self
-    }
-
-    /// The `count` parameter.
-    /// This parameter requires elevated access to use.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#count
-    pub fn count(&mut self, count: impl Into<Option<i32>>) -> &mut Self {
-        self.parameters.count = count.into();
-        self
     }
 }
 

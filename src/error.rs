@@ -5,7 +5,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
 
-use crate::types::StatusCode;
+use http::StatusCode;
 
 /// An error occurred while trying to connect to a Stream.
 #[derive(Debug)]
