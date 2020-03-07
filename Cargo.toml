@@ -57,5 +57,6 @@ serde = { version = "1", features = ["derive"] }
 tokio = { version = "0.2", features = ["macros"] }
 tokio01 = { version = "0.1", package = "tokio" }
 # examples/timeout
+hyper-timeout = "0.3"
 native-tls = "0.2"
 pin-project = "0.4"
