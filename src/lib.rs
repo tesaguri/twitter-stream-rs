@@ -64,7 +64,6 @@ pub use crate::builder::Builder;
 pub use crate::error::Error;
 pub use crate::token::Token;
 
-use std::borrow::Borrow;
 use std::future::Future;
 use std::pin::Pin;
 use std::str;
@@ -110,8 +109,8 @@ impl<B: Body> TwitterStream<B> {
     /// This will panic if the underlying HTTPS connector failed to initialize.
     pub fn filter<C, A>(token: Token<C, A>) -> crate::hyper::FutureTwitterStream
     where
-        C: Borrow<str>,
-        A: Borrow<str>,
+        C: std::borrow::Borrow<str>,
+        A: std::borrow::Borrow<str>,
     {
         Builder::filter(token).listen()
     }
@@ -123,8 +122,8 @@ impl<B: Body> TwitterStream<B> {
     /// This will panic if the underlying HTTPS connector failed to initialize.
     pub fn sample<C, A>(token: Token<C, A>) -> crate::hyper::FutureTwitterStream
     where
-        C: Borrow<str>,
-        A: Borrow<str>,
+        C: std::borrow::Borrow<str>,
+        A: std::borrow::Borrow<str>,
     {
         Builder::sample(token).listen()
     }
