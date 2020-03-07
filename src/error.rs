@@ -18,17 +18,6 @@ pub enum Error<E = Box<dyn error::Error + Send + Sync>> {
     Service(E),
     /// Twitter returned a non-UTF-8 string.
     Utf8(Utf8Error),
-    /// User-defined error.
-    Custom(Box<dyn error::Error + Send + Sync>),
-}
-
-impl<E> Error<E> {
-    pub fn custom<C>(error: C) -> Self
-    where
-        C: Into<Box<dyn error::Error + Send + Sync>>,
-    {
-        Error::Custom(error.into())
-    }
 }
 
 impl<E: error::Error + 'static> error::Error for Error<E> {
@@ -40,7 +29,6 @@ impl<E: error::Error + 'static> error::Error for Error<E> {
             Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
             Service(ref e) => e.description(),
             Utf8(ref e) => e.description(),
-            Custom(ref e) => e.description(),
         }
     }
 
@@ -52,7 +40,6 @@ impl<E: error::Error + 'static> error::Error for Error<E> {
             Http(_) => None,
             Service(ref e) => Some(e),
             Utf8(ref e) => Some(e),
-            Custom(ref e) => Some(&**e),
         }
     }
 }
@@ -66,7 +53,6 @@ impl<E: Display> Display for Error<E> {
             Http(ref code) => Display::fmt(code, f),
             Service(ref e) => Display::fmt(e, f),
             Utf8(ref e) => Display::fmt(e, f),
-            Custom(ref e) => Display::fmt(e, f),
         }
     }
 }
