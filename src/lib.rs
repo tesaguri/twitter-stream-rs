@@ -7,7 +7,7 @@ A library for listening on Twitter Streaming API.
 
 ## Usage
 
-Add `twitter-stream` to your dependencies in your project's `Cargo.toml`:
+Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
