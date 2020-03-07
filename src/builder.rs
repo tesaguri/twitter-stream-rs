@@ -286,7 +286,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// Setting an empty slice will unset this parameter.
     ///
-    /// See [`BoundingBox`](types/struct.BoundingBox.html) and
+    /// See [`BoundingBox`](struct.BoundingBox.html) and
     /// the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#locations
@@ -315,7 +315,7 @@ impl BoundingBox {
     /// # Example
     ///
     /// ```rust
-    /// use twitter_stream::types::BoundingBox;
+    /// use twitter_stream::builder::BoundingBox;
     ///
     /// // Examples taken from Twitter's documentation.
     /// BoundingBox::new((-122.75, 36.8), (-121.75,37.8)); // San Francisco

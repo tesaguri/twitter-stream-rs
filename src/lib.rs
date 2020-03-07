@@ -29,7 +29,7 @@ use twitter_stream::Token;
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
 twitter_stream::Builder::filter(token)
-    .track(Some("@Twitter"))
+    .track("@Twitter")
     .listen()
     .try_flatten_stream()
     .try_for_each(|json| {
