@@ -21,17 +21,6 @@ pub enum Error<E = Box<dyn error::Error + Send + Sync>> {
 }
 
 impl<E: error::Error + 'static> error::Error for Error<E> {
-    fn description(&self) -> &str {
-        use crate::Error::*;
-
-        match *self {
-            Gzip(ref e) => e.description(),
-            Http(ref status) => status.canonical_reason().unwrap_or("<unknown status code>"),
-            Service(ref e) => e.description(),
-            Utf8(ref e) => e.description(),
-        }
-    }
-
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         use crate::Error::*;
 
@@ -49,9 +38,9 @@ impl<E: Display> Display for Error<E> {
         use crate::Error::*;
 
         match *self {
-            Gzip(ref e) => Display::fmt(e, f),
-            Http(ref code) => Display::fmt(code, f),
-            Service(ref e) => Display::fmt(e, f),
+            Gzip(ref e) => write!(f, "gzip error: {}", e),
+            Http(ref code) => write!(f, "HTTP status code: {}", code),
+            Service(ref e) => write!(f, "HTTP client error: {}", e),
             Utf8(ref e) => Display::fmt(e, f),
         }
     }
