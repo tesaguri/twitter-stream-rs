@@ -7,7 +7,7 @@ pub use http::Uri;
 use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Formatter};
 
-use http::header::{HeaderValue, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
+use http::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use http::Request;
 
 use crate::service::HttpService;
@@ -165,9 +165,13 @@ where
         S: HttpService<B>,
         B: Default + From<Vec<u8>>,
     {
-        let req = Request::builder()
-            .method(self.method.clone())
-            .header(ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
+        let req = Request::builder().method(self.method.clone());
+
+        #[cfg(feature = "gzip")]
+        let req = req.header(
+            http::header::ACCEPT_ENCODING,
+            HeaderValue::from_static("gzip"),
+        );
 
         let mut oauth = oauth::Builder::new(self.token.client.as_ref(), oauth::HmacSha1);
         oauth.token(self.token.token.as_ref());

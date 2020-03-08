@@ -19,7 +19,6 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-async-compression = { version = "0.3", default-features = false, features = ["gzip", "stream"] }
 bytes = "0.5"
 futures-core = "0.3"
 futures-util = "0.3"
@@ -32,11 +31,13 @@ pin-project-lite = "0.1"
 static_assertions = "1"
 string = "0.2"
 tower-service = "0.3"
+async-compression = { version = "0.3", default-features = false, features = ["stream"], optional = true }
 hyper-pkg = { version = "0.13", package = "hyper", default-features = false, optional = true }
 hyper-tls = { version = "0.4", optional = true }
 
 [features]
-default = ["hyper"]
+default = ["gzip", "hyper"]
+gzip = ["async-compression/gzip"]
 hyper = ["hyper-pkg/runtime", "hyper-tls"]
 
 [[example]]
