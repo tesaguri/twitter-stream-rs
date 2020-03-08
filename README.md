@@ -44,6 +44,22 @@ async fn main() {
 }
 ```
 
+## Alternatives
+
+[`egg-mode`], a Twitter API client crate, implements a Streaming API client as well. The following table shows key differences between `twitter-stream` and `egg-mode`.
+
+[`egg-mode`]: https://crates.io/crates/egg-mode
+
+|                          | `twitter-stream`                                 | `egg-mode`                             |
+| ------------------------ | ------------------------------------------------ | -------------------------------------- |
+| Streaming message type   | `string::String<bytes::Bytes>` (raw JSON string) | `StreamMessage` (deserialized message) |
+| REST API integration     | No                                               | Yes                                    |
+| Customizable HTTP client | Yes                                              | No                                     |
+
+If your application don't require explicit control over the raw JSON strings or underlying HTTP client, `egg-mode` may be a better choice.
+
+Note however that, as of this writing, the released version of `egg-mode` still uses `futures` v0.1.
+
 ## License
 
 This project is licensed under the MIT license ([LICENSE](LICENSE) or https://opensource.org/licenses/MIT) unless explicitly stated otherwise.
