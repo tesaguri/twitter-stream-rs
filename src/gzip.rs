@@ -50,13 +50,13 @@ mod imp {
         type Item = Result<Bytes, Error<E>>;
 
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-            let mut this = self.project();
-            // This cannot be `this.map_ok(..).map_err(..).poll_next(..)`
-            // because `this` is borrowed inside `map_err`.
-            this.inner.as_mut().poll_next(cx).map(|option| {
+            let mut inner = self.project().inner;
+            // This cannot be `Pin::new(&mut inner.map_err(..)).poll_next(cx)`
+            // because `inner` is borrowed inside `map_err`.
+            inner.as_mut().poll_next(cx).map(|option| {
                 option.map(|result| {
                     result.map_err(|e| {
-                        this.inner
+                        inner
                             .get_pin_mut()
                             .project()
                             .error
