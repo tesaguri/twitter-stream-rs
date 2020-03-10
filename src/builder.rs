@@ -21,13 +21,18 @@ use crate::FutureTwitterStream;
 ///
 /// ```rust,no_run
 /// use futures::prelude::*;
-/// use twitter_stream::Token;
+/// use twitter_stream::{builder::BoundingBox, Token};
 ///
 /// # #[tokio::main]
 /// # async fn main() {
 /// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 ///
-/// twitter_stream::Builder::sample(token)
+/// const TOKYO_WARDS: &'static [BoundingBox] = &[BoundingBox::new((139.56, 35.53), (139.92, 35.82))];
+///
+/// // Prints geolocated English Tweets associated with the special wards of Tokyo.
+/// twitter_stream::Builder::filter(token)
+///     .locations(TOKYO_WARDS)
+///     .language("en")
 ///     .listen()
 ///     .try_flatten_stream()
 ///     .try_for_each(|json| {

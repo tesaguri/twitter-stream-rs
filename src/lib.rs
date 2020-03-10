@@ -100,7 +100,10 @@ pin_project! {
 
 #[cfg(feature = "hyper")]
 impl crate::hyper::TwitterStream {
-    /// A shorthand for `Builder::filter(token).follow(follow).listen()`.
+    /// Connect to the filter stream, yielding Tweets from the users specified by `follow` argument.
+    ///
+    /// This is a shorthand for `Builder::filter(token).follow(follow).listen()`.
+    /// For more specific configurations, use [`Builder::filter`].
     ///
     /// # Panics
     ///
@@ -109,7 +112,11 @@ impl crate::hyper::TwitterStream {
         Builder::filter(token).follow(follow).listen()
     }
 
-    /// A shorthand for `Builder::filter(token).track(track).listen()`.
+    /// Connect to the filter stream, yielding Tweets that matches the query specified by
+    /// `track` argument.
+    ///
+    /// This is a shorthand for `Builder::filter(token).track(track).listen()`.
+    /// For more specific configurations, use [`Builder::filter`].
     ///
     /// # Panics
     ///
@@ -118,7 +125,10 @@ impl crate::hyper::TwitterStream {
         Builder::filter(token).track(track).listen()
     }
 
-    /// A shorthand for `Builder::sample(token).listen()`.
+    /// Connect to the sample stream, yielding a "small random sample" of all public Tweets.
+    ///
+    /// This is a shorthand for `Builder::sample(token).listen()`.
+    /// For more specific configurations, use [`Builder::sample`].
     ///
     /// # Panics
     ///
