@@ -39,13 +39,13 @@ enum StreamMessage {
     Other(de::IgnoredAny),
 }
 
-#[derive(Deserialize)]
 struct Tweet {
     created_at: String,
-    entities: Entities,
+    entities: Option<Entities>,
     id: u64,
     text: String,
     user: User,
+    is_retweet: bool,
 }
 
 #[derive(Deserialize)]
@@ -112,12 +112,11 @@ async fn main() {
     stream
         .try_for_each(move |json| {
             if let Ok(StreamMessage::Tweet(tweet)) = json::from_str(&json) {
-                if tweet.user.id != user.id
-                    && tweet
-                        .entities
-                        .user_mentions
-                        .iter()
-                        .any(|mention| mention.id == user.id)
+                if !tweet.is_retweet
+                    && tweet.user.id != user.id
+                    && tweet.entities.map_or(false, |e| {
+                        e.user_mentions.iter().any(|mention| mention.id == user.id)
+                    })
                 {
                     println!(
                         "On {}, @{} tweeted: {:?}",
@@ -134,4 +133,43 @@ async fn main() {
         })
         .await
         .unwrap();
+}
+
+// The custom `Deserialize` impl is needed to handle Tweets with >140 characters.
+// Once the Labs API is available, this impl should be unnecessary.
+impl<'de> Deserialize<'de> for Tweet {
+    fn deserialize<D: de::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Prototype {
+            created_at: String,
+            entities: Option<Entities>,
+            id: u64,
+            // Add the following attribute if you want to deserialize REST API responses too.
+            // #[serde(alias = "full_text")]
+            text: String,
+            user: User,
+            extended_tweet: Option<ExtendedTweet>,
+            retweeted_status: Option<de::IgnoredAny>,
+        }
+
+        #[derive(Deserialize)]
+        struct ExtendedTweet {
+            full_text: String,
+            entities: Option<Entities>,
+        }
+
+        Prototype::deserialize(d).map(|p| {
+            let (text, entities) = p
+                .extended_tweet
+                .map_or((p.text, p.entities), |e| (e.full_text, e.entities));
+            Ok(Tweet {
+                created_at: p.created_at,
+                entities: entities,
+                id: p.id,
+                text,
+                user: p.user,
+                is_retweet: p.retweeted_status.is_some(),
+            })
+        })?
+    }
 }
