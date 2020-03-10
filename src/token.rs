@@ -5,7 +5,9 @@ use oauth::Credentials;
 /// An OAuth token used to log into Twitter.
 #[derive(Copy, Clone, Debug)]
 pub struct Token<C = String, T = String> {
+    /// Client credentials (aka consumer key and consumer secret, or API key and API secret key)
     pub client: Credentials<C>,
+    /// Token credentials (aka access token and access token secret)
     pub token: Credentials<T>,
 }
 
