@@ -330,7 +330,7 @@ impl BoundingBox {
     /// BoundingBox::new((-122.75, 36.8), (-121.75,37.8)); // San Francisco
     /// BoundingBox::new((-74.0, 40.0), (-73.0, 41.0)); // New York City
     /// ```
-    pub fn new(
+    pub const fn new(
         (west_longitude, south_latitude): (f64, f64),
         (east_longitude, north_latitude): (f64, f64),
     ) -> Self {
