@@ -25,14 +25,13 @@ Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust
 use futures::prelude::*;
-use twitter_stream::Token;
+use twitter_stream::{Token, TwitterStream};
 
 #[tokio::main]
 async fn main() {
     let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-    twitter_stream::Builder::filter(token)
-        .track(Some("@Twitter"))
+    TwitterStream::track("@Twitter", token)
         .listen()
         .try_flatten_stream()
         .try_for_each(|json| {

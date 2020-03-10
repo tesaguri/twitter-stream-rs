@@ -30,6 +30,7 @@ use futures::prelude::*;
 use serde::de;
 use serde::Deserialize;
 use tokio01::runtime::current_thread::block_on_all as block_on_all01;
+use twitter_stream::TwitterStream;
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -97,10 +98,7 @@ async fn main() {
     let credential = File::open(credential_path).unwrap();
     let token = TokenDef::deserialize(&mut json::Deserializer::from_reader(credential)).unwrap();
 
-    let stream = twitter_stream::Builder::filter(token.as_ref())
-        .track(TRACK)
-        .listen()
-        .try_flatten_stream();
+    let stream = TwitterStream::track(TRACK, token.as_ref()).try_flatten_stream();
 
     let twitter_stream::Token { client, token } = token;
     let token = egg_mode::Token::Access {

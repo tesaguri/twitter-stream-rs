@@ -22,15 +22,13 @@ Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust,no_run
 use futures::prelude::*;
-use twitter_stream::Token;
+use twitter_stream::{Token, TwitterStream};
 
 # #[tokio::main]
 # async fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-twitter_stream::Builder::filter(token)
-    .track("@Twitter")
-    .listen()
+TwitterStream::track("@Twitter", token)
     .try_flatten_stream()
     .try_for_each(|json| {
         println!("{}", json);
@@ -101,30 +99,31 @@ pin_project! {
 }
 
 #[cfg(feature = "hyper")]
-impl<B: Body> TwitterStream<B> {
-    /// A shorthand for `Builder::filter().listen()`.
+impl crate::hyper::TwitterStream {
+    /// A shorthand for `Builder::filter(token).follow(follow).listen()`.
     ///
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn filter<C, A>(token: Token<C, A>) -> crate::hyper::FutureTwitterStream
-    where
-        C: std::borrow::Borrow<str>,
-        A: std::borrow::Borrow<str>,
-    {
-        Builder::filter(token).listen()
+    pub fn follow(follow: &[u64], token: Token<&str, &str>) -> crate::hyper::FutureTwitterStream {
+        Builder::filter(token).follow(follow).listen()
     }
 
-    /// A shorthand for `Builder::sample().listen()`.
+    /// A shorthand for `Builder::filter(token).track(track).listen()`.
     ///
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn sample<C, A>(token: Token<C, A>) -> crate::hyper::FutureTwitterStream
-    where
-        C: std::borrow::Borrow<str>,
-        A: std::borrow::Borrow<str>,
-    {
+    pub fn track(track: &str, token: Token<&str, &str>) -> crate::hyper::FutureTwitterStream {
+        Builder::filter(token).track(track).listen()
+    }
+
+    /// A shorthand for `Builder::sample(token).listen()`.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the underlying HTTPS connector failed to initialize.
+    pub fn sample(token: Token<&str, &str>) -> crate::hyper::FutureTwitterStream {
         Builder::sample(token).listen()
     }
 }
