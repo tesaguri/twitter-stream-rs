@@ -67,6 +67,7 @@ struct User {
     screen_name: String,
 }
 
+/// Represents a GET statuses/update request.
 #[derive(oauth::Authorize)]
 struct StatusUpdate<'a> {
     status: &'a str,
@@ -107,14 +108,14 @@ async fn main() {
     let mut client = hyper::Client::builder().build::<_, hyper::Body>(conn);
 
     let credential = File::open(credential_path).unwrap();
-    let token = TokenDef::deserialize(&mut json::Deserializer::from_reader(credential)).unwrap();
+    let token =
+        TokenDef::deserialize(&mut serde_json::Deserializer::from_reader(credential)).unwrap();
 
     let mut oauth = oauth::Builder::new(token.client.as_ref(), oauth::HmacSha1);
     oauth.token(token.token.as_ref());
 
     // Information of the authenticated user:
     let user = verify_credentials(&oauth, &client).await;
-    let user_id = user.id;
 
     let mut stream = twitter_stream::Builder::filter(token.as_ref())
         .track(format!("@{}", user.screen_name))
@@ -122,11 +123,11 @@ async fn main() {
         .try_flatten_stream();
 
     while let Some(json) = stream.next().await {
-        if let Ok(StreamMessage::Tweet(tweet)) = json::from_str(&json.unwrap()) {
+        if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json.unwrap()) {
             if !tweet.is_retweet
-                && tweet.user.id != user_id
+                && tweet.user.id != user.id
                 && tweet.entities.map_or(false, |e| {
-                    e.user_mentions.iter().any(|mention| mention.id == user_id)
+                    e.user_mentions.iter().any(|mention| mention.id == user.id)
                 })
             {
                 // Send a reply
@@ -167,18 +168,19 @@ impl<'de> Deserialize<'de> for Tweet {
             let (text, entities) = p
                 .extended_tweet
                 .map_or((p.text, p.entities), |e| (e.full_text, e.entities));
-            Ok(Tweet {
+            Tweet {
                 entities: entities,
                 id: p.id,
                 text,
                 user: p.user,
                 is_retweet: p.retweeted_status.is_some(),
-            })
-        })?
+            }
+        })
     }
 }
 
 impl<'a> StatusUpdate<'a> {
+    /// Performs the GET statuses/update request.
     fn send(
         &self,
         oauth: &oauth::Builder<'_, oauth::HmacSha1, &str>,
@@ -203,6 +205,7 @@ impl<'a> StatusUpdate<'a> {
     }
 }
 
+/// Performs a GET account/verify_credentials request.
 fn verify_credentials(
     oauth: &oauth::Builder<'_, oauth::HmacSha1, &str>,
     client: &hyper::Client<HttpsConnector>,
@@ -232,6 +235,6 @@ fn parse_response<T: de::DeserializeOwned>(
                 vec.extend_from_slice(&chunk);
                 async { Ok(vec) }
             })
-            .map(|body| json::from_slice(&body.unwrap()).unwrap())
+            .map(|body| serde_json::from_slice(&body.unwrap()).unwrap())
     })
 }
