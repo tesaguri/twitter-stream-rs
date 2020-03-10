@@ -52,11 +52,9 @@ hyper-pkg = { version = "0.13", package = "hyper", default-features = false }
 tower = "0.3"
 version-sync = "0.8"
 # examples/echo_bot
-egg-mode = "0.13"
 json = { version = "1", package = "serde_json" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "0.2", features = ["macros"] }
-tokio01 = { version = "0.1", package = "tokio" }
 # examples/timeout
 hyper-timeout = "0.3"
 native-tls = "0.2"

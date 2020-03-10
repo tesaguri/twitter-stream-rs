@@ -23,14 +23,18 @@
 //
 // For more information, please refer to <http://unlicense.org/>
 
+// This line shouldn't be necessary in a real project.
+extern crate hyper_pkg as hyper;
+
 use std::fs::File;
 use std::path::PathBuf;
+use std::pin::Pin;
 
 use futures::prelude::*;
+use http::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use http_body::Body as _;
 use serde::de;
 use serde::Deserialize;
-use tokio01::runtime::current_thread::block_on_all as block_on_all01;
-use twitter_stream::TwitterStream;
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -40,7 +44,6 @@ enum StreamMessage {
 }
 
 struct Tweet {
-    created_at: String,
     entities: Option<Entities>,
     id: u64,
     text: String,
@@ -62,6 +65,12 @@ struct UserMention {
 struct User {
     id: u64,
     screen_name: String,
+}
+
+#[derive(oauth::Authorize)]
+struct StatusUpdate<'a> {
+    status: &'a str,
+    in_reply_to_status_id: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -87,52 +96,49 @@ impl From<TokenDef> for twitter_stream::Token {
     }
 }
 
+type HttpsConnector = hyper_tls::HttpsConnector<hyper::client::HttpConnector>;
+
 #[tokio::main]
 async fn main() {
-    const TRACK: &str = "@NAME_OF_YOUR_ACCOUNT";
-
     let mut credential_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    credential_path.pop();
     credential_path.push("credential.json");
+
+    let conn = HttpsConnector::new();
+    let mut client = hyper::Client::builder().build::<_, hyper::Body>(conn);
 
     let credential = File::open(credential_path).unwrap();
     let token = TokenDef::deserialize(&mut json::Deserializer::from_reader(credential)).unwrap();
 
-    let stream = TwitterStream::track(TRACK, token.as_ref()).try_flatten_stream();
-
-    let twitter_stream::Token { client, token } = token;
-    let token = egg_mode::Token::Access {
-        consumer: egg_mode::KeyPair::new(client.identifier, client.secret),
-        access: egg_mode::KeyPair::new(token.identifier, token.secret),
-    };
+    let mut oauth = oauth::Builder::new(token.client.as_ref(), oauth::HmacSha1);
+    oauth.token(token.token.as_ref());
 
     // Information of the authenticated user:
-    let user = block_on_all01(egg_mode::verify_tokens(&token)).unwrap();
+    let user = verify_credentials(&oauth, &client).await;
+    let user_id = user.id;
 
-    stream
-        .try_for_each(move |json| {
-            if let Ok(StreamMessage::Tweet(tweet)) = json::from_str(&json) {
-                if !tweet.is_retweet
-                    && tweet.user.id != user.id
-                    && tweet.entities.map_or(false, |e| {
-                        e.user_mentions.iter().any(|mention| mention.id == user.id)
-                    })
-                {
-                    println!(
-                        "On {}, @{} tweeted: {:?}",
-                        tweet.created_at, tweet.user.screen_name, tweet.text
-                    );
+    let mut stream = twitter_stream::Builder::filter(token.as_ref())
+        .track(format!("@{}", user.screen_name))
+        .listen_with_client(&mut client)
+        .try_flatten_stream();
 
-                    let response = format!("@{} {}", tweet.user.screen_name, tweet.text);
-                    let response = egg_mode::tweet::DraftTweet::new(response).in_reply_to(tweet.id);
-                    block_on_all01(response.send(&token)).unwrap();
+    while let Some(json) = stream.next().await {
+        if let Ok(StreamMessage::Tweet(tweet)) = json::from_str(&json.unwrap()) {
+            if !tweet.is_retweet
+                && tweet.user.id != user_id
+                && tweet.entities.map_or(false, |e| {
+                    e.user_mentions.iter().any(|mention| mention.id == user_id)
+                })
+            {
+                // Send a reply
+                let tweeting = StatusUpdate {
+                    status: &format!("@{} {}", tweet.user.screen_name, tweet.text),
+                    in_reply_to_status_id: Some(tweet.id),
                 }
+                .send(&oauth, &client);
+                tokio::spawn(tweeting);
             }
-
-            future::ok(())
-        })
-        .await
-        .unwrap();
+        }
+    }
 }
 
 // The custom `Deserialize` impl is needed to handle Tweets with >140 characters.
@@ -141,7 +147,6 @@ impl<'de> Deserialize<'de> for Tweet {
     fn deserialize<D: de::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct Prototype {
-            created_at: String,
             entities: Option<Entities>,
             id: u64,
             // Add the following attribute if you want to deserialize REST API responses too.
@@ -163,7 +168,6 @@ impl<'de> Deserialize<'de> for Tweet {
                 .extended_tweet
                 .map_or((p.text, p.entities), |e| (e.full_text, e.entities));
             Ok(Tweet {
-                created_at: p.created_at,
                 entities: entities,
                 id: p.id,
                 text,
@@ -172,4 +176,62 @@ impl<'de> Deserialize<'de> for Tweet {
             })
         })?
     }
+}
+
+impl<'a> StatusUpdate<'a> {
+    fn send(
+        &self,
+        oauth: &oauth::Builder<'_, oauth::HmacSha1, &str>,
+        client: &hyper::Client<HttpsConnector>,
+    ) -> impl Future<Output = ()> {
+        const URI: &str = "https://api.twitter.com/1.1/statuses/update.json";
+
+        let oauth::Request {
+            authorization,
+            data: form,
+        } = oauth.build("POST", URI, self);
+        let req = http::Request::post(http::Uri::from_static(URI))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/x-www-form-urlencoded"),
+            )
+            .header(AUTHORIZATION, authorization)
+            .body(form.into())
+            .unwrap();
+
+        parse_response::<de::IgnoredAny>(client.request(req)).map(|_| ())
+    }
+}
+
+fn verify_credentials(
+    oauth: &oauth::Builder<'_, oauth::HmacSha1, &str>,
+    client: &hyper::Client<HttpsConnector>,
+) -> impl Future<Output = User> {
+    const URI: &str = "https://api.twitter.com/1.1/account/verify_credentials.json";
+
+    let oauth::Request { authorization, .. } = oauth.build("GET", URI, ());
+    let req = http::Request::get(http::Uri::from_static(URI))
+        .header(AUTHORIZATION, authorization)
+        .body(Default::default())
+        .unwrap();
+
+    parse_response(client.request(req))
+}
+
+fn parse_response<T: de::DeserializeOwned>(
+    res: hyper::client::ResponseFuture,
+) -> impl Future<Output = T> {
+    res.then(|res| {
+        let mut res = res.unwrap();
+        if !res.status().is_success() {
+            panic!("HTTP error: {}", res.status());
+        }
+
+        stream::poll_fn(move |cx| Pin::new(&mut res).poll_data(cx))
+            .try_fold(Vec::new(), |mut vec, chunk| {
+                vec.extend_from_slice(&chunk);
+                async { Ok(vec) }
+            })
+            .map(|body| json::from_slice(&body.unwrap()).unwrap())
+    })
 }
