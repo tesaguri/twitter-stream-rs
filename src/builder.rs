@@ -174,46 +174,15 @@ where
     pub fn listen_with_client<S, B>(&self, mut client: S) -> FutureTwitterStream<S::Future>
     where
         S: HttpService<B>,
-        B: Default + From<Vec<u8>>,
+        B: From<Vec<u8>>,
     {
-        let req = Request::builder().method(self.method.clone());
-
-        #[cfg(feature = "gzip")]
-        let req = req.header(
-            http::header::ACCEPT_ENCODING,
-            HeaderValue::from_static("gzip"),
+        let req = prepare_request(
+            &self.method,
+            &self.endpoint,
+            self.token.as_ref(),
+            &self.parameters,
         );
-
-        let mut oauth = oauth::Builder::new(self.token.client.as_ref(), oauth::HmacSha1);
-        oauth.token(self.token.token.as_ref());
-        let req = if RequestMethod::POST == self.method {
-            let oauth::Request {
-                authorization,
-                data,
-            } = oauth.post_form(&self.endpoint, &self.parameters);
-
-            req.uri(self.endpoint.clone())
-                .header(AUTHORIZATION, authorization)
-                .header(
-                    CONTENT_TYPE,
-                    HeaderValue::from_static("application/x-www-form-urlencoded"),
-                )
-                .header(CONTENT_LENGTH, data.len())
-                .body(data.into_bytes().into())
-                .unwrap()
-        } else {
-            let oauth::Request {
-                authorization,
-                data: uri,
-            } = oauth.build(self.method.as_ref(), &self.endpoint, &self.parameters);
-
-            req.uri(uri)
-                .header(AUTHORIZATION, authorization)
-                .body(B::default())
-                .unwrap()
-        };
-
-        let response = client.call(req);
+        let response = client.call(req.map(Into::into));
         FutureTwitterStream { response }
     }
 }
@@ -391,6 +360,51 @@ impl std::default::Default for FilterLevel {
 impl std::fmt::Display for FilterLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         AsRef::<str>::as_ref(self).fmt(f)
+    }
+}
+
+fn prepare_request(
+    method: &RequestMethod,
+    endpoint: &Uri,
+    token: Token<&str, &str>,
+    parameters: &Parameters,
+) -> http::Request<Vec<u8>> {
+    let req = Request::builder().method(method.clone());
+
+    #[cfg(feature = "gzip")]
+    let req = req.header(
+        http::header::ACCEPT_ENCODING,
+        HeaderValue::from_static("gzip"),
+    );
+
+    let mut oauth = oauth::Builder::new(token.client.as_ref(), oauth::HmacSha1);
+    oauth.token(token.token.as_ref());
+
+    if RequestMethod::POST == method {
+        let oauth::Request {
+            authorization,
+            data,
+        } = oauth.post_form(endpoint, parameters);
+
+        req.uri(endpoint.clone())
+            .header(AUTHORIZATION, authorization)
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/x-www-form-urlencoded"),
+            )
+            .header(CONTENT_LENGTH, data.len())
+            .body(data.into_bytes())
+            .unwrap()
+    } else {
+        let oauth::Request {
+            authorization,
+            data: uri,
+        } = oauth.build(method.as_ref(), endpoint, parameters);
+
+        req.uri(uri)
+            .header(AUTHORIZATION, authorization)
+            .body(Default::default())
+            .unwrap()
     }
 }
 
