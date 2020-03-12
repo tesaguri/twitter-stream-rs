@@ -16,6 +16,7 @@ jobs:
           - '1.40.0'
         features:
           - ''
+          - gzip
           - hyper
     steps:
       - uses: actions/checkout@v2
@@ -54,6 +55,7 @@ jobs:
           command: check
           args: --verbose --no-default-features --features=${{ matrix.features }}
       - name: Check Rustdoc
+        if: matrix.features == 'hyper'
         uses: actions-rs/cargo@v1
         with:
           command: doc
