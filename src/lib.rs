@@ -28,7 +28,7 @@ use twitter_stream::{Token, TwitterStream};
 # async fn main() {
 let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 
-TwitterStream::track("@Twitter", token)
+TwitterStream::track("@Twitter", &token)
     .try_flatten_stream()
     .try_for_each(|json| {
         println!("{}", json);
@@ -78,6 +78,7 @@ use http::StatusCode;
 use http_body::Body;
 use pin_project_lite::pin_project;
 
+use crate::builder::BoundingBox;
 use crate::gzip::MaybeGzip;
 use crate::util::{HttpBodyAsStream, Lines};
 
@@ -107,8 +108,12 @@ impl crate::hyper::TwitterStream {
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn follow(follow: &[u64], token: Token<&str, &str>) -> crate::hyper::FutureTwitterStream {
-        Builder::filter(token).follow(follow).listen()
+    pub fn follow<C, A>(follow: &[u64], token: &Token<C, A>) -> crate::hyper::FutureTwitterStream
+    where
+        C: std::borrow::Borrow<str>,
+        A: std::borrow::Borrow<str>,
+    {
+        Builder::filter(token.as_ref()).follow(follow).listen()
     }
 
     /// Connect to the filter stream, yielding Tweets that matches the query specified by
@@ -120,8 +125,34 @@ impl crate::hyper::TwitterStream {
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn track(track: &str, token: Token<&str, &str>) -> crate::hyper::FutureTwitterStream {
-        Builder::filter(token).track(track).listen()
+    pub fn track<C, A>(track: &str, token: &Token<C, A>) -> crate::hyper::FutureTwitterStream
+    where
+        C: std::borrow::Borrow<str>,
+        A: std::borrow::Borrow<str>,
+    {
+        Builder::filter(token.as_ref()).track(track).listen()
+    }
+
+    /// Connect to the filter stream, yielding geolocated Tweets falling within the specified
+    /// bounding boxes.
+    ///
+    /// This is a shorthand for `Builder::filter(token).locations(locations).listen()`.
+    /// For more specific configurations, use [`Builder::filter`].
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the underlying HTTPS connector failed to initialize.
+    pub fn locations<C, A>(
+        locations: &[BoundingBox],
+        token: &Token<C, A>,
+    ) -> crate::hyper::FutureTwitterStream
+    where
+        C: std::borrow::Borrow<str>,
+        A: std::borrow::Borrow<str>,
+    {
+        Builder::filter(token.as_ref())
+            .locations(locations)
+            .listen()
     }
 
     /// Connect to the sample stream, yielding a "small random sample" of all public Tweets.
@@ -132,8 +163,12 @@ impl crate::hyper::TwitterStream {
     /// # Panics
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
-    pub fn sample(token: Token<&str, &str>) -> crate::hyper::FutureTwitterStream {
-        Builder::sample(token).listen()
+    pub fn sample<C, A>(token: &Token<C, A>) -> crate::hyper::FutureTwitterStream
+    where
+        C: std::borrow::Borrow<str>,
+        A: std::borrow::Borrow<str>,
+    {
+        Builder::sample(token.as_ref()).listen()
     }
 }
 
