@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 
 use oauth::Credentials;
 
-/// An OAuth token used to log into Twitter.
+/// An OAuth token used to authenticate to Twitter.
 #[derive(Copy, Clone, Debug)]
 pub struct Token<C = String, T = String> {
     /// Client credentials (aka consumer key and consumer secret, or API key and API secret key)
@@ -12,6 +12,7 @@ pub struct Token<C = String, T = String> {
 }
 
 impl<C: Borrow<str>, T: Borrow<str>> Token<C, T> {
+    /// Creates a new `Token` with the specified client credentials and token credentials.
     pub fn new(
         client_identifier: C,
         client_secret: C,
@@ -23,6 +24,7 @@ impl<C: Borrow<str>, T: Borrow<str>> Token<C, T> {
         Self::from_credentials(client, token)
     }
 
+    /// Creates a new `Token` from `Credentials`.
     pub fn from_credentials(client: Credentials<C>, token: Credentials<T>) -> Self {
         Self { client, token }
     }

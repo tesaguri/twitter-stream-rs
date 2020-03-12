@@ -42,6 +42,7 @@ TwitterStream::track("@Twitter", token)
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(intra_doc_link_resolution_failure)]
+#![warn(missing_docs)]
 
 #[macro_use]
 mod util;
@@ -81,8 +82,7 @@ use crate::gzip::MaybeGzip;
 use crate::util::{HttpBodyAsStream, Lines};
 
 pin_project! {
-    /// A future returned by constructor methods
-    /// which resolves to a `TwitterStream`.
+    /// A future returned by constructor methods which resolves to a [`TwitterStream`].
     pub struct FutureTwitterStream<F> {
         #[pin]
         response: F,
@@ -90,8 +90,7 @@ pin_project! {
 }
 
 pin_project! {
-    /// A listener for Twitter Streaming API.
-    /// It yields JSON strings returned from the API.
+    /// A listener for Twitter Streaming API, yielding JSON strings returned from the API.
     pub struct TwitterStream<B: Body> {
         #[pin]
         inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,

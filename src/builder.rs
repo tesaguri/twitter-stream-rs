@@ -1,4 +1,4 @@
-//! Builder type for `TwitterStream`.
+//! Builder type for [`TwitterStream`](crate::TwitterStream).
 
 pub use http::Method as RequestMethod;
 pub use http::StatusCode;
@@ -15,7 +15,7 @@ use crate::token::Token;
 use crate::util::fmt_join;
 use crate::FutureTwitterStream;
 
-/// A builder for `TwitterStream`.
+/// A builder for [`TwitterStream`](crate::TwitterStream).
 ///
 /// ## Example
 ///
@@ -86,11 +86,16 @@ pub struct BoundingBox {
 }
 
 str_enum! {
-    /// Represents the `filter_level` parameter in API requests.
+    /// Represents the [`filter_level`] parameter in API requests.
+    ///
+    /// [`filter_level`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#filter-level
     #[derive(Clone, Debug, PartialEq, Hash, Eq)]
     pub enum FilterLevel {
+        /// `"none"`
         None = "none",
+        /// `"low"`
         Low = "low",
+        /// `"medium"`
         Medium = "medium",
     }
 }
@@ -143,7 +148,8 @@ where
         self.listen_with_client(hyper_pkg::Client::builder().build::<_, hyper_pkg::Body>(conn))
     }
 
-    /// Same as `listen` except that it uses `client` to make HTTP request to the endpoint.
+    /// Same as [`listen`](Builder::listen) except that it uses `client` to make HTTP request
+    /// to the endpoint.
     ///
     /// # Panics
     ///
@@ -213,8 +219,7 @@ where
 }
 
 impl<'a, C, A> Builder<'a, Token<C, A>> {
-    /// Reset the HTTP request method to be used when connecting
-    /// to the server.
+    /// Reset the HTTP request method to be used when connecting to the server.
     pub fn method(&mut self, method: RequestMethod) -> &mut Self {
         self.method = method;
         self
@@ -232,8 +237,7 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
         self
     }
 
-    /// Set whether to receive messages when in danger of
-    /// being disconnected.
+    /// Set whether to receive messages when in danger of being disconnected.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
@@ -271,6 +275,8 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// Setting an empty slice will unset this parameter.
     ///
+    /// This parameter is only available for the `filter` streams.
+    ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#follow
@@ -283,6 +289,8 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// Setting an empty string will unset this parameter.
     ///
+    /// This parameter is only available for the `filter` streams.
+    ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#track
@@ -294,6 +302,8 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Set a list of bounding boxes to filter Tweets by.
     ///
     /// Setting an empty slice will unset this parameter.
+    ///
+    /// This parameter is only available for the `filter` streams.
     ///
     /// See [`BoundingBox`](struct.BoundingBox.html) and
     /// the [Twitter Developer Documentation][1] for more information.
@@ -327,7 +337,7 @@ impl BoundingBox {
     /// use twitter_stream::builder::BoundingBox;
     ///
     /// // Examples taken from Twitter's documentation.
-    /// BoundingBox::new((-122.75, 36.8), (-121.75,37.8)); // San Francisco
+    /// BoundingBox::new((-122.75, 36.8), (-121.75, 37.8)); // San Francisco
     /// BoundingBox::new((-74.0, 40.0), (-73.0, 41.0)); // New York City
     /// ```
     pub const fn new(
