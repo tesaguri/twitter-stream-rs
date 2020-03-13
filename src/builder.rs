@@ -188,14 +188,9 @@ where
 }
 
 impl<'a, C, A> Builder<'a, Token<C, A>> {
-    /// Reset the HTTP request method to be used when connecting to the server.
-    pub fn method(&mut self, method: RequestMethod) -> &mut Self {
+    /// Set the API endpoint URI to be connected.
+    pub fn endpoint(&mut self, method: RequestMethod, endpoint: Uri) -> &mut Self {
         self.method = method;
-        self
-    }
-
-    /// Reset the API endpoint URI to be connected.
-    pub fn endpoint(&mut self, endpoint: Uri) -> &mut Self {
         self.endpoint = endpoint;
         self
     }
