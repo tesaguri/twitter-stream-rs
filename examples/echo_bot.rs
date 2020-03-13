@@ -117,7 +117,7 @@ async fn main() {
     // Information of the authenticated user:
     let user = verify_credentials(&oauth, &client).await;
 
-    let mut stream = twitter_stream::Builder::filter(token.as_ref())
+    let mut stream = twitter_stream::Builder::new(token.as_ref())
         .track(format!("@{}", user.screen_name))
         .listen_with_client(&mut client)
         .try_flatten_stream();

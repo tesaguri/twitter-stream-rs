@@ -98,12 +98,23 @@ pin_project! {
     }
 }
 
+impl<B: Body> TwitterStream<B> {
+    /// Creates a `Builder` for `TwitterStream`.
+    pub fn builder<'a, C, A>(token: Token<C, A>) -> Builder<'a, Token<C, A>>
+    where
+        C: std::borrow::Borrow<str>,
+        A: std::borrow::Borrow<str>,
+    {
+        Builder::new(token)
+    }
+}
+
 #[cfg(feature = "hyper")]
 impl crate::hyper::TwitterStream {
     /// Connect to the filter stream, yielding Tweets from the users specified by `follow` argument.
     ///
-    /// This is a shorthand for `Builder::filter(token).follow(follow).listen()`.
-    /// For more specific configurations, use [`Builder::filter`].
+    /// This is a shorthand for `Builder::new(token).follow(follow).listen()`.
+    /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics
     ///
@@ -113,14 +124,14 @@ impl crate::hyper::TwitterStream {
         C: std::borrow::Borrow<str>,
         A: std::borrow::Borrow<str>,
     {
-        Builder::filter(token.as_ref()).follow(follow).listen()
+        Builder::new(token.as_ref()).follow(follow).listen()
     }
 
     /// Connect to the filter stream, yielding Tweets that matches the query specified by
     /// `track` argument.
     ///
-    /// This is a shorthand for `Builder::filter(token).track(track).listen()`.
-    /// For more specific configurations, use [`Builder::filter`].
+    /// This is a shorthand for `Builder::new(token).track(track).listen()`.
+    /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics
     ///
@@ -130,14 +141,14 @@ impl crate::hyper::TwitterStream {
         C: std::borrow::Borrow<str>,
         A: std::borrow::Borrow<str>,
     {
-        Builder::filter(token.as_ref()).track(track).listen()
+        Builder::new(token.as_ref()).track(track).listen()
     }
 
     /// Connect to the filter stream, yielding geolocated Tweets falling within the specified
     /// bounding boxes.
     ///
-    /// This is a shorthand for `Builder::filter(token).locations(locations).listen()`.
-    /// For more specific configurations, use [`Builder::filter`].
+    /// This is a shorthand for `Builder::new(token).locations(locations).listen()`.
+    /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics
     ///
@@ -150,15 +161,13 @@ impl crate::hyper::TwitterStream {
         C: std::borrow::Borrow<str>,
         A: std::borrow::Borrow<str>,
     {
-        Builder::filter(token.as_ref())
-            .locations(locations)
-            .listen()
+        Builder::new(token.as_ref()).locations(locations).listen()
     }
 
     /// Connect to the sample stream, yielding a "small random sample" of all public Tweets.
     ///
-    /// This is a shorthand for `Builder::sample(token).listen()`.
-    /// For more specific configurations, use [`Builder::sample`].
+    /// This is a shorthand for `Builder::new(token).listen()`.
+    /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics
     ///
@@ -168,7 +177,7 @@ impl crate::hyper::TwitterStream {
         C: std::borrow::Borrow<str>,
         A: std::borrow::Borrow<str>,
     {
-        Builder::sample(token.as_ref()).listen()
+        Builder::new(token.as_ref()).listen()
     }
 }
 

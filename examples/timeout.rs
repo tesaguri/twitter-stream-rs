@@ -53,7 +53,7 @@ async fn main() {
 
     let client = hyper::Client::builder().build::<_, hyper::Body>(conn);
 
-    let result = twitter_stream::Builder::filter(token)
+    let result = twitter_stream::Builder::new(token)
         .track("@Twitter")
         .listen_with_client(client)
         .try_flatten_stream()

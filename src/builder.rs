@@ -17,6 +17,19 @@ use crate::FutureTwitterStream;
 
 /// A builder for [`TwitterStream`](crate::TwitterStream).
 ///
+/// The Streaming API has two different endpoints: [`POST statuses/filter`] and
+/// [`GET statuses/sample`]. `Builder` automatically determines which endpoint to use based on the
+/// specified parameters. Specifically, when any of [`follow`][Builder::follow],
+/// [`track`][Builder::track] and [`locations`][Builder::locations] parameter is specified,
+/// `filter` will be used, and when none is specified, `sample` will be used.
+///
+/// [`POST statuses/filter`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
+/// [`GET statuses/sample`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
+///
+///
+/// `filter` yields public Tweets that match the filter predicates specified the parameters,
+/// and `sample` yields "a small random sample" of all public Tweets.
+///
 /// ## Example
 ///
 /// ```rust,no_run
@@ -30,7 +43,7 @@ use crate::FutureTwitterStream;
 /// const TOKYO_WARDS: &'static [BoundingBox] = &[BoundingBox::new((139.56, 35.53), (139.92, 35.82))];
 ///
 /// // Prints geolocated English Tweets associated with the special wards of Tokyo.
-/// twitter_stream::Builder::filter(token)
+/// twitter_stream::Builder::new(token)
 ///     .locations(TOKYO_WARDS)
 ///     .language("en")
 ///     .listen()
@@ -45,9 +58,8 @@ use crate::FutureTwitterStream;
 /// ```
 #[derive(Clone, Debug)]
 pub struct Builder<'a, T = Token> {
-    method: RequestMethod,
-    endpoint: Uri,
     token: T,
+    endpoint: Option<(RequestMethod, Uri)>,
     parameters: Parameters<'a>,
 }
 
@@ -100,19 +112,33 @@ str_enum! {
     }
 }
 
+const FILTER: &str = "https://stream.twitter.com/1.1/statuses/filter.json";
+const SAMPLE: &str = "https://stream.twitter.com/1.1/statuses/sample.json";
+
 impl<'a, C, A> Builder<'a, Token<C, A>>
 where
     C: Borrow<str>,
     A: Borrow<str>,
 {
+    /// Creates a builder.
+    pub fn new(token: Token<C, A>) -> Self {
+        Builder {
+            token,
+            endpoint: None,
+            parameters: Parameters::default(),
+        }
+    }
+
     /// Create a builder for `POST statuses/filter` endpoint.
     ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
+    #[deprecated(since = "0.10.0", note = "Use `Builder::new` instead")]
     pub fn filter(token: Token<C, A>) -> Self {
-        const URI: &str = "https://stream.twitter.com/1.1/statuses/filter.json";
-        Self::custom(RequestMethod::POST, Uri::from_static(URI), token)
+        let mut ret = Self::new(token);
+        ret.endpoint((RequestMethod::POST, Uri::from_static(FILTER)));
+        ret
     }
 
     /// Create a builder for `GET statuses/sample` endpoint.
@@ -120,19 +146,11 @@ where
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
+    #[deprecated(since = "0.10.0", note = "Use `Builder::new` instead")]
     pub fn sample(token: Token<C, A>) -> Self {
-        const URI: &str = "https://stream.twitter.com/1.1/statuses/sample.json";
-        Self::custom(RequestMethod::GET, Uri::from_static(URI), token)
-    }
-
-    /// Constructs a builder for a Stream at a custom endpoint.
-    pub fn custom(method: RequestMethod, endpoint: Uri, token: Token<C, A>) -> Self {
-        Self {
-            method,
-            endpoint,
-            token,
-            parameters: Parameters::default(),
-        }
+        let mut ret = Self::new(token);
+        ret.endpoint((RequestMethod::GET, Uri::from_static(SAMPLE)));
+        ret
     }
 
     /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
@@ -177,21 +195,22 @@ where
         B: From<Vec<u8>>,
     {
         let req = prepare_request(
-            &self.method,
-            &self.endpoint,
+            self.endpoint.as_ref(),
             self.token.as_ref(),
             &self.parameters,
         );
         let response = client.call(req.map(Into::into));
+
         FutureTwitterStream { response }
     }
 }
 
 impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Set the API endpoint URI to be connected.
-    pub fn endpoint(&mut self, method: RequestMethod, endpoint: Uri) -> &mut Self {
-        self.method = method;
-        self.endpoint = endpoint;
+    ///
+    /// This overrides the default behavior of automatically determining the endpoint to use.
+    pub fn endpoint(&mut self, endpoint: impl Into<Option<(RequestMethod, Uri)>>) -> &mut Self {
+        self.endpoint = endpoint.into();
         self
     }
 
@@ -239,8 +258,6 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// Setting an empty slice will unset this parameter.
     ///
-    /// This parameter is only available for the `filter` streams.
-    ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#follow
@@ -253,8 +270,6 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     ///
     /// Setting an empty string will unset this parameter.
     ///
-    /// This parameter is only available for the `filter` streams.
-    ///
     /// See the [Twitter Developer Documentation][1] for more information.
     ///
     /// [1]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/basic-stream-parameters#track
@@ -266,8 +281,6 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     /// Set a list of bounding boxes to filter Tweets by.
     ///
     /// Setting an empty slice will unset this parameter.
-    ///
-    /// This parameter is only available for the `filter` streams.
     ///
     /// See [`BoundingBox`](struct.BoundingBox.html) and
     /// the [Twitter Developer Documentation][1] for more information.
@@ -359,11 +372,24 @@ impl std::fmt::Display for FilterLevel {
 }
 
 fn prepare_request(
-    method: &RequestMethod,
-    endpoint: &Uri,
+    endpoint: Option<&(RequestMethod, Uri)>,
     token: Token<&str, &str>,
     parameters: &Parameters,
 ) -> http::Request<Vec<u8>> {
+    let uri;
+    let (method, endpoint) = if let Some(&(ref method, ref endpoint)) = endpoint {
+        (method, endpoint)
+    } else if parameters.follow.is_empty()
+        && parameters.track.is_empty()
+        && parameters.locations.is_empty()
+    {
+        uri = Uri::from_static(SAMPLE);
+        (&RequestMethod::GET, &uri)
+    } else {
+        uri = Uri::from_static(FILTER);
+        (&RequestMethod::POST, &uri)
+    };
+
     let req = Request::builder().method(method.clone());
 
     #[cfg(feature = "gzip")]
