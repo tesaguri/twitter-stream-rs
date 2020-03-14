@@ -40,7 +40,6 @@
 //! ```
 
 pub use http::Method as RequestMethod;
-pub use http::StatusCode;
 pub use http::Uri;
 
 use std::borrow::{Borrow, Cow};

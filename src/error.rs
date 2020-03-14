@@ -1,11 +1,11 @@
 //! Error type
 
+pub use http::StatusCode;
+
 use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::str::Utf8Error;
-
-use http::StatusCode;
 
 /// An error occurred while trying to connect to a Stream.
 #[derive(Debug)]
