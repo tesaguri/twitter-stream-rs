@@ -78,7 +78,6 @@ use http::StatusCode;
 use http_body::Body;
 use pin_project_lite::pin_project;
 
-use crate::builder::BoundingBox;
 use crate::gzip::MaybeGzip;
 use crate::util::{HttpBodyAsStream, Lines};
 
@@ -154,7 +153,7 @@ impl crate::hyper::TwitterStream {
     ///
     /// This will panic if the underlying HTTPS connector failed to initialize.
     pub fn locations<C, A>(
-        locations: &[BoundingBox],
+        locations: &[builder::BoundingBox],
         token: &Token<C, A>,
     ) -> crate::hyper::FutureTwitterStream
     where
