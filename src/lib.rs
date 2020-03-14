@@ -38,6 +38,50 @@ TwitterStream::track("@Twitter", &token)
     .unwrap();
 # }
 ```
+
+See the [`TwitterStream`] type documentation for details.
+
+## Streaming messages
+
+`TwitterStream` yields the raw JSON strings returned by the Streaming API. Each string value
+contains exactly one JSON value.
+
+The underlying Streaming API [sends a blank line][stalls] every 30 seconds as a "keep-alive" signal,
+but `TwitterStream` discards it so that you can always expect to yield a valid JSON string.
+On the other hand, this means that you cannot use the blank line to set a timeout on `Stream`-level.
+If you want the stream to time out on network stalls, set a timeout on the underlying
+HTTP connector, instead of the `Stream` (see the [`timeout` example] in the crate's repository
+for details).
+
+[stalls]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/connecting#stalls
+[`timeout` example]: https://github.com/tesaguri/twitter-stream-rs/blob/v0.10.0-alpha.6/examples/timeout.rs
+
+The JSON string usually, but not always, represents a [Tweet] object. When deserializing the JSON
+string, you should be able to handle any kind of JSON value. A possible implementation of
+deserialization would be like the following:
+
+[Tweet]: https://developer.twitter.com/en/docs/tweets/data-dictionary/overview/tweet-object
+
+```rust
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum StreamMessage {
+    Tweet(Tweet),
+    // Discards anything other than a Tweet.
+    // You can handle other message types as well by adding correspoiding variants.
+    Other(de::IgnoredAny),
+}
+```
+
+The [`echo_bot` example] in the crate's repository shows an example of a `StreamMessage`
+implementation.
+
+[`echo_bot` example]: https://github.com/tesaguri/twitter-stream-rs/blob/v0.10.0-alpha.6/examples/echo_bot.rs
+
+See the [Twitter Developers Documentation][message-types] for the types and formats of the JSON
+messages.
+
+[message-types]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/streaming-message-types
 */
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -112,7 +156,7 @@ impl<B: Body> TwitterStream<B> {
 impl crate::hyper::TwitterStream {
     /// Connect to the filter stream, yielding Tweets from the users specified by `follow` argument.
     ///
-    /// This is a shorthand for `Builder::new(token).follow(follow).listen()`.
+    /// This is a shorthand for `twitter_stream::Builder::new(token).follow(follow).listen()`.
     /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics
@@ -129,7 +173,7 @@ impl crate::hyper::TwitterStream {
     /// Connect to the filter stream, yielding Tweets that matches the query specified by
     /// `track` argument.
     ///
-    /// This is a shorthand for `Builder::new(token).track(track).listen()`.
+    /// This is a shorthand for `twitter_stream::Builder::new(token).track(track).listen()`.
     /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics
@@ -146,7 +190,7 @@ impl crate::hyper::TwitterStream {
     /// Connect to the filter stream, yielding geolocated Tweets falling within the specified
     /// bounding boxes.
     ///
-    /// This is a shorthand for `Builder::new(token).locations(locations).listen()`.
+    /// This is a shorthand for `twitter_stream::Builder::new(token).locations(locations).listen()`.
     /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics
@@ -165,7 +209,7 @@ impl crate::hyper::TwitterStream {
 
     /// Connect to the sample stream, yielding a "small random sample" of all public Tweets.
     ///
-    /// This is a shorthand for `Builder::new(token).listen()`.
+    /// This is a shorthand for `twitter_stream::Builder::new(token).listen()`.
     /// For more specific configurations, use [`TwitterStream::builder`] or [`Builder::new`].
     ///
     /// # Panics

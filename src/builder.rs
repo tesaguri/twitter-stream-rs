@@ -1,4 +1,44 @@
-//! Builder type for [`TwitterStream`](crate::TwitterStream).
+//! A [`Builder`] type for [`TwitterStream`](crate::TwitterStream).
+//!
+//! The Streaming API has two different endpoints: [`POST statuses/filter`] and
+//! [`GET statuses/sample`]. `Builder` automatically determines which endpoint to use based on the
+//! specified parameters. Specifically, when any of [`follow`][Builder::follow],
+//! [`track`][Builder::track] and [`locations`][Builder::locations] parameters is specified,
+//! `filter` will be used, and when none is specified, `sample` will be used.
+//!
+//! [`POST statuses/filter`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
+//! [`GET statuses/sample`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
+//!
+//!
+//! `filter` yields public Tweets that match the filter predicates specified by the parameters,
+//! and `sample` yields "a small random sample" of all public Tweets.
+//!
+//! ## Example
+//!
+//! ```rust,no_run
+//! use futures::prelude::*;
+//! use twitter_stream::{builder::BoundingBox, Token};
+//!
+//! # #[tokio::main]
+//! # async fn main() {
+//! let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
+//!
+//! const TOKYO_WARDS: &'static [BoundingBox] = &[BoundingBox::new((139.56, 35.53), (139.92, 35.82))];
+//!
+//! // Prints geolocated English Tweets associated with the special wards of Tokyo.
+//! twitter_stream::Builder::new(token)
+//!     .locations(TOKYO_WARDS)
+//!     .language("en")
+//!     .listen()
+//!     .try_flatten_stream()
+//!     .try_for_each(|json| {
+//!         println!("{}", json);
+//!         future::ok(())
+//!     })
+//!     .await
+//!     .unwrap();
+//! # }
+//! ```
 
 pub use http::Method as RequestMethod;
 pub use http::StatusCode;
@@ -17,45 +57,7 @@ use crate::FutureTwitterStream;
 
 /// A builder for [`TwitterStream`](crate::TwitterStream).
 ///
-/// The Streaming API has two different endpoints: [`POST statuses/filter`] and
-/// [`GET statuses/sample`]. `Builder` automatically determines which endpoint to use based on the
-/// specified parameters. Specifically, when any of [`follow`][Builder::follow],
-/// [`track`][Builder::track] and [`locations`][Builder::locations] parameter is specified,
-/// `filter` will be used, and when none is specified, `sample` will be used.
-///
-/// [`POST statuses/filter`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
-/// [`GET statuses/sample`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
-///
-///
-/// `filter` yields public Tweets that match the filter predicates specified the parameters,
-/// and `sample` yields "a small random sample" of all public Tweets.
-///
-/// ## Example
-///
-/// ```rust,no_run
-/// use futures::prelude::*;
-/// use twitter_stream::{builder::BoundingBox, Token};
-///
-/// # #[tokio::main]
-/// # async fn main() {
-/// let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
-///
-/// const TOKYO_WARDS: &'static [BoundingBox] = &[BoundingBox::new((139.56, 35.53), (139.92, 35.82))];
-///
-/// // Prints geolocated English Tweets associated with the special wards of Tokyo.
-/// twitter_stream::Builder::new(token)
-///     .locations(TOKYO_WARDS)
-///     .language("en")
-///     .listen()
-///     .try_flatten_stream()
-///     .try_for_each(|json| {
-///         println!("{}", json);
-///         future::ok(())
-///     })
-///     .await
-///     .unwrap();
-/// # }
-/// ```
+/// See the [`builder`][crate::builder] module documentation for details.
 #[derive(Clone, Debug)]
 pub struct Builder<'a, T = Token> {
     token: T,
