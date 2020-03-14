@@ -69,8 +69,11 @@ enum StreamMessage {
     Tweet(Tweet),
     // Discards anything other than a Tweet.
     // You can handle other message types as well by adding correspoiding variants.
-    Other(de::IgnoredAny),
+    Other(serde::de::IgnoredAny),
 }
+
+#[derive(serde::Deserialize)]
+struct Tweet { /* ... */ }
 ```
 
 The [`echo_bot` example] in the crate's repository shows an example of a `StreamMessage`
