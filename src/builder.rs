@@ -9,7 +9,6 @@
 //! [`POST statuses/filter`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
 //! [`GET statuses/sample`]: https://developer.twitter.com/en/docs/tweets/filter-realtime/api-reference/post-statuses-filter
 //!
-//!
 //! `filter` yields public Tweets that match the filter predicates specified by the parameters,
 //! and `sample` yields "a small random sample" of all public Tweets.
 //!
@@ -23,11 +22,11 @@
 //! # async fn main() {
 //! let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 //!
-//! const TOKYO_WARDS: &'static [BoundingBox] = &[BoundingBox::new((139.56, 35.53), (139.92, 35.82))];
+//! const TOKYO: &'static [BoundingBox] = &[BoundingBox::new((139.56, 35.53), (139.92, 35.82))];
 //!
-//! // Prints geolocated English Tweets associated with the special wards of Tokyo.
+//! // Prints geolocated English Tweets associated with Tokyo (the 23 special wards).
 //! twitter_stream::Builder::new(token)
-//!     .locations(TOKYO_WARDS)
+//!     .locations(TOKYO)
 //!     .language("en")
 //!     .listen()
 //!     .try_flatten_stream()
@@ -170,6 +169,8 @@ where
 
     /// Same as [`listen`](Builder::listen) except that it uses `client` to make HTTP request
     /// to the endpoint.
+    ///
+    /// `client` must be able to handle the `https` scheme.
     ///
     /// # Panics
     ///
