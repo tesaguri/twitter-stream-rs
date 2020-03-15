@@ -52,8 +52,6 @@ async fn main() {
 
 If your application don't require explicit control over the raw JSON strings or underlying HTTP client, `egg-mode` may be a better choice.
 
-Note however that, as of this writing, the released version of `egg-mode` still uses `futures` v0.1.
-
 ## License
 
 This project is licensed under the MIT license ([LICENSE](LICENSE) or https://opensource.org/licenses/MIT) unless explicitly stated otherwise.
