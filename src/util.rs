@@ -87,11 +87,11 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
                         // `impl From<Bytes> for BytesMut` was removed in `bytes` 0.5.
                         break c[..].into();
                     }
-                } else if !this.buf.is_empty() {
+                } else if this.buf.is_empty() {
+                    return Poll::Ready(None);
+                } else {
                     let ret = mem::replace(this.buf, BytesMut::new()).freeze();
                     return Poll::Ready(Some(Ok(ret)));
-                } else {
-                    return Poll::Ready(None);
                 }
             };
 

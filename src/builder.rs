@@ -376,7 +376,7 @@ impl std::fmt::Display for FilterLevel {
 fn prepare_request(
     endpoint: Option<&(RequestMethod, Uri)>,
     token: Token<&str, &str>,
-    parameters: &Parameters,
+    parameters: &Parameters<'_>,
 ) -> http::Request<Vec<u8>> {
     let uri;
     let (method, endpoint) = if let Some(&(ref method, ref endpoint)) = endpoint {
@@ -426,7 +426,7 @@ fn prepare_request(
 
         req.uri(uri)
             .header(AUTHORIZATION, authorization)
-            .body(Default::default())
+            .body(Vec::default())
             .unwrap()
     }
 }
