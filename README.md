@@ -21,7 +21,8 @@ Here is a basic example that prints public mentions to @Twitter in JSON format:
 
 ```rust
 
-extern crate twitter_stream;
+use twitter_stream::{Token, TwitterStreamBuilder};
+use twitter_stream::rt::{self, Future, Stream};
 
 #[tokio::main]
 async fn main() {
