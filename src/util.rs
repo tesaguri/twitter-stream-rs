@@ -44,7 +44,7 @@ pin_project! {
     pub struct Lines<S> {
         #[pin]
         stream: Fuse<IntoStream<S>>,
-        buf: BytesMut,
+        buf: Bytes,
     }
 }
 
@@ -60,7 +60,7 @@ impl<S: TryStream> Lines<S> {
     pub fn new(stream: S) -> Self {
         Lines {
             stream: stream.into_stream().fuse(),
-            buf: BytesMut::new(),
+            buf: Bytes::new(),
         }
     }
 }
@@ -72,40 +72,51 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
         let mut this = self.project();
 
         if let Some(line) = remove_first_line(&mut this.buf) {
-            return Poll::Ready(Some(Ok(line.freeze())));
+            return Poll::Ready(Some(Ok(line)));
         }
 
         // Now `self.buf` does not have a CRLF.
         // Extend the buffer until a CRLF is found.
 
         loop {
-            let mut chunk: BytesMut = loop {
-                if let Some(c) = ready!(this.stream.as_mut().poll_next(cx)) {
-                    let c = c?;
+            let mut chunk = loop {
+                if let Some(c) = ready!(this.stream.as_mut().poll_next(cx)?) {
                     if !c.is_empty() {
-                        // XXX: Copying data to a newly created `BytesMut` because
-                        // `impl From<Bytes> for BytesMut` was removed in `bytes` 0.5.
-                        break c[..].into();
+                        break c;
                     }
                 } else if this.buf.is_empty() {
                     return Poll::Ready(None);
                 } else {
-                    let ret = mem::replace(this.buf, BytesMut::new()).freeze();
+                    let ret = mem::replace(this.buf, Bytes::new());
                     return Poll::Ready(Some(Ok(ret)));
                 }
             };
 
             if chunk[0] == b'\n' && this.buf.last() == Some(&b'\r') {
                 // Drop the CRLF
+                this.buf.truncate(this.buf.len() - 1);
                 chunk.advance(1);
-                let line_len = this.buf.len() - 1;
-                this.buf.truncate(line_len);
-                return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk).freeze())));
+                return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk))));
             } else if let Some(line) = remove_first_line(&mut chunk) {
-                this.buf.unsplit(line);
-                return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk).freeze())));
+                let ret = if this.buf.is_empty() {
+                    line
+                } else {
+                    let mut ret = BytesMut::with_capacity(this.buf.len() + line.len());
+                    ret.extend_from_slice(&this.buf);
+                    ret.extend_from_slice(&line);
+                    ret.freeze()
+                };
+                *this.buf = chunk;
+                return Poll::Ready(Some(Ok(ret)));
             } else {
-                this.buf.unsplit(chunk);
+                *this.buf = if this.buf.is_empty() {
+                    chunk
+                } else {
+                    let mut buf = BytesMut::with_capacity(this.buf.len() + chunk.len());
+                    buf.extend_from_slice(&this.buf);
+                    buf.extend_from_slice(&chunk);
+                    buf.freeze()
+                }
             }
         }
     }
@@ -138,7 +149,7 @@ pub fn fmt_join<T: Display>(t: &[T], sep: &str, f: &mut Formatter<'_>) -> fmt::R
     Ok(())
 }
 
-fn remove_first_line(buf: &mut BytesMut) -> Option<BytesMut> {
+fn remove_first_line(buf: &mut Bytes) -> Option<Bytes> {
     if buf.len() < 2 {
         return None;
     }
