@@ -39,14 +39,19 @@
 //! # }
 //! ```
 
+mod bounding_box;
+
 pub use http::Method as RequestMethod;
 pub use http::Uri;
+
+pub use bounding_box::BoundingBox;
 
 use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Formatter};
 
 use http::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use http::Request;
+use slice_of_array::SliceFlatExt;
 
 use crate::service::HttpService;
 use crate::token::Token;
@@ -80,21 +85,6 @@ struct Parameters<'a> {
     locations: Cow<'a, [BoundingBox]>,
     #[oauth1(encoded)]
     count: Option<i32>,
-}
-
-/// A `BoundingBox` is a rectangular area on the globe specified by coordinates of
-/// the southwest and northeast edges in decimal degrees.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[repr(C)]
-pub struct BoundingBox {
-    /// Longitude of the west side of the bounding box.
-    pub west_longitude: f64,
-    /// Latitude of the south side of the bounding box.
-    pub south_latitude: f64,
-    /// Longitude of the east side of the bounding box.
-    pub east_longitude: f64,
-    /// Latitude of the north side of the bounding box.
-    pub north_latitude: f64,
 }
 
 str_enum! {
@@ -305,62 +295,6 @@ impl<'a, C, A> Builder<'a, Token<C, A>> {
     }
 }
 
-impl BoundingBox {
-    /// Creates a `BoundingBox` with two `(longitude, latitude)` pairs.
-    ///
-    /// The first argument specifies the southwest edge and the second specifies the northeast edge.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use twitter_stream::builder::BoundingBox;
-    ///
-    /// // Examples taken from Twitter's documentation.
-    /// BoundingBox::new((-122.75, 36.8), (-121.75, 37.8)); // San Francisco
-    /// BoundingBox::new((-74.0, 40.0), (-73.0, 41.0)); // New York City
-    /// ```
-    pub const fn new(
-        (west_longitude, south_latitude): (f64, f64),
-        (east_longitude, north_latitude): (f64, f64),
-    ) -> Self {
-        BoundingBox {
-            west_longitude,
-            south_latitude,
-            east_longitude,
-            north_latitude,
-        }
-    }
-}
-
-impl From<(f64, f64, f64, f64)> for BoundingBox {
-    fn from(
-        (west_longitude, south_latitude, east_longitude, north_latitude): (f64, f64, f64, f64),
-    ) -> Self {
-        BoundingBox {
-            west_longitude,
-            south_latitude,
-            east_longitude,
-            north_latitude,
-        }
-    }
-}
-
-impl From<((f64, f64), (f64, f64))> for BoundingBox {
-    fn from(
-        ((west_longitude, south_latitude), (east_longitude, north_latitude)): (
-            (f64, f64),
-            (f64, f64),
-        ),
-    ) -> Self {
-        BoundingBox {
-            west_longitude,
-            south_latitude,
-            east_longitude,
-            north_latitude,
-        }
-    }
-}
-
 impl std::default::Default for FilterLevel {
     fn default() -> Self {
         FilterLevel::None
@@ -438,24 +372,7 @@ fn fmt_follow(ids: &[u64], f: &mut Formatter<'_>) -> fmt::Result {
 }
 
 fn fmt_locations(locs: &[BoundingBox], f: &mut Formatter<'_>) -> fmt::Result {
-    use std::mem::size_of;
-    use std::slice;
-
-    use static_assertions::const_assert;
-
-    let locs: &[f64] = unsafe {
-        // Safety:
-        // `BoundingBox` is defined with the `#[repr(C)]` attribute so it is sound to interpret
-        // the struct as a `[f64; 4]` and also the fields are guaranteed to be placed in
-        // `[west_longitude, south_latitude, east_longitude, north_latitude]` order.
-        // We are checking the size of `BoundingBox` here just to be sure.
-        const_assert!(size_of::<BoundingBox>() == 4 * size_of::<f64>());
-        let ptr: *const BoundingBox = locs.as_ptr();
-        let n = 4 * <[BoundingBox]>::len(locs);
-        slice::from_raw_parts(ptr as *const f64, n)
-    };
-
-    fmt_join(locs, COMMA, f)
+    fmt_join(BoundingBox::flatten_slice(locs).flat(), COMMA, f)
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
