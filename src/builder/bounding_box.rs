@@ -22,9 +22,7 @@ pub struct BoundingBox {
 }
 
 impl BoundingBox {
-    /// Creates a `BoundingBox` with two `(longitude, latitude)` pairs.
-    ///
-    /// The first argument specifies the southwest edge and the second specifies the northeast edge.
+    /// Creates a `BoundingBox` with the longitudes and latitudes of its sides.
     ///
     /// # Example
     ///
@@ -32,12 +30,14 @@ impl BoundingBox {
     /// use twitter_stream::builder::BoundingBox;
     ///
     /// // Examples taken from Twitter's documentation.
-    /// BoundingBox::new((-122.75, 36.8), (-121.75, 37.8)); // San Francisco
-    /// BoundingBox::new((-74.0, 40.0), (-73.0, 41.0)); // New York City
+    /// BoundingBox::new(-122.75, 36.8, -121.75, 37.8); // San Francisco
+    /// BoundingBox::new(-74.0, 40.0, -73.0, 41.0); // New York City
     /// ```
     pub const fn new(
-        (west_longitude, south_latitude): (f64, f64),
-        (east_longitude, north_latitude): (f64, f64),
+        west_longitude: f64,
+        south_latitude: f64,
+        east_longitude: f64,
+        north_latitude: f64,
     ) -> Self {
         BoundingBox {
             west_longitude,
@@ -64,7 +64,7 @@ impl BoundingBox {
     /// let config: Config = serde_json::from_str(config).unwrap();
     ///
     /// let locations = BoundingBox::unflatten_slice(&config.locations);
-    /// assert_eq!(locations, [BoundingBox::new((-122.75, 36.8), (-121.75, 37.8))]);
+    /// assert_eq!(locations, [BoundingBox::new(-122.75, 36.8, -121.75, 37.8)]);
     /// ```
     pub fn unflatten_slice(slice: &[[f64; 4]]) -> &[Self] {
         unsafe {
@@ -117,7 +117,7 @@ impl BoundingBox {
     /// let config: Config = serde_json::from_str(config).unwrap();
     ///
     /// let locations = BoundingBox::unflatten_vec(config.locations);
-    /// assert_eq!(locations, [BoundingBox::new((-122.75, 36.8), (-121.75, 37.8))]);
+    /// assert_eq!(locations, [BoundingBox::new(-122.75, 36.8, -121.75, 37.8)]);
     pub fn unflatten_vec(vec: Vec<[f64; 4]>) -> Vec<Self> {
         unsafe {
             // Safety: the `#[repr(C)]` on `BoundingBox` guarantees the soundness of the conversion.
@@ -205,6 +205,9 @@ impl From<(f64, f64, f64, f64)> for BoundingBox {
 }
 
 impl From<((f64, f64), (f64, f64))> for BoundingBox {
+    /// Creates a `BoundingBox` with two `(longitude, latitude)` pairs.
+    ///
+    /// The first argument specifies the southwest edge and the latter specifies the northeast edge.
     fn from(
         ((west_longitude, south_latitude), (east_longitude, north_latitude)): (
             (f64, f64),
@@ -230,7 +233,7 @@ mod tests {
     fn flatten() {
         macro_rules! test {
             ($([$w:expr, $s:expr, $e:expr, $n:expr]),*$(,)?) => {{
-                let bb = vec![$(BoundingBox::new(($w, $s), ($e, $n))),*];
+                let bb = vec![$(BoundingBox::new($w, $s, $e, $n)),*];
                 let ary = vec![$([$w, $s, $e, $n]),*];
 
                 assert_eq!(*BoundingBox::unflatten_slice(&ary), *bb, "unflatten_slice(&{:?})", ary);
@@ -251,11 +254,11 @@ mod tests {
         static ARRAY: [f64; 5] = [1., 2., 3., 4., 5.];
         assert_eq!(
             BoundingBox::unflatten_slice(&ARRAY[..4].nest()),
-            [BoundingBox::new((1., 2.), (3., 4.))],
+            [BoundingBox::new(1., 2., 3., 4.)],
         );
         assert_eq!(
             BoundingBox::unflatten_slice(&ARRAY[1..].nest()),
-            [BoundingBox::new((2., 3.), (4., 5.))],
+            [BoundingBox::new(2., 3., 4., 5.)],
         );
     }
 }

@@ -22,7 +22,7 @@
 //! # async fn main() {
 //! let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
 //!
-//! const TOKYO: &'static [BoundingBox] = &[BoundingBox::new((139.56, 35.53), (139.92, 35.82))];
+//! const TOKYO: &'static [BoundingBox] = &[BoundingBox::new(139.56, 35.53, 139.92, 35.82)];
 //!
 //! // Prints geolocated English Tweets associated with Tokyo (the 23 special wards).
 //! twitter_stream::Builder::new(token)
