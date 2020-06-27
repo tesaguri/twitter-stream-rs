@@ -89,3 +89,41 @@ jobs:
         with:
           command: doc
           args: --no-deps --no-default-features --features=${{ matrix.features }}
+
+  miri:
+    name: Soundness test (Miri)
+    needs: [fmt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-06-26
+          profile: minimal
+          components: miri
+          override: true
+      - name: Cache Cargo registry
+        uses: actions/cache@v2
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
+          restore-keys: |
+            cargo-registry-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
+            cargo-registry-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-
+            cargo-registry-${{ hashFiles('Cargo.*') }}-
+            cargo-registry-
+      - name: Cache Cargo build
+        uses: actions/cache@v2
+        with:
+          path: target
+          key: miri-cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: |
+            miri-cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.*') }}
+            miri-cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-
+      - run: cargo miri setup
+      - name: cargo miri test
+        uses: actions-rs/cargo@v1
+        with:
+          command: miri
+          args: test --no-default-features -- -- soundness

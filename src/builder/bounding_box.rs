@@ -225,13 +225,14 @@ impl From<((f64, f64), (f64, f64))> for BoundingBox {
 
 #[cfg(test)]
 mod tests {
-    use slice_of_array::SliceNestExt;
+    mod soundness {
+        use slice_of_array::SliceNestExt;
 
-    use super::*;
+        use super::super::*;
 
-    #[test]
-    fn flatten() {
-        macro_rules! test {
+        #[test]
+        fn flatten() {
+            macro_rules! test {
             ($([$w:expr, $s:expr, $e:expr, $n:expr]),*$(,)?) => {{
                 let bb = vec![$(BoundingBox::new($w, $s, $e, $n)),*];
                 let ary = vec![$([$w, $s, $e, $n]),*];
@@ -244,21 +245,22 @@ mod tests {
             }};
         }
 
-        test!();
-        test!([-122.75, 36.8, -121.75, 37.8]);
-        test!([-122.75, 36.8, -121.75, 37.8], [-74.0, 40.0, -73.0, 41.0]);
-    }
+            test!();
+            test!([-122.75, 36.8, -121.75, 37.8]);
+            test!([-122.75, 36.8, -121.75, 37.8], [-74.0, 40.0, -73.0, 41.0]);
+        }
 
-    #[test]
-    fn unflatten_alignment() {
-        static ARRAY: [f64; 5] = [1., 2., 3., 4., 5.];
-        assert_eq!(
-            BoundingBox::unflatten_slice(&ARRAY[..4].nest()),
-            [BoundingBox::new(1., 2., 3., 4.)],
-        );
-        assert_eq!(
-            BoundingBox::unflatten_slice(&ARRAY[1..].nest()),
-            [BoundingBox::new(2., 3., 4., 5.)],
-        );
+        #[test]
+        fn unflatten_alignment() {
+            static ARRAY: [f64; 5] = [1., 2., 3., 4., 5.];
+            assert_eq!(
+                BoundingBox::unflatten_slice(&ARRAY[..4].nest()),
+                [BoundingBox::new(1., 2., 3., 4.)],
+            );
+            assert_eq!(
+                BoundingBox::unflatten_slice(&ARRAY[1..].nest()),
+                [BoundingBox::new(2., 3., 4., 5.)],
+            );
+        }
     }
 }
