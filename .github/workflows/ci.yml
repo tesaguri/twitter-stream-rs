@@ -44,16 +44,27 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           profile: minimal
           override: true
+        id: toolchain
       - name: Cache Cargo registry
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ matrix.toolchain }}-cargo-registry-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
+          key: cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
+          restore-keys: |
+            cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
+            cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-
+            cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-
+              cargo-registry-${{ matrix.features }}-
+            cargo-registry-
       - name: Cache Cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: target
-          key: ${{ runner.os }}-${{ matrix.toolchain }}-cargo-build-target-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
+          key: cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
+          restore-keys: |
+            cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
+            cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ matrix.features }}-
+            cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-
       - name: Build
         if: matrix.features == 'hyper'
         uses: actions-rs/cargo@v1
