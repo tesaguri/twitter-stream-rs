@@ -3,7 +3,7 @@ use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Buf, Bytes};
 use futures_util::ready;
 use futures_util::stream::{Fuse, IntoStream, Stream, StreamExt, TryStream, TryStreamExt};
 use http_body::Body;
@@ -87,7 +87,7 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
                 } else if this.buf.is_empty() {
                     return Poll::Ready(None);
                 } else {
-                    let ret = mem::replace(this.buf, Bytes::new());
+                    let ret = mem::take(this.buf);
                     return Poll::Ready(Some(Ok(ret)));
                 }
             };
@@ -96,15 +96,16 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
                 // Drop the CRLF
                 this.buf.truncate(this.buf.len() - 1);
                 chunk.advance(1);
+
                 return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk))));
             } else if let Some(line) = remove_first_line(&mut chunk) {
                 let ret = if this.buf.is_empty() {
                     line
                 } else {
-                    let mut ret = BytesMut::with_capacity(this.buf.len() + line.len());
+                    let mut ret = Vec::with_capacity(this.buf.len() + line.len());
                     ret.extend_from_slice(&this.buf);
                     ret.extend_from_slice(&line);
-                    ret.freeze()
+                    ret.into()
                 };
                 *this.buf = chunk;
                 return Poll::Ready(Some(Ok(ret)));
@@ -112,10 +113,10 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
                 *this.buf = if this.buf.is_empty() {
                     chunk
                 } else {
-                    let mut buf = BytesMut::with_capacity(this.buf.len() + chunk.len());
+                    let mut buf = Vec::with_capacity(this.buf.len() + chunk.len());
                     buf.extend_from_slice(&this.buf);
                     buf.extend_from_slice(&chunk);
-                    buf.freeze()
+                    buf.into()
                 }
             }
         }
