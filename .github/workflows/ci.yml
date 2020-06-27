@@ -3,8 +3,26 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          components: rustfmt
+      - name: cargo fmt -- --check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --check
+
   test:
     name: Test
+    needs: [fmt]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
