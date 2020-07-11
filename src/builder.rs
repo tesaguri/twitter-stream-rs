@@ -168,7 +168,7 @@ where
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```no_run
     /// use tower::ServiceExt;
     ///
     /// # async fn doc() {

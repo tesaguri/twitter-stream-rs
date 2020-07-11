@@ -26,7 +26,7 @@ impl BoundingBox {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```
     /// use twitter_stream::builder::BoundingBox;
     ///
     /// // Examples taken from Twitter's documentation.
@@ -118,6 +118,7 @@ impl BoundingBox {
     ///
     /// let locations = BoundingBox::unflatten_vec(config.locations);
     /// assert_eq!(locations, [BoundingBox::new(-122.75, 36.8, -121.75, 37.8)]);
+    /// ```
     pub fn unflatten_vec(vec: Vec<[f64; 4]>) -> Vec<Self> {
         unsafe {
             // Safety: the `#[repr(C)]` on `BoundingBox` guarantees the soundness of the conversion.

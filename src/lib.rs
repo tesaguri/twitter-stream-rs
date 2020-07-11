@@ -20,7 +20,7 @@ twitter-stream = "=0.10.0-alpha.6"
 
 Here is a basic example that prints public mentions to @Twitter in JSON format:
 
-```rust,no_run
+```no_run
 use futures::prelude::*;
 use twitter_stream::{Token, TwitterStream};
 
@@ -62,7 +62,7 @@ deserialization would be like the following:
 
 [Tweet]: https://developer.twitter.com/en/docs/tweets/data-dictionary/overview/tweet-object
 
-```rust
+```
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 enum StreamMessage {
