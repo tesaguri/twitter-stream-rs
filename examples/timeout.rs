@@ -37,7 +37,7 @@ const TIMEOUT: Duration = Duration::from_secs(90);
 
 #[tokio::main]
 async fn main() {
-    let token = Token::new(
+    let token = Token::from_parts(
         "consumer_key",
         "consumer_secret",
         "access_key",

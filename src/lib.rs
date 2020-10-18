@@ -26,7 +26,7 @@ use twitter_stream::{Token, TwitterStream};
 
 # #[tokio::main]
 # async fn main() {
-let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
+let token = Token::from_parts("consumer_key", "consumer_secret", "access_key", "access_secret");
 
 TwitterStream::track("@Twitter", &token)
     .try_flatten_stream()
@@ -102,11 +102,9 @@ pub mod hyper;
 pub mod service;
 
 mod gzip;
-mod token;
 
 pub use crate::builder::Builder;
 pub use crate::error::Error;
-pub use crate::token::Token;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -152,6 +150,10 @@ pin_project! {
 /// - Temporary credentials (request token and secret)
 /// - Token credentials (access token and secret)
 pub type Credentials<T = String> = oauth_credentials::Credentials<T>;
+
+/// A set of OAuth client credentials and token credentials used for authorizing requests
+/// to the Streaming API.
+pub type Token<C = String, T = String> = oauth_credentials::Token<C, T>;
 
 impl<B: Body> TwitterStream<B> {
     /// Creates a `Builder` for `TwitterStream`.

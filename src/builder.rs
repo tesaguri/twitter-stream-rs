@@ -20,7 +20,7 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() {
-//! let token = Token::new("consumer_key", "consumer_secret", "access_key", "access_secret");
+//! let token = Token::from_parts("consumer_key", "consumer_secret", "access_key", "access_secret");
 //!
 //! const TOKYO: &'static [BoundingBox] = &[BoundingBox::new(139.56, 35.53, 139.92, 35.82)];
 //!
@@ -54,9 +54,8 @@ use http::Request;
 use slice_of_array::SliceFlatExt;
 
 use crate::service::HttpService;
-use crate::token::Token;
 use crate::util::fmt_join;
-use crate::FutureTwitterStream;
+use crate::{FutureTwitterStream, Token};
 
 /// A builder for [`TwitterStream`](crate::TwitterStream).
 ///
@@ -173,7 +172,7 @@ where
     ///
     /// # async fn doc() {
     /// # let mut client = hyper_pkg::Client::new();
-    /// # let token = twitter_stream::Token::new("", "", "", "");
+    /// # let token = twitter_stream::Token::from_parts("", "", "", "");
     /// client.ready_and().await; // Ensure that the client is ready to send a request.
     /// let stream = twitter_stream::Builder::new(token)
     ///     .listen_with_client(&mut client)

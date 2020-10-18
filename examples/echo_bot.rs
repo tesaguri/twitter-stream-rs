@@ -88,7 +88,7 @@ struct TokenDef {
 
 impl From<TokenDef> for twitter_stream::Token {
     fn from(def: TokenDef) -> twitter_stream::Token {
-        twitter_stream::Token::new(
+        twitter_stream::Token::from_parts(
             def.consumer_key,
             def.consumer_secret,
             def.access_key,
