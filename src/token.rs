@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use oauth::Credentials;
+use oauth_credentials::Credentials;
 
 /// An OAuth token used to authenticate to Twitter.
 #[derive(Copy, Clone, Debug)]

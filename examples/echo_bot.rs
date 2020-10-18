@@ -68,7 +68,7 @@ struct User {
 }
 
 /// Represents a GET statuses/update request.
-#[derive(oauth::Authorize)]
+#[derive(oauth::Request)]
 struct StatusUpdate<'a> {
     status: &'a str,
     in_reply_to_status_id: Option<u64>,
@@ -188,10 +188,8 @@ impl<'a> StatusUpdate<'a> {
     ) -> impl Future<Output = ()> {
         const URI: &str = "https://api.twitter.com/1.1/statuses/update.json";
 
-        let oauth::Request {
-            authorization,
-            data: form,
-        } = oauth.build("POST", URI, self);
+        let authorization = oauth.build("POST", URI, self);
+        let form = oauth::to_form_urlencoded(self);
         let req = http::Request::post(http::Uri::from_static(URI))
             .header(
                 CONTENT_TYPE,
@@ -212,7 +210,7 @@ fn verify_credentials(
 ) -> impl Future<Output = User> {
     const URI: &str = "https://api.twitter.com/1.1/account/verify_credentials.json";
 
-    let oauth::Request { authorization, .. } = oauth.build("GET", URI, ());
+    let authorization = oauth.build("GET", URI, &());
     let req = http::Request::get(http::Uri::from_static(URI))
         .header(AUTHORIZATION, authorization)
         .body(Default::default())

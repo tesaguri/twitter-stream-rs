@@ -69,18 +69,18 @@ pub struct Builder<'a, T = Token> {
 }
 
 /// Parameters to the Streaming API.
-#[derive(Clone, Debug, Default, oauth::Authorize)]
+#[derive(Clone, Debug, Default, oauth::Request)]
 struct Parameters<'a> {
-    #[oauth1(skip_if = "not")]
+    #[oauth1(skip_if = not)]
     stall_warnings: bool,
     filter_level: Option<FilterLevel>,
-    #[oauth1(skip_if = "str::is_empty")]
+    #[oauth1(skip_if = str::is_empty)]
     language: Cow<'a, str>,
-    #[oauth1(encoded, fmt = "fmt_follow", skip_if = "<[_]>::is_empty")]
+    #[oauth1(encoded, fmt = fmt_follow, skip_if = <[_]>::is_empty)]
     follow: Cow<'a, [u64]>,
-    #[oauth1(skip_if = "str::is_empty")]
+    #[oauth1(skip_if = str::is_empty)]
     track: Cow<'a, str>,
-    #[oauth1(encoded, fmt = "fmt_locations", skip_if = "<[_]>::is_empty")]
+    #[oauth1(encoded, fmt = fmt_locations, skip_if = <[_]>::is_empty)]
     #[allow(clippy::type_complexity)]
     locations: Cow<'a, [BoundingBox]>,
     #[oauth1(encoded)]
@@ -338,10 +338,8 @@ fn prepare_request(
     oauth.token(token.token.as_ref());
 
     if RequestMethod::POST == method {
-        let oauth::Request {
-            authorization,
-            data,
-        } = oauth.post_form(endpoint, parameters);
+        let authorization = oauth.post(endpoint, parameters);
+        let data = oauth::to_form_urlencoded(parameters);
 
         req.uri(endpoint.clone())
             .header(AUTHORIZATION, authorization)
@@ -353,10 +351,8 @@ fn prepare_request(
             .body(data.into_bytes())
             .unwrap()
     } else {
-        let oauth::Request {
-            authorization,
-            data: uri,
-        } = oauth.build(method.as_ref(), endpoint, parameters);
+        let authorization = oauth.build(method.as_ref(), endpoint, parameters);
+        let uri = oauth::to_uri_query(endpoint.to_string(), parameters);
 
         req.uri(uri)
             .header(AUTHORIZATION, authorization)

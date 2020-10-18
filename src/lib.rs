@@ -104,8 +104,6 @@ pub mod service;
 mod gzip;
 mod token;
 
-pub use oauth::Credentials;
-
 pub use crate::builder::Builder;
 pub use crate::error::Error;
 pub use crate::token::Token;
@@ -143,6 +141,17 @@ pin_project! {
         inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
     }
 }
+
+/// A "credentials" pair defined in [RFC 5849 section 1.1][rfc].
+///
+/// [rfc]: https://tools.ietf.org/html/rfc5849#section-1.1
+///
+/// This type represents:
+///
+/// - Client credentials (consumer key and secret)
+/// - Temporary credentials (request token and secret)
+/// - Token credentials (access token and secret)
+pub type Credentials<T = String> = oauth_credentials::Credentials<T>;
 
 impl<B: Body> TwitterStream<B> {
     /// Creates a `Builder` for `TwitterStream`.
