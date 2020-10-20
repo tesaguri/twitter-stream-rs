@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/twitter-stream/0.10.0")]
+#![doc(html_root_url = "https://docs.rs/twitter-stream/0.10.1")]
 
 /*!
 # Twitter Stream
@@ -54,7 +54,7 @@ HTTP connector, instead of the `Stream` (see the [`timeout` example] in the crat
 for details).
 
 [stalls]: https://developer.twitter.com/en/docs/tweets/filter-realtime/guides/connecting#stalls
-[`timeout` example]: https://github.com/tesaguri/twitter-stream-rs/blob/v0.10.0/examples/timeout.rs
+[`timeout` example]: https://github.com/tesaguri/twitter-stream-rs/blob/v0.10.1/examples/timeout.rs
 
 The JSON string usually, but not always, represents a [Tweet] object. When deserializing the JSON
 string, you should be able to handle any kind of JSON value. A possible implementation of
@@ -79,7 +79,7 @@ struct Tweet { /* ... */ }
 The [`echo_bot` example] in the crate's repository shows an example of a `StreamMessage`
 implementation.
 
-[`echo_bot` example]: https://github.com/tesaguri/twitter-stream-rs/blob/v0.10.0/examples/echo_bot.rs
+[`echo_bot` example]: https://github.com/tesaguri/twitter-stream-rs/blob/v0.10.1/examples/echo_bot.rs
 
 See the [Twitter Developers Documentation][message-types] for the types and formats of the JSON
 messages.

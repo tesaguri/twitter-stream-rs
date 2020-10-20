@@ -1,7 +1,7 @@
 [package]
 name = "twitter-stream"
 edition = "2018"
-version = "0.10.0"
+version = "0.10.1"
 authors = ["Daiki Mizukami <tesaguriguma@gmail.com>"]
 license = "MIT"
 readme = "README.md"
@@ -9,7 +9,7 @@ keywords = ["twitter"]
 categories = ["api-bindings"]
 homepage = "https://github.com/tesaguri/twitter-stream-rs"
 repository = "https://github.com/tesaguri/twitter-stream-rs"
-documentation = "https://docs.rs/twitter-stream/0.10.0/twitter_stream/"
+documentation = "https://docs.rs/twitter-stream/0.10.1/twitter_stream/"
 description = """
 A library for listening on Twitter Streaming API.
 """
