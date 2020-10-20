@@ -174,8 +174,8 @@ where
     /// # async fn doc() {
     /// # let mut client = hyper_pkg::Client::new();
     /// # let token = twitter_stream::Token::new("", "", "", "");
-    /// client.ready().await; // Ensure that the client is ready to send a request.
-    /// let stream = twitter_stream::Builder::sample(token)
+    /// client.ready_and().await; // Ensure that the client is ready to send a request.
+    /// let stream = twitter_stream::Builder::new(token)
     ///     .listen_with_client(&mut client)
     ///     .await
     ///     .unwrap();

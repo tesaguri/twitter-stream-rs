@@ -88,7 +88,7 @@ messages.
 */
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![deny(intra_doc_link_resolution_failure)]
+#![deny(broken_intra_doc_links)]
 #![warn(missing_docs)]
 
 #[macro_use]
