@@ -118,30 +118,6 @@ where
         }
     }
 
-    /// Create a builder for `POST statuses/filter` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/post/statuses/filter
-    #[deprecated(since = "0.10.0", note = "Use `Builder::new` instead")]
-    pub fn filter(token: Token<C, A>) -> Self {
-        let mut ret = Self::new(token);
-        ret.endpoint((RequestMethod::POST, Uri::from_static(FILTER)));
-        ret
-    }
-
-    /// Create a builder for `GET statuses/sample` endpoint.
-    ///
-    /// See the [Twitter Developer Documentation][1] for more information.
-    ///
-    /// [1]: https://dev.twitter.com/streaming/reference/get/statuses/sample
-    #[deprecated(since = "0.10.0", note = "Use `Builder::new` instead")]
-    pub fn sample(token: Token<C, A>) -> Self {
-        let mut ret = Self::new(token);
-        ret.endpoint((RequestMethod::GET, Uri::from_static(SAMPLE)));
-        ret
-    }
-
     /// Start listening on the Streaming API endpoint, returning a `Future` which resolves
     /// to a `Stream` yielding JSON messages from the API.
     ///
