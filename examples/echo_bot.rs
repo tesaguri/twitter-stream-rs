@@ -35,6 +35,7 @@ use http::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use http_body::Body as _;
 use serde::de;
 use serde::Deserialize;
+use twitter_stream::Token;
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -75,7 +76,7 @@ struct StatusUpdate<'a> {
 }
 
 #[derive(Deserialize)]
-#[serde(remote = "twitter_stream::Token")]
+#[serde(remote = "Token")]
 struct TokenDef {
     // The `getter` attribute is required to make the `Deserialize` impl use the `From` conversion,
     // even if we are not deriving `Serialize` here.
@@ -86,9 +87,9 @@ struct TokenDef {
     access_secret: String,
 }
 
-impl From<TokenDef> for twitter_stream::Token {
-    fn from(def: TokenDef) -> twitter_stream::Token {
-        twitter_stream::Token::from_parts(
+impl From<TokenDef> for Token {
+    fn from(def: TokenDef) -> Token {
+        Token::from_parts(
             def.consumer_key,
             def.consumer_secret,
             def.access_key,
@@ -111,11 +112,8 @@ async fn main() {
     let token =
         TokenDef::deserialize(&mut serde_json::Deserializer::from_reader(credential)).unwrap();
 
-    let mut oauth = oauth::Builder::new(token.client.as_ref(), oauth::HmacSha1);
-    oauth.token(token.token.as_ref());
-
     // Information of the authenticated user:
-    let user = verify_credentials(&oauth, &client).await;
+    let user = verify_credentials(&token, &client).await;
 
     let mut stream = twitter_stream::Builder::new(token.as_ref())
         .track(format!("@{}", user.screen_name))
@@ -124,18 +122,22 @@ async fn main() {
 
     while let Some(json) = stream.next().await {
         if let Ok(StreamMessage::Tweet(tweet)) = serde_json::from_str(&json.unwrap()) {
+            let mentions_me = |entities: Entities| {
+                entities
+                    .user_mentions
+                    .iter()
+                    .any(|mention| mention.id == user.id)
+            };
             if !tweet.is_retweet
                 && tweet.user.id != user.id
-                && tweet.entities.map_or(false, |e| {
-                    e.user_mentions.iter().any(|mention| mention.id == user.id)
-                })
+                && tweet.entities.map_or(false, mentions_me)
             {
                 // Send a reply
                 let tweeting = StatusUpdate {
                     status: &format!("@{} {}", tweet.user.screen_name, tweet.text),
                     in_reply_to_status_id: Some(tweet.id),
                 }
-                .send(&oauth, &client);
+                .send(&token, &client);
                 tokio::spawn(tweeting);
             }
         }
@@ -169,7 +171,7 @@ impl<'de> Deserialize<'de> for Tweet {
                 .extended_tweet
                 .map_or((p.text, p.entities), |e| (e.full_text, e.entities));
             Tweet {
-                entities: entities,
+                entities,
                 id: p.id,
                 text,
                 user: p.user,
@@ -183,12 +185,12 @@ impl<'a> StatusUpdate<'a> {
     /// Performs the GET statuses/update request.
     fn send(
         &self,
-        oauth: &oauth::Builder<'_, oauth::HmacSha1, &str>,
+        token: &Token,
         client: &hyper::Client<HttpsConnector>,
     ) -> impl Future<Output = ()> {
         const URI: &str = "https://api.twitter.com/1.1/statuses/update.json";
 
-        let authorization = oauth.build("POST", URI, self);
+        let authorization = oauth::post(URI, self, token, oauth::HmacSha1);
         let form = oauth::to_form_urlencoded(self);
         let req = http::Request::post(http::Uri::from_static(URI))
             .header(
@@ -204,19 +206,16 @@ impl<'a> StatusUpdate<'a> {
 }
 
 /// Performs a GET account/verify_credentials request.
-fn verify_credentials(
-    oauth: &oauth::Builder<'_, oauth::HmacSha1, &str>,
-    client: &hyper::Client<HttpsConnector>,
-) -> impl Future<Output = User> {
+async fn verify_credentials(token: &Token, client: &hyper::Client<HttpsConnector>) -> User {
     const URI: &str = "https://api.twitter.com/1.1/account/verify_credentials.json";
 
-    let authorization = oauth.build("GET", URI, &());
+    let authorization = oauth::get(URI, &(), token, oauth::HmacSha1);
     let req = http::Request::get(http::Uri::from_static(URI))
         .header(AUTHORIZATION, authorization)
         .body(Default::default())
         .unwrap();
 
-    parse_response(client.request(req))
+    parse_response(client.request(req)).await
 }
 
 fn parse_response<T: de::DeserializeOwned>(
