@@ -103,6 +103,9 @@ pub mod service;
 
 mod gzip;
 
+#[doc(no_inline)]
+pub use oauth_credentials::Credentials;
+
 pub use crate::builder::Builder;
 pub use crate::error::Error;
 
@@ -139,17 +142,6 @@ pin_project! {
         inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
     }
 }
-
-/// A "credentials" pair defined in [RFC 5849 section 1.1][rfc].
-///
-/// [rfc]: https://tools.ietf.org/html/rfc5849#section-1.1
-///
-/// This type represents:
-///
-/// - Client credentials (consumer key and secret)
-/// - Temporary credentials (request token and secret)
-/// - Token credentials (access token and secret)
-pub type Credentials<T = String> = oauth_credentials::Credentials<T>;
 
 /// A set of OAuth client credentials and token credentials used for authorizing requests
 /// to the Streaming API.
