@@ -19,9 +19,9 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-bytes = "0.5"
-futures-core = "0.3"
-futures-util = "0.3"
+bytes = { version = "0.5", default-features = false }
+futures-core = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false }
 http = "0.2"
 http-body = "0.3"
 memchr = "2"
@@ -30,7 +30,7 @@ oauth-credentials = "0.2"
 pin-project-lite = "0.2"
 slice-of-array = "0.2"
 static_assertions = "1"
-string = "0.2"
+string = { version = "0.2", default-features = false }
 tower-service = "0.3"
 async-compression = { version = "0.3", default-features = false, features = ["stream"], optional = true }
 hyper-pkg = { version = "0.13", package = "hyper", default-features = false, optional = true }
