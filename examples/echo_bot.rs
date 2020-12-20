@@ -28,11 +28,9 @@ extern crate hyper_pkg as hyper;
 
 use std::fs::File;
 use std::path::PathBuf;
-use std::pin::Pin;
 
 use futures::prelude::*;
 use http::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use http_body::Body as _;
 use serde::de;
 use serde::Deserialize;
 use twitter_stream::Token;
@@ -222,16 +220,10 @@ fn parse_response<T: de::DeserializeOwned>(
     res: hyper::client::ResponseFuture,
 ) -> impl Future<Output = T> {
     res.then(|res| {
-        let mut res = res.unwrap();
+        let res = res.unwrap();
         if !res.status().is_success() {
             panic!("HTTP error: {}", res.status());
         }
-
-        stream::poll_fn(move |cx| Pin::new(&mut res).poll_data(cx))
-            .try_fold(Vec::new(), |mut vec, chunk| {
-                vec.extend_from_slice(&chunk);
-                async { Ok(vec) }
-            })
-            .map(|body| serde_json::from_slice(&body.unwrap()).unwrap())
+        hyper::body::to_bytes(res).map(|body| serde_json::from_slice(&body.unwrap()).unwrap())
     })
 }
