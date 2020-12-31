@@ -31,7 +31,7 @@ jobs:
           - stable
           - beta
           - nightly
-          - '1.41.0'
+          - '1.45.0'
         features:
           - ''
           - gzip
@@ -99,7 +99,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2020-06-26
+          toolchain: nightly
           profile: minimal
           components: miri
           override: true
