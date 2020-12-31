@@ -6,21 +6,26 @@ mod imp {
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
-    use async_compression::stream::GzipDecoder;
-    use bytes::Bytes;
+    use async_compression::tokio::bufread::GzipDecoder;
+    use bytes::{Buf, Bytes};
     use futures_core::{Stream, TryStream};
     use futures_util::future::Either;
     use futures_util::ready;
     use pin_project_lite::pin_project;
+    use tokio_util::codec::{BytesCodec, FramedRead};
+    use tokio_util::io::StreamReader;
 
     use crate::error::Error;
 
     pub type MaybeGzip<S> = Either<Gzip<S>, S>;
 
+    type DecoderStream<S> =
+        FramedRead<GzipDecoder<StreamReader<S, <S as TryStream>::Ok>>, BytesCodec>;
+
     pin_project! {
-        pub struct Gzip<S: TryStream<Ok = Bytes>> {
+        pub struct Gzip<S: TryStream> {
             #[pin]
-            inner: GzipDecoder<Adapter<S>>,
+            inner: DecoderStream<Adapter<S>>,
         }
     }
 
@@ -35,18 +40,26 @@ mod imp {
         }
     }
 
-    impl<S: TryStream<Ok = Bytes>> Gzip<S> {
+    impl<S: TryStream> Gzip<S>
+    where
+        S::Ok: Buf,
+    {
         fn new(s: S) -> Self {
-            Gzip {
-                inner: GzipDecoder::new(Adapter {
+            let inner = FramedRead::new(
+                GzipDecoder::new(StreamReader::new(Adapter {
                     inner: s,
                     error: None,
-                }),
-            }
+                })),
+                BytesCodec::new(),
+            );
+            Gzip { inner }
         }
     }
 
-    impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Gzip<S> {
+    impl<S: TryStream<Error = Error<E>>, E> Stream for Gzip<S>
+    where
+        S::Ok: Buf,
+    {
         type Item = Result<Bytes, Error<E>>;
 
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -55,8 +68,10 @@ mod imp {
             // because `inner` is borrowed inside `map_err`.
             inner.as_mut().poll_next(cx).map(|option| {
                 option.map(|result| {
-                    result.map_err(|e| {
+                    result.map(Into::into).map_err(|e| {
                         inner
+                            .get_pin_mut()
+                            .get_pin_mut()
                             .get_pin_mut()
                             .project()
                             .error
@@ -68,13 +83,13 @@ mod imp {
         }
     }
 
-    impl<S: TryStream<Ok = Bytes>> Stream for Adapter<S> {
-        type Item = io::Result<Bytes>;
+    impl<S: TryStream> Stream for Adapter<S> {
+        type Item = io::Result<S::Ok>;
 
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             let mut this = self.project();
             match ready!(this.inner.as_mut().try_poll_next(cx)) {
-                Some(result) => Poll::Ready(Some(result.map(Into::into).map_err(|e| {
+                Some(result) => Poll::Ready(Some(result.map_err(|e| {
                     *this.error = Some(e);
                     io::Error::from_raw_os_error(0)
                 }))),
@@ -83,11 +98,14 @@ mod imp {
         }
     }
 
-    pub fn gzip<S: TryStream<Ok = Bytes>>(s: S) -> MaybeGzip<S> {
+    pub fn gzip<S: TryStream>(s: S) -> MaybeGzip<S>
+    where
+        S::Ok: Buf,
+    {
         Either::Left(Gzip::new(s))
     }
 
-    pub fn identity<S: TryStream<Ok = Bytes>>(s: S) -> MaybeGzip<S> {
+    pub fn identity<S: TryStream>(s: S) -> MaybeGzip<S> {
         Either::Right(s)
     }
 }

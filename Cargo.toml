@@ -19,11 +19,11 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-bytes = { version = "0.5", default-features = false }
+bytes = { version = "1", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 futures-util = { version = "0.3", default-features = false }
 http = "0.2"
-http-body = "0.3"
+http-body = "0.4"
 memchr = "2"
 oauth = { version = "0.5", package = "oauth1-request" }
 oauth-credentials = "0.3"
@@ -32,14 +32,15 @@ slice-of-array = "0.2"
 static_assertions = "1"
 string = { version = "0.2", default-features = false }
 tower-service = "0.3"
-async-compression = { version = "0.3", default-features = false, features = ["stream"], optional = true }
-hyper-pkg = { version = "0.13", package = "hyper", default-features = false, optional = true }
-hyper-tls = { version = "0.4", optional = true }
+async-compression = { version = "0.3", default-features = false, optional = true }
+hyper-pkg = { version = "0.14", package = "hyper", optional = true }
+hyper-tls = { version = "0.5", optional = true }
+tokio-util = { version = "0.6.1", optional = true }
 
 [features]
 default = ["gzip", "hyper"]
-gzip = ["async-compression/gzip"]
-hyper = ["hyper-pkg/runtime", "hyper-tls"]
+gzip = ["async-compression/gzip", "async-compression/tokio", "tokio-util/codec", "tokio-util/io"]
+hyper = ["hyper-pkg/client", "hyper-pkg/http1", "hyper-pkg/runtime", "hyper-tls"]
 
 [[example]]
 name = "echo_bot"
@@ -49,14 +50,14 @@ name = "timeout"
 
 [dev-dependencies]
 futures = "0.3"
-hyper-pkg = { version = "0.13", package = "hyper", default-features = false }
-tower = "0.3"
+hyper-pkg = { version = "0.14", package = "hyper" }
+tower = { version = "0.4", default-features = false, features = ["util"] }
 version-sync = "0.9"
 # examples/echo_bot
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "0.2", features = ["macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # examples/timeout
-hyper-timeout = "0.3"
+hyper-timeout = "0.4"
 native-tls = "0.2"
 pin-project = "1"
