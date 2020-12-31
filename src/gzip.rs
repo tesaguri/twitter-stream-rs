@@ -64,22 +64,18 @@ mod imp {
 
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             let mut inner = self.project().inner;
-            // This cannot be `Pin::new(&mut inner.map_err(..)).poll_next(cx)`
-            // because `inner` is borrowed inside `map_err`.
-            inner.as_mut().poll_next(cx).map(|option| {
-                option.map(|result| {
-                    result.map(Into::into).map_err(|e| {
-                        inner
-                            .get_pin_mut()
-                            .get_pin_mut()
-                            .get_pin_mut()
-                            .project()
-                            .error
-                            .take()
-                            .unwrap_or(Error::Gzip(e))
-                    })
-                })
-            })
+            match ready!(inner.as_mut().poll_next(cx)) {
+                Some(Ok(buf)) => Poll::Ready(Some(Ok(buf.freeze()))),
+                Some(Err(e)) => Poll::Ready(Some(Err(inner
+                    .get_pin_mut()
+                    .get_pin_mut()
+                    .get_pin_mut()
+                    .project()
+                    .error
+                    .take()
+                    .unwrap_or(Error::Gzip(e))))),
+                None => Poll::Ready(None),
+            }
         }
     }
 
