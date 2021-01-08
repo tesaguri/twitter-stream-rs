@@ -146,14 +146,14 @@ where
     /// ```no_run
     /// use tower::ServiceExt;
     ///
-    /// # async fn doc() {
+    /// # async fn doc() -> hyper_pkg::Result<()> {
     /// # let mut client = hyper_pkg::Client::new();
     /// # let token = twitter_stream::Token::from_parts("", "", "", "");
-    /// client.ready_and().await; // Ensure that the client is ready to send a request.
     /// let stream = twitter_stream::Builder::new(token)
-    ///     .listen_with_client(&mut client)
+    ///     .listen_with_client(client.ready_and().await?)
     ///     .await
     ///     .unwrap();
+    /// # Ok(())
     /// # }
     /// ```
     pub fn listen_with_client<S, B>(&self, mut client: S) -> FutureTwitterStream<S::Future>
