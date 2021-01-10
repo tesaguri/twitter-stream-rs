@@ -151,8 +151,8 @@ impl<B: Body> TwitterStream<B> {
     /// Creates a `Builder` for `TwitterStream`.
     pub fn builder<'a, C, A>(token: Token<C, A>) -> Builder<'a, Token<C, A>>
     where
-        C: std::borrow::Borrow<str>,
-        A: std::borrow::Borrow<str>,
+        C: AsRef<str>,
+        A: AsRef<str>,
     {
         Builder::new(token)
     }
@@ -170,8 +170,8 @@ impl crate::hyper::TwitterStream {
     /// This will panic if the underlying HTTPS connector failed to initialize.
     pub fn follow<C, A>(follow: &[u64], token: &Token<C, A>) -> crate::hyper::FutureTwitterStream
     where
-        C: std::borrow::Borrow<str>,
-        A: std::borrow::Borrow<str>,
+        C: AsRef<str>,
+        A: AsRef<str>,
     {
         Builder::new(token.as_ref()).follow(follow).listen()
     }
@@ -187,8 +187,8 @@ impl crate::hyper::TwitterStream {
     /// This will panic if the underlying HTTPS connector failed to initialize.
     pub fn track<C, A>(track: &str, token: &Token<C, A>) -> crate::hyper::FutureTwitterStream
     where
-        C: std::borrow::Borrow<str>,
-        A: std::borrow::Borrow<str>,
+        C: AsRef<str>,
+        A: AsRef<str>,
     {
         Builder::new(token.as_ref()).track(track).listen()
     }
@@ -207,8 +207,8 @@ impl crate::hyper::TwitterStream {
         token: &Token<C, A>,
     ) -> crate::hyper::FutureTwitterStream
     where
-        C: std::borrow::Borrow<str>,
-        A: std::borrow::Borrow<str>,
+        C: AsRef<str>,
+        A: AsRef<str>,
     {
         Builder::new(token.as_ref()).locations(locations).listen()
     }
@@ -223,8 +223,8 @@ impl crate::hyper::TwitterStream {
     /// This will panic if the underlying HTTPS connector failed to initialize.
     pub fn sample<C, A>(token: &Token<C, A>) -> crate::hyper::FutureTwitterStream
     where
-        C: std::borrow::Borrow<str>,
-        A: std::borrow::Borrow<str>,
+        C: AsRef<str>,
+        A: AsRef<str>,
     {
         Builder::new(token.as_ref()).listen()
     }

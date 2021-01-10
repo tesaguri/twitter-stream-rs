@@ -46,7 +46,7 @@ pub use http::Uri;
 
 pub use bounding_box::BoundingBox;
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::fmt::{self, Formatter};
 
 use http::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
@@ -106,8 +106,8 @@ const SAMPLE: &str = "https://stream.twitter.com/1.1/statuses/sample.json";
 
 impl<'a, C, A> Builder<'a, Token<C, A>>
 where
-    C: Borrow<str>,
-    A: Borrow<str>,
+    C: AsRef<str>,
+    A: AsRef<str>,
 {
     /// Creates a builder.
     pub fn new(token: Token<C, A>) -> Self {
