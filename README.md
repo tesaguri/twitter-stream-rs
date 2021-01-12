@@ -13,8 +13,8 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 futures = "0.3"
-tokio = { version = "0.2", features = ["macros"] }
-twitter-stream = "0.11"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+twitter-stream = "0.12"
 ```
 
 Here is a basic example that prints public mentions to @Twitter in JSON format:
