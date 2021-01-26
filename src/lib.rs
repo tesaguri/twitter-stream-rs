@@ -238,10 +238,7 @@ where
     type Output = Result<TwitterStream<B>, Error<E>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let res = match ready!(self.project().response.poll(cx)) {
-            Ok(res) => res,
-            Err(e) => return Poll::Ready(Err(Error::Service(e))),
-        };
+        let res = ready!(self.project().response.poll(cx).map_err(Error::Service)?);
         let (parts, body) = res.into_parts();
         let Parts {
             status, headers, ..
