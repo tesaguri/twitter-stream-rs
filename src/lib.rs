@@ -101,8 +101,6 @@ pub mod error;
 pub mod hyper;
 pub mod service;
 
-mod gzip;
-
 #[doc(no_inline)]
 pub use oauth_credentials::Credentials;
 
@@ -117,14 +115,11 @@ use std::task::{Context, Poll};
 use bytes::Bytes;
 use futures_core::Stream;
 use futures_util::ready;
-use http::header::CONTENT_ENCODING;
-use http::response::Parts;
 use http::Response;
 use http::StatusCode;
 use http_body::Body;
 use pin_project_lite::pin_project;
 
-use crate::gzip::MaybeGzip;
 use crate::util::{HttpBodyAsStream, Lines};
 
 pin_project! {
@@ -137,9 +132,9 @@ pin_project! {
 
 pin_project! {
     /// A listener for Twitter Streaming API, yielding JSON strings returned from the API.
-    pub struct TwitterStream<B: Body> {
+    pub struct TwitterStream<B> {
         #[pin]
-        inner: Lines<MaybeGzip<HttpBodyAsStream<B>>>,
+        inner: Lines<HttpBodyAsStream<B>>,
     }
 }
 
@@ -239,24 +234,12 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let res = ready!(self.project().response.poll(cx).map_err(Error::Service)?);
-        let (parts, body) = res.into_parts();
-        let Parts {
-            status, headers, ..
-        } = parts;
 
-        if StatusCode::OK != status {
-            return Poll::Ready(Err(Error::Http(status)));
+        if res.status() != StatusCode::OK {
+            return Poll::Ready(Err(Error::Http(res.status())));
         }
 
-        let use_gzip = headers
-            .get_all(CONTENT_ENCODING)
-            .iter()
-            .any(|e| e == "gzip");
-        let inner = if use_gzip {
-            Lines::new(gzip::gzip(HttpBodyAsStream::new(body)))
-        } else {
-            Lines::new(gzip::identity(HttpBodyAsStream::new(body)))
-        };
+        let inner = Lines::new(HttpBodyAsStream::new(res.into_body()));
 
         Poll::Ready(Ok(TwitterStream { inner }))
     }

@@ -303,12 +303,6 @@ fn prepare_request(
 
     let req = Request::builder().method(method.clone());
 
-    #[cfg(feature = "gzip")]
-    let req = req.header(
-        http::header::ACCEPT_ENCODING,
-        HeaderValue::from_static("gzip"),
-    );
-
     let mut oauth = oauth::Builder::new(token.client.as_ref(), oauth::HmacSha1);
     oauth.token(token.token.as_ref());
 

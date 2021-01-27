@@ -34,7 +34,6 @@ jobs:
           - '1.45.0'
         features:
           - ''
-          - gzip
           - hyper
     steps:
       - uses: actions/checkout@v2
