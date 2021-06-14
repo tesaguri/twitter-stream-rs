@@ -46,10 +46,10 @@ async fn main() {
 
     let mut conn = hyper::client::HttpConnector::new();
     conn.set_connect_timeout(Some(TIMEOUT));
-    let tls = native_tls::TlsConnector::new().unwrap();
-    let conn = hyper_tls::HttpsConnector::from((conn, tls.into()));
     let mut conn = hyper_timeout::TimeoutConnector::new(conn);
     conn.set_read_timeout(Some(TIMEOUT));
+    let tls = native_tls::TlsConnector::new().unwrap();
+    let conn = hyper_tls::HttpsConnector::from((conn, tls.into()));
 
     let client = hyper::Client::builder().build::<_, hyper::Body>(conn);
 
