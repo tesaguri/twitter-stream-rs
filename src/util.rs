@@ -4,8 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use bytes::{Buf, Bytes};
-use futures_util::ready;
-use futures_util::stream::{Fuse, IntoStream, Stream, StreamExt, TryStream, TryStreamExt};
+use futures_core::{ready, Stream};
 use http_body::Body;
 use pin_project_lite::pin_project;
 
@@ -41,37 +40,44 @@ macro_rules! str_enum {
 }
 
 pin_project! {
-    pub struct Lines<S> {
+    pub struct Lines<B> {
         #[pin]
-        stream: Fuse<IntoStream<S>>,
+        body: B,
+        body_done: bool,
         buf: Bytes,
     }
 }
 
-pin_project! {
-    /// Wraps `http_body::Body` to make it a `Stream`.
-    pub struct HttpBodyAsStream<B> {
-        #[pin]
-        pub inner: B,
-    }
-}
-
-impl<S: TryStream> Lines<S> {
-    pub fn new(stream: S) -> Self {
+impl<B: Body> Lines<B> {
+    pub fn new(body: B) -> Self {
         Lines {
-            stream: stream.into_stream().fuse(),
+            body,
+            body_done: false,
             buf: Bytes::new(),
+        }
+    }
+
+    fn poll_body(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<B::Data, Error<B::Error>>>> {
+        let this = self.project();
+        if *this.body_done {
+            Poll::Ready(None)
+        } else if let Some(result) = ready!(this.body.poll_data(cx)) {
+            Poll::Ready(Some(result.map_err(Error::Service)))
+        } else {
+            *this.body_done = true;
+            Poll::Ready(None)
         }
     }
 }
 
-impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
-    type Item = Result<Bytes, Error<E>>;
+impl<B: Body> Stream for Lines<B> {
+    type Item = Result<Bytes, Error<B::Error>>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut this = self.project();
-
-        if let Some(line) = remove_first_line(&mut this.buf) {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if let Some(line) = remove_first_line(self.as_mut().project().buf) {
             return Poll::Ready(Some(Ok(line)));
         }
 
@@ -80,66 +86,53 @@ impl<S: TryStream<Ok = Bytes, Error = Error<E>>, E> Stream for Lines<S> {
 
         loop {
             let mut chunk = loop {
-                if let Some(c) = ready!(this.stream.as_mut().poll_next(cx)?) {
-                    if !c.is_empty() {
+                if let Some(c) = ready!(self.as_mut().poll_body(cx)?) {
+                    if c.has_remaining() {
                         break c;
                     }
-                } else if this.buf.is_empty() {
+                } else if self.buf.is_empty() {
                     return Poll::Ready(None);
                 } else {
-                    let ret = mem::take(this.buf);
+                    // `self.buf` does not have CRLF so it is safe to return its content as-is.
+                    let ret = mem::take(self.as_mut().project().buf);
                     return Poll::Ready(Some(Ok(ret)));
                 }
             };
 
-            if chunk[0] == b'\n' && this.buf.last() == Some(&b'\r') {
+            let this = self.as_mut().project();
+
+            if chunk.chunk()[0] == b'\n' && this.buf.last() == Some(&b'\r') {
                 // Drop the CRLF
                 this.buf.truncate(this.buf.len() - 1);
                 chunk.advance(1);
 
+                let chunk = chunk.copy_to_bytes(chunk.remaining());
                 return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk))));
-            } else if let Some(line) = remove_first_line(&mut chunk) {
-                let ret = if this.buf.is_empty() {
-                    line
-                } else {
-                    let mut ret = Vec::with_capacity(this.buf.len() + line.len());
-                    ret.extend_from_slice(&this.buf);
-                    ret.extend_from_slice(&line);
-                    ret.into()
-                };
-                *this.buf = chunk;
-                return Poll::Ready(Some(Ok(ret)));
             } else {
-                *this.buf = if this.buf.is_empty() {
-                    chunk
+                let mut chunk = chunk.copy_to_bytes(chunk.remaining());
+                if let Some(line) = remove_first_line(&mut chunk) {
+                    let ret = if this.buf.is_empty() {
+                        line
+                    } else {
+                        let mut ret = Vec::with_capacity(this.buf.len() + line.len());
+                        ret.extend_from_slice(&this.buf);
+                        ret.extend_from_slice(&line);
+                        ret.into()
+                    };
+                    *this.buf = chunk;
+                    return Poll::Ready(Some(Ok(ret)));
                 } else {
-                    let mut buf = Vec::with_capacity(this.buf.len() + chunk.len());
-                    buf.extend_from_slice(&this.buf);
-                    buf.extend_from_slice(&chunk);
-                    buf.into()
+                    *this.buf = if this.buf.is_empty() {
+                        chunk
+                    } else {
+                        let mut buf = Vec::with_capacity(this.buf.len() + chunk.len());
+                        buf.extend_from_slice(&this.buf);
+                        buf.extend_from_slice(&chunk);
+                        buf.into()
+                    }
                 }
             }
         }
-    }
-}
-
-impl<B: Body> HttpBodyAsStream<B> {
-    pub fn new(inner: B) -> Self {
-        HttpBodyAsStream { inner }
-    }
-}
-
-impl<B: Body> Stream for HttpBodyAsStream<B> {
-    type Item = Result<Bytes, Error<B::Error>>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().inner.poll_data(cx).map(|opt| {
-            opt.map(|result| {
-                result
-                    .map(|mut buf| buf.copy_to_bytes(buf.remaining()))
-                    .map_err(Error::Service)
-            })
-        })
     }
 }
 
@@ -175,7 +168,36 @@ mod test {
     use super::*;
     use bytes::Bytes;
     use futures::executor::block_on_stream;
-    use futures_util::stream;
+    use futures::stream::{self, StreamExt, TryStream};
+
+    pin_project! {
+            struct StreamBody<S> {
+                #[pin]
+                stream: S,
+            }
+    }
+
+    impl<S: TryStream> Body for StreamBody<S>
+    where
+        S::Ok: Buf,
+    {
+        type Data = S::Ok;
+        type Error = S::Error;
+
+        fn poll_data(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Option<Result<S::Ok, S::Error>>> {
+            self.project().stream.try_poll_next(cx)
+        }
+
+        fn poll_trailers(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+        ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
+            Poll::Ready(Ok(None))
+        }
+    }
 
     #[test]
     fn lines() {
@@ -195,7 +217,9 @@ mod test {
 
         let concat = body.concat();
         let expected = concat.split("\r\n");
-        let lines = Lines::new(stream::iter(&body).map(|&c| Ok(Bytes::from_static(c.as_bytes()))));
+        let lines = Lines::new(StreamBody {
+            stream: stream::iter(&body).map(|&c| Ok(Bytes::from_static(c.as_bytes()))),
+        });
         let lines = block_on_stream(lines)
             .map(|s: Result<_, Error>| String::from_utf8(s.unwrap().to_vec()).unwrap());
 

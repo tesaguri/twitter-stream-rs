@@ -113,14 +113,13 @@ use std::str;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
-use futures_core::Stream;
-use futures_util::ready;
+use futures_core::{ready, Stream};
 use http::Response;
 use http::StatusCode;
 use http_body::Body;
 use pin_project_lite::pin_project;
 
-use crate::util::{HttpBodyAsStream, Lines};
+use crate::util::Lines;
 
 pin_project! {
     /// A future returned by constructor methods which resolves to a [`TwitterStream`].
@@ -134,7 +133,7 @@ pin_project! {
     /// A listener for Twitter Streaming API, yielding JSON strings returned from the API.
     pub struct TwitterStream<B> {
         #[pin]
-        inner: Lines<HttpBodyAsStream<B>>,
+        inner: Lines<B>,
     }
 }
 
@@ -239,7 +238,7 @@ where
             return Poll::Ready(Err(Error::Http(res.status())));
         }
 
-        let inner = Lines::new(HttpBodyAsStream::new(res.into_body()));
+        let inner = Lines::new(res.into_body());
 
         Poll::Ready(Ok(TwitterStream { inner }))
     }

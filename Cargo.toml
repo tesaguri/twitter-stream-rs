@@ -21,7 +21,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 bytes = { version = "1", default-features = false }
 futures-core = { version = "0.3", default-features = false }
-futures-util = { version = "0.3", default-features = false }
 http = "0.2"
 http-body = "0.4"
 memchr = "2"
