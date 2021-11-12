@@ -80,7 +80,7 @@ impl BoundingBox {
             let ptr: *const [f64; 4] = slice.as_ptr();
             let len = <[[f64; 4]]>::len(slice);
 
-            slice::from_raw_parts(ptr as *const BoundingBox, len)
+            slice::from_raw_parts(ptr.cast::<BoundingBox>(), len)
         }
     }
 
@@ -96,7 +96,7 @@ impl BoundingBox {
             let ptr: *const BoundingBox = bboxes.as_ptr();
             let len = <[BoundingBox]>::len(bboxes);
 
-            slice::from_raw_parts(ptr as *const [f64; 4], len)
+            slice::from_raw_parts(ptr.cast::<[f64; 4]>(), len)
         }
     }
 
@@ -128,13 +128,13 @@ impl BoundingBox {
             assert_eq_size!(BoundingBox, [f64; 4]);
             assert_eq_align!([f64; 4], BoundingBox);
 
-            let vec = mem::ManuallyDrop::new(vec);
+            let mut vec = mem::ManuallyDrop::new(vec);
 
-            let ptr: *const [f64; 4] = vec.as_ptr();
+            let ptr: *mut [f64; 4] = vec.as_mut_ptr();
             let length = Vec::<[f64; 4]>::len(&vec);
             let capacity = Vec::<[f64; 4]>::capacity(&vec);
 
-            Vec::<BoundingBox>::from_raw_parts(ptr as *mut BoundingBox, length, capacity)
+            Vec::<BoundingBox>::from_raw_parts(ptr.cast::<BoundingBox>(), length, capacity)
         }
     }
 
@@ -147,13 +147,13 @@ impl BoundingBox {
             assert_eq_size!(BoundingBox, [f64; 4]);
             assert_eq_align!([f64; 4], BoundingBox);
 
-            let vec = mem::ManuallyDrop::new(vec);
+            let mut vec = mem::ManuallyDrop::new(vec);
 
-            let ptr: *const BoundingBox = vec.as_ptr();
+            let ptr: *mut BoundingBox = vec.as_mut_ptr();
             let length = Vec::<BoundingBox>::len(&vec);
             let capacity = Vec::<BoundingBox>::capacity(&vec);
 
-            Vec::<[f64; 4]>::from_raw_parts(ptr as *mut [f64; 4], length, capacity)
+            Vec::<[f64; 4]>::from_raw_parts(ptr.cast::<[f64; 4]>(), length, capacity)
         }
     }
 }
@@ -234,17 +234,37 @@ mod tests {
         #[test]
         fn flatten() {
             macro_rules! test {
-            ($([$w:expr, $s:expr, $e:expr, $n:expr]),*$(,)?) => {{
-                let bb = vec![$(BoundingBox::new($w, $s, $e, $n)),*];
-                let ary = vec![$([$w, $s, $e, $n]),*];
+                ($([$w:expr, $s:expr, $e:expr, $n:expr]),*$(,)?) => {{
+                    let bb = vec![$(BoundingBox::new($w, $s, $e, $n)),*];
+                    let ary = vec![$([$w, $s, $e, $n]),*];
 
-                assert_eq!(*BoundingBox::unflatten_slice(&ary), *bb, "unflatten_slice(&{:?})", ary);
-                assert_eq!(*BoundingBox::flatten_slice(&bb), *ary, "flatten_slice(&{:?})", bb);
+                    assert_eq!(
+                        *BoundingBox::unflatten_slice(&ary),
+                        *bb,
+                        "unflatten_slice(&{:?})",
+                        ary,
+                    );
+                    assert_eq!(
+                        *BoundingBox::flatten_slice(&bb),
+                        *ary,
+                        "flatten_slice(&{:?})",
+                        bb,
+                    );
 
-                assert_eq!(BoundingBox::unflatten_vec(ary.clone()), bb, "flatten_vec({:?})", ary);
-                assert_eq!(BoundingBox::flatten_vec(bb.clone()), ary, "flatten_vec({:?})", bb);
-            }};
-        }
+                    assert_eq!(
+                        BoundingBox::unflatten_vec(ary.clone()),
+                        bb,
+                        "flatten_vec({:?})",
+                        ary,
+                    );
+                    assert_eq!(
+                        BoundingBox::flatten_vec(bb.clone()),
+                        ary,
+                        "flatten_vec({:?})",
+                        bb,
+                    );
+                }};
+            }
 
             test!();
             test!([-122.75, 36.8, -121.75, 37.8]);
@@ -255,11 +275,11 @@ mod tests {
         fn unflatten_alignment() {
             static ARRAY: [f64; 5] = [1., 2., 3., 4., 5.];
             assert_eq!(
-                BoundingBox::unflatten_slice(&ARRAY[..4].nest()),
+                BoundingBox::unflatten_slice(ARRAY[..4].nest()),
                 [BoundingBox::new(1., 2., 3., 4.)],
             );
             assert_eq!(
-                BoundingBox::unflatten_slice(&ARRAY[1..].nest()),
+                BoundingBox::unflatten_slice(ARRAY[1..].nest()),
                 [BoundingBox::new(2., 3., 4., 5.)],
             );
         }

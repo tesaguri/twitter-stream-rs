@@ -57,6 +57,7 @@ impl<B: Body> Lines<B> {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn poll_body(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -108,30 +109,17 @@ impl<B: Body> Stream for Lines<B> {
 
                 let chunk = chunk.copy_to_bytes(chunk.remaining());
                 return Poll::Ready(Some(Ok(mem::replace(this.buf, chunk))));
-            } else {
-                let mut chunk = chunk.copy_to_bytes(chunk.remaining());
-                if let Some(line) = remove_first_line(&mut chunk) {
-                    let ret = if this.buf.is_empty() {
-                        line
-                    } else {
-                        let mut ret = Vec::with_capacity(this.buf.len() + line.len());
-                        ret.extend_from_slice(&this.buf);
-                        ret.extend_from_slice(&line);
-                        ret.into()
-                    };
-                    *this.buf = chunk;
-                    return Poll::Ready(Some(Ok(ret)));
-                } else {
-                    *this.buf = if this.buf.is_empty() {
-                        chunk
-                    } else {
-                        let mut buf = Vec::with_capacity(this.buf.len() + chunk.len());
-                        buf.extend_from_slice(&this.buf);
-                        buf.extend_from_slice(&chunk);
-                        buf.into()
-                    }
-                }
             }
+
+            let mut chunk = chunk.copy_to_bytes(chunk.remaining());
+
+            if let Some(line) = remove_first_line(&mut chunk) {
+                let ret = concat_bytes(this.buf, line);
+                *this.buf = chunk;
+                return Poll::Ready(Some(Ok(ret)));
+            }
+
+            *this.buf = concat_bytes(this.buf, chunk);
         }
     }
 }
@@ -161,6 +149,17 @@ fn remove_first_line(buf: &mut Bytes) -> Option<Bytes> {
     }
 
     None
+}
+
+fn concat_bytes(a: &[u8], b: Bytes) -> Bytes {
+    if a.is_empty() {
+        b
+    } else {
+        let mut buf = Vec::with_capacity(a.len() + b.len());
+        buf.extend_from_slice(a);
+        buf.extend_from_slice(&b);
+        buf.into()
+    }
 }
 
 #[cfg(test)]
