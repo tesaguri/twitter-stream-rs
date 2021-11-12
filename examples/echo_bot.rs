@@ -147,7 +147,7 @@ async fn main() {
 impl<'de> Deserialize<'de> for Tweet {
     fn deserialize<D: de::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
-        struct Prototype {
+        struct Tweet {
             entities: Option<Entities>,
             id: u64,
             // Add the following attribute if you want to deserialize REST API responses too.
@@ -164,16 +164,16 @@ impl<'de> Deserialize<'de> for Tweet {
             entities: Option<Entities>,
         }
 
-        Prototype::deserialize(d).map(|p| {
-            let (text, entities) = p
+        Tweet::deserialize(d).map(|t| {
+            let (text, entities) = t
                 .extended_tweet
-                .map_or((p.text, p.entities), |e| (e.full_text, e.entities));
-            Tweet {
+                .map_or((t.text, t.entities), |e| (e.full_text, e.entities));
+            Self {
                 entities,
-                id: p.id,
+                id: t.id,
                 text,
-                user: p.user,
-                is_retweet: p.retweeted_status.is_some(),
+                user: t.user,
+                is_retweet: t.retweeted_status.is_some(),
             }
         })
     }
