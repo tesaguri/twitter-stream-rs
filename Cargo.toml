@@ -27,7 +27,7 @@ memchr = "2.4"
 oauth = { version = "0.5", package = "oauth1-request" }
 oauth-credentials = "0.3"
 pin-project-lite = "0.2"
-slice-of-array = "0.2"
+slice-of-array = "0.3"
 static_assertions = "1"
 string = { version = "0.2", default-features = false }
 tower-service = "0.3"
