@@ -136,19 +136,13 @@ pub fn fmt_join<T: Display>(t: &[T], sep: &str, f: &mut Formatter<'_>) -> fmt::R
 }
 
 fn remove_first_line(buf: &mut Bytes) -> Option<Bytes> {
-    if buf.len() < 2 {
-        return None;
+    if let Some(i) = memchr::memmem::find(buf, b"\r\n") {
+        let mut line = buf.split_to(i + 2);
+        line.truncate(i); // Drop the CRLF
+        Some(line)
+    } else {
+        None
     }
-
-    if let Some(i) = memchr::memchr(b'\n', &buf[1..]) {
-        if buf[i] == b'\r' {
-            let mut line = buf.split_to(i + 2);
-            line.truncate(i); // Drop the CRLF
-            return Some(line);
-        }
-    }
-
-    None
 }
 
 fn concat_bytes(a: &[u8], b: Bytes) -> Bytes {

@@ -23,7 +23,7 @@ bytes = { version = "1", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 http = "0.2"
 http-body = "0.4"
-memchr = "2"
+memchr = "2.4"
 oauth = { version = "0.5", package = "oauth1-request" }
 oauth-credentials = "0.3"
 pin-project-lite = "0.2"
