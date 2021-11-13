@@ -91,6 +91,9 @@ messages.
 #![deny(broken_intra_doc_links)]
 #![warn(missing_docs)]
 
+#[cfg(all(doctest, not(twitter_stream_ci_msrv)))]
+mod doctest;
+
 #[macro_use]
 mod util;
 
