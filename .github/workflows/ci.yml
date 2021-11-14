@@ -48,27 +48,9 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           profile: minimal
           override: true
-        id: toolchain
-      - name: Cache Cargo registry
-        uses: actions/cache@v2
+      - uses: Swatinem/rust-cache@v1
         with:
-          path: ~/.cargo/registry
-          key: cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
-          restore-keys: |
-            cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
-            cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-
-            cargo-registry-${{ matrix.features }}-${{ hashFiles('Cargo.*') }}-
-              cargo-registry-${{ matrix.features }}-
-            cargo-registry-
-      - name: Cache Cargo build
-        uses: actions/cache@v2
-        with:
-          path: target
-          key: cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: |
-            cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ matrix.features }}-${{ hashFiles('**/Cargo.*') }}
-            cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ matrix.features }}-
-            cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-
+          key: ${{ matrix.features }}
       - name: Build
         if: matrix.features == 'hyper'
         uses: actions-rs/cargo@v1
@@ -107,24 +89,7 @@ jobs:
           profile: minimal
           components: miri
           override: true
-      - name: Cache Cargo registry
-        uses: actions/cache@v2
-        with:
-          path: ~/.cargo/registry
-          key: cargo-registry-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
-          restore-keys: |
-            cargo-registry-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ runner.os }}}
-            cargo-registry-${{ hashFiles('Cargo.*') }}-${{ steps.toolchain.outputs.rustc_hash }}-
-            cargo-registry-${{ hashFiles('Cargo.*') }}-
-            cargo-registry-
-      - name: Cache Cargo build
-        uses: actions/cache@v2
-        with:
-          path: target
-          key: miri-cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.*') }}
-          restore-keys: |
-            miri-cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-${{ hashFiles('**/Cargo.*') }}
-            miri-cargo-build-target-${{ runner.os }}-${{ steps.toolchain.outputs.rustc_hash }}-
+      - uses: Swatinem/rust-cache@v1
       - run: cargo miri setup
       - name: cargo miri test
         uses: actions-rs/cargo@v1
